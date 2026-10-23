@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { userInfo } from 'node:os';
+import { delimiter, dirname } from 'node:path';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
@@ -24,6 +25,10 @@ async function resolveLoginEnv(): Promise<NodeJS.ProcessEnv> {
   }
   for (const key of Object.keys(base)) if (STRIPPED.test(key)) delete base[key];
   base.SHELL = shell;
+  // Version managers such as nvm.fish put node on PATH only in interactive shells.
+  const nodeDir = dirname(process.execPath);
+  const path = (base.PATH ?? '').split(delimiter);
+  if (!path.includes(nodeDir)) base.PATH = [...path, nodeDir].filter(Boolean).join(delimiter);
   return base;
 }
 

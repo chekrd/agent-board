@@ -46,7 +46,7 @@ ${JSON.stringify(items, null, 2)}
 
 Reply with ONLY a JSON array ordered from highest to lowest priority, one entry per question:
 [{"id": "<id>", "reason": "<one short line why it sits here>"}]`;
-    const out = await headless(prompt, { cwd: DATA_DIR, args: ['--model', 'sonnet'], timeoutMs: 180_000 });
+    const out = await headless(prompt, { cwd: DATA_DIR, args: ['--model', 'sonnet', '--strict-mcp-config'], timeoutMs: 180_000 });
     const text: string = out.result ?? '';
     const ranked: { id: string; reason: string }[] = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
     const asked = new Map(open.map((s) => [s.id, s.question!.askedAt]));

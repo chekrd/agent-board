@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { adviseOpen } from './advisor.ts';
+import { adviseOpen, stopAdvice } from './advisor.ts';
 import { conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
@@ -130,6 +130,7 @@ async function readTranscript(s: Session) {
     patch.rank = null;
     patch.rankReason = null;
     patch.advice = null;
+    stopAdvice(s.id);
     scheduleRerank();
   }
   sessions.update(s.id, patch);
@@ -242,6 +243,7 @@ function clearQuestion(id: string) {
   const s = sessions.get(id);
   if (!s?.question) return;
   sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId, rank: null, rankReason: null, advice: null });
+  stopAdvice(id);
   scheduleRerank();
 }
 

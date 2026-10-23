@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { loginEnv } from './env.ts';
 
@@ -121,4 +121,20 @@ export async function pullRequestUrl(worktree: string, id: number) {
   if (remote.includes('/_git/')) return `${remote}/pullrequest/${id}`;
   if (remote.includes('github.com')) return `${remote}/pull/${id}`;
   return null;
+}
+
+const cloneInto = (src: string, dest: string) => run('/bin/cp', ['-cR', src, `${dest}/`]);
+
+// A detached worktree whose files are APFS clones of `worktree`, uncommitted and ignored files included.
+export async function addScratchCopy(worktree: string, dest: string) {
+  await git(worktree, ['worktree', 'add', '--detach', '--no-checkout', dest, 'HEAD']);
+  const entries = (await readdir(worktree)).filter((e) => e !== '.git');
+  await Promise.all(entries.map((e) => cloneInto(join(worktree, e), dest)));
+  await git(dest, ['reset', '--quiet']);
+}
+
+export async function removeScratchCopy(dir: string) {
+  const common = await git(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']).then((s) => s.trim(), () => null);
+  await rm(dir, { recursive: true, force: true });
+  if (common) await git(dirname(common), ['worktree', 'prune']).catch(() => {});
 }

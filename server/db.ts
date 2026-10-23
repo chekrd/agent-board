@@ -83,7 +83,9 @@ export interface Question {
 
 export interface Advice {
   toolUseId: string;
-  state: 'thinking' | 'done' | 'failed';
+  state: 'preparing' | 'thinking' | 'done' | 'failed';
+  startedAt: number;
+  activity: string | null;
   choice: string | null;
   answer: string;
   confidence: number;

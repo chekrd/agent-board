@@ -8,6 +8,7 @@ export const ORIGIN = `http://${HOST}:${PORT}`;
 export const ROOT = join(import.meta.dirname, '..');
 export const DATA_DIR = join(homedir(), 'Library', 'Application Support', 'agent-ide');
 export const SESSIONS_DIR = join(DATA_DIR, 'sessions');
+export const SCRATCH_DIR = join(DATA_DIR, 'advisor');
 export const DB_PATH = join(DATA_DIR, 'state.db');
 
 export const RUBRIC_FILE = join(ROOT, 'config', 'priority-rubric.md');

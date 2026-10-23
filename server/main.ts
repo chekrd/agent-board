@@ -6,7 +6,7 @@ import { serve, upgradeWebSocket } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
-import { retryAdvice } from './advisor.ts';
+import { retryAdvice, stopAdvice } from './advisor.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { addWorktree, fullDiff, removeWorktree, repoRoot } from './git.ts';
@@ -125,6 +125,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'dismiss': S.dismiss(id); break;
     case 'accept-advice': await S.acceptAdvice(id); break;
     case 'retry-advice': retryAdvice(id); break;
+    case 'stop-advice': stopAdvice(id); break;
     case 'focus': await S.focus(id); break;
     case 'quit': S.quit(id); break;
     case 'forget': await S.forget(id); break;

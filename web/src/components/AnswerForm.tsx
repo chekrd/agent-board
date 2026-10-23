@@ -1,4 +1,4 @@
-import { useActionState, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { sessionAction } from '../api.ts';
 import type { Advice, Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
@@ -11,6 +11,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
       if (intent === 'dismiss') await sessionAction(session.id, 'dismiss');
       else if (intent === 'accept') await sessionAction(session.id, 'accept-advice');
       else if (intent === 'retry') await sessionAction(session.id, 'retry-advice');
+      else if (intent === 'stop') await sessionAction(session.id, 'stop-advice');
       else await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined });
       return null;
     } catch (err) {
@@ -67,13 +68,22 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
 const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low');
 
 function SecondOpinion({ advice: a, compact, pending, onEdit }: { advice: Advice; compact: boolean; pending: boolean; onEdit: (a: Advice) => void }) {
-  if (a.state === 'thinking') {
-    return <div className={styles.advice} data-state="thinking">Second opinion: reading the code…</div>;
+  if (a.state === 'preparing' || a.state === 'thinking') {
+    return (
+      <div className={styles.advice} data-state="running">
+        <div className={styles.adviceHead}>
+          <span className={styles.spinner} aria-hidden />
+          <span>Second opinion in progress · <Elapsed since={a.startedAt} /></span>
+          <button type="submit" name="intent" value="stop" data-variant="ghost" disabled={pending} title="Stop the advisor">Stop</button>
+        </div>
+        <p className={styles.activity}>{a.activity ?? 'Working'}</p>
+      </div>
+    );
   }
   if (a.state === 'failed') {
     return (
       <div className={styles.advice} data-state="failed" title={a.error}>
-        <span>Second opinion failed</span>
+        <span>{a.error === 'stopped' ? 'Second opinion stopped' : `Second opinion failed: ${a.error}`}</span>
         <button type="submit" name="intent" value="retry" data-variant="ghost" disabled={pending}>Retry</button>
       </div>
     );
@@ -95,4 +105,14 @@ function SecondOpinion({ advice: a, compact, pending, onEdit }: { advice: Advice
       </div>
     </div>
   );
+}
+
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+  return <>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</>;
 }
