@@ -68,7 +68,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
 const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low');
 
 function SecondOpinion({ advice: a, compact, pending, onEdit }: { advice: Advice; compact: boolean; pending: boolean; onEdit: (a: Advice) => void }) {
-  if (a.state === 'preparing' || a.state === 'thinking') {
+  if (a.state === 'thinking') {
     return (
       <div className={styles.advice} data-state="running">
         <div className={styles.adviceHead}>

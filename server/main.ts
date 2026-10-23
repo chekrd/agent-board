@@ -6,7 +6,7 @@ import { serve, upgradeWebSocket } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
-import { retryAdvice, stopAdvice } from './advisor.ts';
+import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { addWorktree, fullDiff, removeWorktree, repoRoot } from './git.ts';
@@ -38,6 +38,7 @@ app.onError((err, c) => {
 app.get('/api/state', (c) => c.json(snapshot()));
 
 app.all('/mcp', (c) => handleMcp(c.req.raw));
+app.all('/mcp/advisor/:token', (c) => handleAdvisorMcp(c.req.raw, c.req.param('token')));
 
 app.post('/api/pick-folder', async (c) => {
   const { stdout } = await run('/usr/bin/osascript', ['-e', 'POSIX path of (choose folder with prompt "Choose a repository, or a folder to scan for repositories")']);
