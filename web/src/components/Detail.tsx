@@ -5,7 +5,7 @@ import { AnswerForm } from './AnswerForm.tsx';
 import styles from './Detail.module.css';
 import { DiffView } from './DiffView.tsx';
 import { Markdown } from './Markdown.tsx';
-import { DiffStat, StatusChip } from './Status.tsx';
+import { DiffStat, PrChip, StatusChip } from './Status.tsx';
 import { FocusButton } from './Tile.tsx';
 
 interface Props {
@@ -85,6 +85,12 @@ function Overview({ session }: { session: Session }) {
         <dd>{session.firstPrompt ?? '—'}</dd>
         <dt>Worktree</dt>
         <dd><code>{session.worktree}</code></dd>
+        {session.pr && (
+          <>
+            <dt>Pull request</dt>
+            <dd><PrChip pr={session.pr} status={session.status} /> {session.pr.result && <code>{session.pr.result}</code>}</dd>
+          </>
+        )}
         <dt>Terminal</dt>
         <dd>{session.tty ? <code>{session.tty}</code> : '—'}</dd>
         <dt>Session</dt>

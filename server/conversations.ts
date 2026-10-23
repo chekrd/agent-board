@@ -2,6 +2,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ASK_TOOL_NAME } from './config.ts';
+import type { PrFlow } from './db.ts';
 
 const CLAUDE_DIR = join(homedir(), '.claude');
 const HEAD_BYTES = 128 << 10;
@@ -28,6 +29,7 @@ interface Meta {
   interactive: boolean;
   lastMessage: string | null;
   ask: Ask | null;
+  pr: Omit<PrFlow, 'url'> | null;
 }
 
 const metaCache = new Map<string, Meta>();
@@ -83,6 +85,61 @@ function lastMessage(entries: Record<string, any>[]) {
   return text ? text.trim().slice(0, 4000) : null;
 }
 
+const ENV_PREFIX = String.raw`^\s*(?:\w+=\S*\s+)*`;
+const WATCH_PR = new RegExp(`${ENV_PREFIX}\\S*pr-to-green/watch-pr\\.sh\\s+(\\d+)(?:\\s+"([^"]*)")?`);
+const CREATE_PR = new RegExp(`${ENV_PREFIX}az repos pr create\\b`);
+const RESULT_LINE = /^(RUNNING|PASSED|FAILED|CLOSED|ERROR)\b.*$/m;
+
+const resultText = (entry: Record<string, any>, block: Record<string, any>) =>
+  entry.toolUseResult?.stdout ?? (typeof block.content === 'string' ? block.content : block.content?.map?.((c: any) => c.text ?? '').join('\n') ?? '');
+
+// Follows the pr-to-green skill: the PR it creates and the last result its watch-pr.sh reported.
+async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
+  let flow = null as Meta['pr'];
+  let watcher: string | null = null;
+  let creator: string | null = null;
+  let outputFile: string | null = null;
+  const start = (at: string) => (flow ??= { id: null, result: null, watching: false, at: Date.parse(at) || Date.now() });
+  for (const entry of entries) {
+    for (const b of blocks(entry)) {
+      if (b.type !== 'tool_use') continue;
+      if (b.name === 'Skill' && String(b.input?.skill ?? '').endsWith('pr-to-green')) start(entry.timestamp);
+      const command = b.name === 'Bash' ? String(b.input?.command ?? '') : '';
+      const watch = command.match(WATCH_PR);
+      if (watch) {
+        const f = start(entry.timestamp);
+        Object.assign(f, { id: Number(watch[1]), result: watch[2] ?? f.result, watching: true });
+        watcher = b.id;
+        outputFile = null;
+      } else if (CREATE_PR.test(command)) {
+        start(entry.timestamp);
+        creator = b.id;
+      }
+    }
+    if (!flow || entry.type !== 'user') continue;
+    const content = entry.message?.content;
+    if (typeof content === 'string' && content.startsWith('<task-notification>') && content.includes(`<tool-use-id>${watcher}</tool-use-id>`)) {
+      flow.watching = false;
+      outputFile = content.match(/<output-file>([^<]+)<\/output-file>/)?.[1] ?? null;
+    }
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (b.type !== 'tool_result') continue;
+      const text = resultText(entry, b);
+      if (b.tool_use_id === creator) flow.id = Number(text.match(/"pullRequestId":\s*(\d+)/)?.[1]) || flow.id;
+      if (b.tool_use_id === watcher && !text.includes('running in background')) {
+        flow.watching = false;
+        flow.result = text.match(RESULT_LINE)?.[0] ?? flow.result;
+      }
+    }
+  }
+  if (flow && outputFile) {
+    const out = await readFile(outputFile, 'utf8').catch(() => '');
+    flow.result = out.match(RESULT_LINE)?.[0] ?? flow.result;
+  }
+  return flow;
+}
+
 async function readMeta(file: string, mtime: number): Promise<Meta> {
   const cached = metaCache.get(file);
   if (cached?.mtime === mtime) return cached;
@@ -96,6 +153,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
     ask: latestAsk(tail),
+    pr: await prFlow(tail),
   };
   metaCache.set(file, meta);
   return meta;

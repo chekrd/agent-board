@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { adviseOpen } from './advisor.ts';
 import { conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote, which } from './env.ts';
-import { fullDiff, repoRoot } from './git.ts';
+import { fullDiff, pullRequestUrl, repoRoot } from './git.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
@@ -118,6 +119,8 @@ async function readTranscript(s: Session) {
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
+  const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
+  if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
   if (ask?.toolUseId !== s.question?.toolUseId) {
     const input = ask && askInput.safeParse(ask.input);
@@ -126,6 +129,7 @@ async function readTranscript(s: Session) {
       : null;
     patch.rank = null;
     patch.rankReason = null;
+    patch.advice = null;
     scheduleRerank();
   }
   sessions.update(s.id, patch);
@@ -175,6 +179,7 @@ async function syncLive() {
     changed = true;
   }
   if (changed) notify();
+  adviseOpen();
 }
 
 function liveTty(s: Session) {
@@ -198,6 +203,12 @@ export async function answer(id: string, reply: { choice?: string; text?: string
   await ghostty.send(tty, parts.join(' — '));
   clearQuestion(id);
   notify();
+}
+
+export async function acceptAdvice(id: string) {
+  const a = must(id).advice;
+  if (a?.state !== 'done') throw new Error('no advice to accept');
+  await answer(id, { choice: a.choice ?? undefined, text: a.answer });
 }
 
 export function quit(id: string) {
@@ -230,7 +241,7 @@ export function stopWorktree(worktree: string) {
 function clearQuestion(id: string) {
   const s = sessions.get(id);
   if (!s?.question) return;
-  sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId, rank: null, rankReason: null });
+  sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId, rank: null, rankReason: null, advice: null });
   scheduleRerank();
 }
 

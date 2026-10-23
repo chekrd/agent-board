@@ -18,4 +18,51 @@
   }
 
   .error { color: var(--del); font-size: 12px; }
+
+  .advice {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 12px;
+
+    &[data-state] { flex-direction: row; align-items: center; justify-content: space-between; color: var(--muted); }
+    &[data-state="thinking"] { animation: breathe 1.6s ease-in-out infinite; }
+    &[data-state="failed"] { color: var(--del); }
+  }
+
+  .adviceHead { display: flex; align-items: center; justify-content: space-between; color: var(--muted); }
+
+  .confidence {
+    font-family: var(--mono);
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0 5px;
+    color: var(--accent-text);
+    background: var(--del);
+    &[data-level="medium"] { background: var(--warn); }
+    &[data-level="high"] { background: var(--ok); }
+  }
+
+  .adviceChoice { font-size: 13px; }
+
+  .adviceAnswer {
+    white-space: pre-line;
+    &[data-compact] { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  }
+
+  .adviceReason {
+    color: var(--muted);
+    font-style: italic;
+    &[data-compact] { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  }
+
+  .adviceActions { display: flex; gap: 6px; }
+
+  @keyframes breathe {
+    50% { opacity: 0.55; }
+  }
 }

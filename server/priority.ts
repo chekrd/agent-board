@@ -1,12 +1,10 @@
-import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { DATA_DIR, RUBRIC_FILE } from './config.ts';
 import { sessions } from './db.ts';
-import { loginEnv, which } from './env.ts';
+import { headless } from './headless.ts';
 import { notify, repoView } from './workspace.ts';
 
-const CLAUDE = await which('claude');
-const clip = (s: string | null, n: number) => (s && s.length > n ? `${s.slice(0, n)}…` : s ?? '');
+export const clip = (s: string | null, n: number) => (s && s.length > n ? `${s.slice(0, n)}…` : s ?? '');
 
 let timer: NodeJS.Timeout | undefined;
 let running = false;
@@ -15,22 +13,6 @@ let again = false;
 export function scheduleRerank() {
   clearTimeout(timer);
   timer = setTimeout(rerank, 1500);
-}
-
-function headless(prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(CLAUDE, ['-p', '--model', 'sonnet', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config'], {
-      cwd: DATA_DIR,
-      env: loginEnv,
-    });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (d) => (out += d));
-    child.stderr.on('data', (d) => (err += d));
-    child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(`claude -p exited ${code}: ${err}`))));
-    child.stdin.end(prompt);
-  });
 }
 
 async function rerank() {
@@ -64,7 +46,7 @@ ${JSON.stringify(items, null, 2)}
 
 Reply with ONLY a JSON array ordered from highest to lowest priority, one entry per question:
 [{"id": "<id>", "reason": "<one short line why it sits here>"}]`;
-    const out = JSON.parse(await headless(prompt));
+    const out = await headless(prompt, { cwd: DATA_DIR, args: ['--model', 'sonnet'], timeoutMs: 180_000 });
     const text: string = out.result ?? '';
     const ranked: { id: string; reason: string }[] = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
     const asked = new Map(open.map((s) => [s.id, s.question!.askedAt]));

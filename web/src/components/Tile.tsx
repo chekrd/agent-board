@@ -3,7 +3,7 @@ import { sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { ago, locate, sessionLabel } from '../util.ts';
 import { AnswerForm } from './AnswerForm.tsx';
-import { DiffStat, StatusChip } from './Status.tsx';
+import { DiffStat, PrChip, StatusChip } from './Status.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import styles from './Tile.module.css';
 
@@ -28,6 +28,7 @@ export function Tile({ session, repos, selected }: { session: Session; repos: Re
       </header>
       <div className={styles.meta}>
         <span className={styles.where}>{repo?.name} · {branch}</span>
+        <PrChip pr={session.pr} status={session.status} />
         <DiffStat stat={session.diffstat} />
         {!q && <StatusChip session={session} />}
       </div>

@@ -108,3 +108,17 @@ export async function fullDiff(worktree: string, base: string, statOnly = false)
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+const remotes = new Map<string, Promise<string>>();
+
+export async function pullRequestUrl(worktree: string, id: number) {
+  if (!remotes.has(worktree)) remotes.set(worktree, git(worktree, ['remote', 'get-url', 'origin']).then((s) => s.trim(), () => ''));
+  const remote = (await remotes.get(worktree)!)
+    .replace(/^git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/(.+)$/, 'https://dev.azure.com/$1/$2/_git/$3')
+    .replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+    .replace(/^(https?:\/\/)[^@/]+@/, '$1')
+    .replace(/\.git$/, '');
+  if (remote.includes('/_git/')) return `${remote}/pullrequest/${id}`;
+  if (remote.includes('github.com')) return `${remote}/pull/${id}`;
+  return null;
+}
