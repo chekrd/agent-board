@@ -3,10 +3,10 @@
 A local dashboard for running many Claude Code sessions in git worktrees. macOS only.
 
 - **Repos**: add a repository, or a folder to scan for repositories and worktrees (up to 5 levels deep, rescanned every 30 s). Removing a repo hides it from later scans.
-- **Worktrees**: create one on a new branch from the base branch (`master` → `main` → `origin/HEAD`, overridable per repo), remove them. Each worktree lists its Claude Code conversations from `~/.claude/projects`: **Continue** resumes one in tmux; **Take over** ends a conversation that is open in another terminal (SIGTERM, Claude saves first) and continues it here.
-- **Sessions live in tmux** (socket `agent-ide`, config `server/tmux.conf`), so they survive server restarts and you can take any of them over in Ghostty (`Open in Ghostty`, or `tmux -L agent-ide attach -t <name>`). The web UI attaches to the same session.
+- **Sessions run in Ghostty**, in tabs of your front Ghostty window. The app has no terminal of its own: every interactive Claude Code process in a tracked repo shows up as a tile, whether you started it by hand or from the app. It finds them through `~/.claude/sessions/<pid>.json`, which also carries Claude's live status (working, your turn, waiting for a permission prompt), and maps each one to its Ghostty tab by tty. **Focus** switches to that tab through Ghostty's AppleScript; answers and messages are typed into it the same way.
+- **Worktrees**: create one on a new branch from the base branch (`master` → `main` → `origin/HEAD`, overridable per repo), remove them. Each worktree lists its Claude Code conversations from `~/.claude/projects`: **New Claude** and **Continue** open a Ghostty tab running `claude` (the setup command runs first in a new worktree); **Focus** switches to a running one.
 - **Diff**: one patch per worktree against the merge-base with the base branch, including committed, staged, unstaged and untracked changes. Your index is never touched.
-- **Attention is contextual**: each Claude session gets an `ask_human` MCP tool and a system prompt (`config/system-prompt.md`). When Claude needs you, its tile shows the question, options and a reply box; your answer is typed into the session as the next prompt.
+- **Attention is contextual**: `pnpm claude:connect` registers the `ask_human` MCP server at user scope (`http://127.0.0.1:7420/mcp`) and allows the tool in `~/.claude/settings.json`, so every Claude session has it (running ones after a restart or `/mcp` reconnect). The app reads the call from the session transcript; the tile shows the question, options and a reply box, and your answer is typed into the Ghostty tab as the next prompt. Idle tiles show Claude's last message. `pnpm claude:disconnect` undoes the registration.
 - **Priority**: open questions are ranked by `claude -p --model sonnet` using `config/priority-rubric.md`. Edit the rubric to change the ordering.
 
 ## Run
@@ -15,10 +15,11 @@ A local dashboard for running many Claude Code sessions in git worktrees. macOS 
 pnpm install
 pnpm build              # UI → web/dist
 pnpm service:install    # launchd agent: starts at login, restarts on crash
+pnpm claude:connect     # ask_human MCP server for all Claude sessions
 pnpm open               # Brave --app window on http://127.0.0.1:7420
 ```
 
-Code changes never restart the server on their own. After pulling or editing server code, run `pnpm build` (UI) and `pnpm service:restart` when no agent is mid-answer; tmux sessions keep running either way. Re-run `pnpm service:install` after switching Node versions, since the agent pins the current `node` path.
+Code changes never restart the server on their own. After pulling or editing server code, run `pnpm build` (UI) and `pnpm service:restart`; Claude sessions in Ghostty keep running either way. Re-run `pnpm service:install` after switching Node versions, since the agent pins the current `node` path.
 
 Development: `pnpm start` runs the server in the foreground (stop the launchd agent first with `pnpm service:uninstall`), `pnpm dev` serves the UI with HMR on :5173, `pnpm check` typechecks and lints.
 
@@ -26,6 +27,7 @@ State lives in `~/Library/Application Support/agent-ide/` (`state.db`, per-sessi
 
 ## Notes
 
-- Brand-new folders trigger Claude's "trust this folder" prompt once; answer it in the terminal.
-- Light/dark follows the system, including the terminal. Claude sessions use the custom theme `~/.claude/themes/agent-ide.json`, whose base the app switches between `light` and `dark`; Claude reloads it live. Sessions started before this change pick it up on their next resume. In Ghostty, Claude uses the same theme, so a fixed dark Ghostty theme looks off in light mode; `theme = light:<x>,dark:<y>` in the Ghostty config avoids that.
-- The terminal uses ghostty-web; set `localStorage['terminal-engine'] = 'xterm'` in the app window to switch to xterm.js.
+- Needs Ghostty 1.3+ (AppleScript) and macOS Automation permission for the server to control Ghostty; no screen recording.
+- Brand-new folders trigger Claude's "trust this folder" prompt once; answer it in the Ghostty tab.
+- A Claude running in another terminal app or inside tmux still shows up, but Focus and answering need it to be the foreground process of a Ghostty tab.
+- Light/dark follows the system.

@@ -4,7 +4,7 @@ import type { Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
 
 export function AnswerForm({ session, compact = false }: { session: Session; compact?: boolean }) {
-  const q = session.question!;
+  const q = session.question;
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
     try {
       if (form.get('intent') === 'dismiss') await sessionAction(session.id, 'dismiss');
@@ -17,7 +17,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
 
   return (
     <form className={styles.form} action={submit} data-compact={compact || undefined}>
-      {q.options.length > 0 && (
+      {q && q.options.length > 0 && (
         <div className={styles.options}>
           {q.options.map((o) => (
             <button
@@ -42,9 +42,11 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
           <textarea name="text" placeholder="Reply…" rows={3} disabled={pending} />
         )}
         <button type="submit" disabled={pending}>Send</button>
-        <button type="submit" name="intent" value="dismiss" data-variant="ghost" disabled={pending} title="Clear without answering">
-          Dismiss
-        </button>
+        {q && (
+          <button type="submit" name="intent" value="dismiss" data-variant="ghost" disabled={pending} title="Clear without answering">
+            Dismiss
+          </button>
+        )}
       </div>
       {error && <p className={styles.error}>{error}</p>}
     </form>

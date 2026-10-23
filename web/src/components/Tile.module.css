@@ -34,6 +34,16 @@
 
   .where { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .excerpt {
+    color: var(--muted);
+    font-size: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
+  }
+
   .question { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 
   .rank { display: flex; align-items: center; gap: 6px; font-size: 12px; }

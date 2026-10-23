@@ -1,6 +1,7 @@
-import { access, open, readdir, readFile, stat } from 'node:fs/promises';
+import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { ASK_TOOL_NAME } from './config.ts';
 
 const CLAUDE_DIR = join(homedir(), '.claude');
 const HEAD_BYTES = 128 << 10;
@@ -14,11 +15,19 @@ export interface Conversation {
   livePid: number | null;
 }
 
+export interface Ask {
+  toolUseId: string;
+  input: Record<string, unknown>;
+  at: number;
+}
+
 interface Meta {
   mtime: number;
   title: string | null;
   firstPrompt: string | null;
   interactive: boolean;
+  lastMessage: string | null;
+  ask: Ask | null;
 }
 
 const metaCache = new Map<string, Meta>();
@@ -55,6 +64,25 @@ function promptText(entry: Record<string, any>): string | null {
   return text.trim().slice(0, 500);
 }
 
+const blocks = (entry: Record<string, any>): Record<string, any>[] =>
+  entry.type === 'assistant' && !entry.isSidechain && Array.isArray(entry.message?.content) ? entry.message.content : [];
+
+// An ask_human call stays open until the user sends a prompt after it.
+function latestAsk(entries: Record<string, any>[]): Ask | null {
+  let ask: Ask | null = null;
+  for (const entry of entries) {
+    const call = blocks(entry).findLast((b) => b.type === 'tool_use' && b.name === ASK_TOOL_NAME);
+    if (call) ask = { toolUseId: call.id, input: call.input ?? {}, at: Date.parse(entry.timestamp) || Date.now() };
+    else if (ask && promptText(entry)) ask = null;
+  }
+  return ask;
+}
+
+function lastMessage(entries: Record<string, any>[]) {
+  const text = entries.map((e) => blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).findLast(Boolean);
+  return text ? text.trim().slice(0, 4000) : null;
+}
+
 async function readMeta(file: string, mtime: number): Promise<Meta> {
   const cached = metaCache.get(file);
   if (cached?.mtime === mtime) return cached;
@@ -66,6 +94,8 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     title: titled?.customTitle ?? titled?.aiTitle ?? null,
     firstPrompt: head.map(promptText).find(Boolean) ?? null,
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
+    lastMessage: lastMessage(tail),
+    ask: latestAsk(tail),
   };
   metaCache.set(file, meta);
   return meta;
@@ -80,15 +110,24 @@ function alive(pid: number) {
   }
 }
 
-// Claude Code keeps one ~/.claude/sessions/<pid>.json per running interactive process.
-export async function liveConversations(): Promise<Map<string, number>> {
-  const live = new Map<string, number>();
+export interface LiveProcess {
+  pid: number;
+  cwd: string;
+  status: 'busy' | 'idle' | 'waiting' | undefined;
+  waitingFor: string | null;
+}
+
+// Claude Code keeps one ~/.claude/sessions/<pid>.json per running process, with its live status.
+export async function liveConversations(): Promise<Map<string, LiveProcess>> {
+  const live = new Map<string, LiveProcess>();
   const dir = join(CLAUDE_DIR, 'sessions');
   const files = await readdir(dir).catch(() => []);
   await Promise.all(files.filter((f) => /^\d+\.json$/.test(f)).map(async (f) => {
     try {
       const info = JSON.parse(await readFile(join(dir, f), 'utf8'));
-      if (info.sessionId && alive(info.pid)) live.set(info.sessionId, info.pid);
+      const interactive = info.kind === 'interactive' && (info.entrypoint ?? 'cli') === 'cli';
+      if (!info.sessionId || !info.cwd || !interactive || !alive(info.pid)) return;
+      live.set(info.sessionId, { pid: info.pid, cwd: info.cwd, status: info.status, waitingFor: info.waitingFor ?? null });
     } catch {
       // being rewritten
     }
@@ -96,7 +135,7 @@ export async function liveConversations(): Promise<Map<string, number>> {
   return live;
 }
 
-export async function listConversations(cwd: string, live: Map<string, number>, limit = 15): Promise<Conversation[]> {
+export async function listConversations(cwd: string, live: Map<string, LiveProcess>, limit = 15): Promise<Conversation[]> {
   const dir = projectDir(cwd);
   const files = (await readdir(dir).catch(() => [])).filter((f) => f.endsWith('.jsonl'));
   const stats = await Promise.all(files.map(async (f) => {
@@ -109,14 +148,13 @@ export async function listConversations(cwd: string, live: Map<string, number>, 
     if (conversations.length >= limit) break;
     const meta = await readMeta(s.file, s.mtime);
     if (!meta.interactive || !(meta.firstPrompt || meta.title)) continue;
-    conversations.push({ id: s.id, title: meta.title, firstPrompt: meta.firstPrompt, updatedAt: Math.round(s.mtime), livePid: live.get(s.id) ?? null });
+    conversations.push({ id: s.id, title: meta.title, firstPrompt: meta.firstPrompt, updatedAt: Math.round(s.mtime), livePid: live.get(s.id)?.pid ?? null });
   }
   return conversations;
 }
 
-export const hasTranscript = (cwd: string, id: string) =>
-  access(join(projectDir(cwd), `${id}.jsonl`)).then(() => true, () => false);
-
-export async function conversation(cwd: string, id: string) {
-  return (await listConversations(cwd, await liveConversations(), Infinity)).find((c) => c.id === id);
+export async function conversationMeta(cwd: string, id: string) {
+  const file = join(projectDir(cwd), `${id}.jsonl`);
+  const s = await stat(file).catch(() => null);
+  return s ? readMeta(file, s.mtimeMs) : null;
 }

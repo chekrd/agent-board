@@ -3,13 +3,14 @@ import styles from './Status.module.css';
 
 const labels: Record<SessionStatus, string> = {
   working: 'working',
-  idle: 'idle',
-  permission: 'waiting for permission',
-  exited: 'exited',
+  idle: 'your turn',
+  waiting: 'waiting for you',
+  exited: 'ended',
 };
 
-export function StatusChip({ status }: { status: SessionStatus }) {
-  return <span className={styles.chip} data-status={status}>{labels[status]}</span>;
+export function StatusChip({ session }: { session: Session }) {
+  const label = session.status === 'waiting' && session.waitingFor ? session.waitingFor : labels[session.status];
+  return <span className={styles.chip} data-status={session.status}>{label}</span>;
 }
 
 export function DiffStat({ stat }: { stat: Session['diffstat'] }) {

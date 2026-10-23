@@ -1,5 +1,5 @@
 import { useActionState, useState } from 'react';
-import { api } from '../api.ts';
+import { api, sessionAction } from '../api.ts';
 import { go, sessionPath } from '../router.ts';
 import type { Conversation, RepoView, Session, WorktreeView } from '../types.ts';
 import { ago } from '../util.ts';
@@ -71,11 +71,11 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
     }));
   };
 
-  const start = (worktree: string, kind: 'claude' | 'shell', extra: { continueId?: string; takeOver?: boolean } = {}) =>
+  const start = (worktree: string, continueId?: string) =>
     run(async () => {
-      const { id } = await api<{ id: string }>('POST', '/api/sessions', { repoId: repo.id, worktree, kind, ...extra });
+      const { id } = await api<{ id: string }>('POST', '/api/sessions', { repoId: repo.id, worktree, continueId });
       closeDialog();
-      go(sessionPath(id, 'terminal'));
+      go(sessionPath(id));
     });
 
   const remove = (form: FormData) =>
@@ -105,7 +105,8 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
             key={w.path}
             worktree={w}
             sessions={sessions.filter((s) => s.worktree === w.path)}
-            onStart={(kind, extra) => start(w.path, kind, extra)}
+            onStart={(continueId) => start(w.path, continueId)}
+            onShell={() => run(() => api('POST', '/api/shell', { worktree: w.path }))}
             onRemove={w.isMain ? undefined : () => setRemoving(w.path)}
           />
         ))}
@@ -144,9 +145,9 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
   );
 }
 
-type Start = (kind: 'claude' | 'shell', extra?: { continueId?: string; takeOver?: boolean }) => void;
+type Start = (continueId?: string) => void;
 
-function WorktreeRow({ worktree: w, sessions, onStart, onRemove }: { worktree: WorktreeView; sessions: Session[]; onStart: Start; onRemove?: () => void }) {
+function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove }: { worktree: WorktreeView; sessions: Session[]; onStart: Start; onShell: () => void; onRemove?: () => void }) {
   const latest = w.conversations[0];
   return (
     <li className={styles.worktree}>
@@ -155,8 +156,8 @@ function WorktreeRow({ worktree: w, sessions, onStart, onRemove }: { worktree: W
           {w.branch ?? `detached ${w.head.slice(0, 8)}`} <small>{w.path}</small>
         </span>
         {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
-        <button onClick={() => onStart('claude')}>New Claude</button>
-        <button onClick={() => onStart('shell')}>Shell</button>
+        <button onClick={() => onStart()} title="New Claude session in a Ghostty tab">New Claude</button>
+        <button onClick={onShell} title="Shell in a Ghostty tab">Shell</button>
         {onRemove && <button data-variant="danger" onClick={onRemove}>Remove</button>}
       </div>
       {w.conversations.length > 0 && (
@@ -185,24 +186,20 @@ function ConversationAction({ conversation: c, sessions, onStart, primary = fals
   const hint = primary ? `: ${label(c)}` : '';
   if (managed && managed.status !== 'exited') {
     return (
-      <button data-variant={variant} title={`Open${hint}`} onClick={() => { closeDialog(); go(sessionPath(c.id, 'terminal')); }}>
-        Open
-      </button>
-    );
-  }
-  if (c.livePid && !managed) {
-    return (
       <button
         data-variant={variant}
-        title={`Running in another terminal (pid ${c.livePid}). Quits it there and continues here${hint}`}
-        onClick={() => onStart('claude', { continueId: c.id, takeOver: true })}
+        title={`Switch to its Ghostty tab${hint}`}
+        onClick={() => { closeDialog(); go(sessionPath(c.id)); sessionAction(c.id, 'focus').catch(reportError); }}
       >
-        Take over
+        Focus
       </button>
     );
   }
+  if (c.livePid) {
+    return <button data-variant={variant} disabled title={`Running (pid ${c.livePid}) outside a tracked Ghostty tab${hint}`}>Running</button>;
+  }
   return (
-    <button data-variant={variant} title={`Continue${hint}`} onClick={() => onStart('claude', { continueId: c.id })}>
+    <button data-variant={variant} title={`Continue in a new Ghostty tab${hint}`} onClick={() => onStart(c.id)}>
       Continue
     </button>
   );

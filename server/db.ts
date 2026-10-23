@@ -1,12 +1,20 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { DATA_DIR, DB_PATH, SESSIONS_DIR } from './config.ts';
 import type { DiffStat } from './git.ts';
 
-mkdirSync(SESSIONS_DIR, { recursive: true });
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
+
+// Sessions used to be tmux panes; their rows and launch files cannot carry over to Ghostty tabs.
+const oldSessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+if (oldSessionColumns.includes('tmux')) {
+  db.exec('DROP TABLE sessions');
+  rmSync(SESSIONS_DIR, { recursive: true, force: true });
+}
+mkdirSync(SESSIONS_DIR, { recursive: true });
+
 db.exec(`
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS repos (
@@ -18,10 +26,11 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
     repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
     worktree TEXT NOT NULL,
-    tmux TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    pid INTEGER,
+    tty TEXT,
     title TEXT,
     first_prompt TEXT,
     status TEXT NOT NULL,
@@ -29,6 +38,9 @@ db.exec(`
     rank INTEGER,
     rank_reason TEXT,
     diffstat TEXT,
+    last_message TEXT,
+    waiting_for TEXT,
+    dismissed_ask TEXT,
     archived INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -49,8 +61,7 @@ export interface Repo {
   worktreeRoot: string | null;
 }
 
-export type SessionKind = 'claude' | 'shell';
-export type SessionStatus = 'working' | 'idle' | 'permission' | 'exited';
+export type SessionStatus = 'working' | 'idle' | 'waiting' | 'exited';
 
 export interface QuestionOption {
   label: string;
@@ -59,6 +70,7 @@ export interface QuestionOption {
 }
 
 export interface Question {
+  toolUseId: string;
   title: string;
   details: string;
   options: QuestionOption[];
@@ -68,10 +80,11 @@ export interface Question {
 
 export interface Session {
   id: string;
-  kind: SessionKind;
   repoId: number;
   worktree: string;
-  tmux: string;
+  cwd: string;
+  pid: number | null;
+  tty: string | null;
   title: string | null;
   firstPrompt: string | null;
   status: SessionStatus;
@@ -79,6 +92,9 @@ export interface Session {
   rank: number | null;
   rankReason: string | null;
   diffstat: DiffStat | null;
+  lastMessage: string | null;
+  waitingFor: string | null;
+  dismissedAsk: string | null;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -96,10 +112,11 @@ const toRepo = (r: Row): Repo => ({
 
 const toSession = (r: Row): Session => ({
   id: r.id,
-  kind: r.kind,
   repoId: r.repo_id,
   worktree: r.worktree,
-  tmux: r.tmux,
+  cwd: r.cwd,
+  pid: r.pid,
+  tty: r.tty,
   title: r.title,
   firstPrompt: r.first_prompt,
   status: r.status,
@@ -107,6 +124,9 @@ const toSession = (r: Row): Session => ({
   rank: r.rank,
   rankReason: r.rank_reason,
   diffstat: r.diffstat ? JSON.parse(r.diffstat) : null,
+  lastMessage: r.last_message,
+  waitingFor: r.waiting_for,
+  dismissedAsk: r.dismissed_ask,
   archived: !!r.archived,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -150,7 +170,12 @@ const columns: Record<string, string> = {
   rank: 'rank',
   rankReason: 'rank_reason',
   diffstat: 'diffstat',
+  lastMessage: 'last_message',
+  waitingFor: 'waiting_for',
+  dismissedAsk: 'dismissed_ask',
   archived: 'archived',
+  pid: 'pid',
+  tty: 'tty',
 };
 
 export const sessions = {
@@ -159,13 +184,14 @@ export const sessions = {
     const r = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
     return r ? toSession(r) : undefined;
   },
-  insert: (s: Pick<Session, 'id' | 'kind' | 'repoId' | 'worktree' | 'tmux' | 'title' | 'firstPrompt' | 'status'>) => {
+  insert: (s: Pick<Session, 'id' | 'repoId' | 'worktree' | 'cwd' | 'pid' | 'tty' | 'title' | 'firstPrompt' | 'status'>) => {
     const now = Date.now();
-    db.prepare(`INSERT INTO sessions (id, kind, repo_id, worktree, tmux, title, first_prompt, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(s.id, s.kind, s.repoId, s.worktree, s.tmux, s.title, s.firstPrompt, s.status, now, now);
+    db.prepare(`INSERT INTO sessions (id, repo_id, worktree, cwd, pid, tty, title, first_prompt, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
+      .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'archived'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'waitingFor' | 'dismissedAsk' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

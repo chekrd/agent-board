@@ -9,12 +9,8 @@
     "@hono/node-server": "^2.1.5",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@pierre/diffs": "^1.6.1",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
-    "ghostty-web": "^0.4.0",
     "hono": "^4.13.13",
     "marked": "^18.1.1",
-    "node-pty": "^1.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "ws": "^8.22.0",
@@ -44,7 +40,8 @@
     "service:uninstall": "node scripts/service.ts uninstall",
     "service:restart": "node scripts/service.ts restart",
     "open": "open -na 'Brave Browser' --args --app=http://127.0.0.1:7420",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper",
-    "check": "tsc && oxlint server web/src scripts"
+    "check": "tsc && oxlint server web/src scripts",
+    "claude:connect": "node scripts/claude.ts connect",
+    "claude:disconnect": "node scripts/claude.ts disconnect"
   }
 }

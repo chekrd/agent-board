@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { wsUrl } from './api.ts';
-import { reportColorScheme } from './colorScheme.ts';
 import { orderKey } from './order.ts';
 import type { RepoView, Session } from './types.ts';
 
@@ -30,7 +29,6 @@ async function connect() {
     try {
       const ws = new WebSocketStream(wsUrl('/ws/events'));
       const { readable } = await ws.opened;
-      void reportColorScheme();
       for await (const message of readable) set({ ...JSON.parse(String(message)), connected: true });
     } catch {
       // reconnect below

@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-const STRIPPED = /^(CLAUDECODE|CLAUDE_CODE_.*|TMUX|TMUX_PANE|AGENT_IDE_.*)$/;
+const STRIPPED = /^(CLAUDECODE|CLAUDE_CODE_.*|AGENT_IDE_.*)$/;
 
 // The server may be started by launchd with a bare PATH, so take the environment
 // the user's login shell would produce.
@@ -24,8 +24,6 @@ async function resolveLoginEnv(): Promise<NodeJS.ProcessEnv> {
   }
   for (const key of Object.keys(base)) if (STRIPPED.test(key)) delete base[key];
   base.SHELL = shell;
-  // launchd gives no locale; without one tmux replaces tabs and non-ASCII output with '_'.
-  if (!base.LANG && !base.LC_ALL && !base.LC_CTYPE) base.LANG = 'en_US.UTF-8';
   return base;
 }
 

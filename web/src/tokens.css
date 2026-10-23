@@ -25,7 +25,6 @@
     --radius: 8px;
     --font: system-ui, -apple-system, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
-    --terminal-bg: light-dark(#ffffff, #0d0f13);
   }
 }
 

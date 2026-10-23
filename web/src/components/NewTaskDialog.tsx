@@ -22,7 +22,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
       });
       dialog.current?.close();
       setName('');
-      if (result.sessionId) go(sessionPath(result.sessionId, 'terminal'));
+      if (result.sessionId) go(sessionPath(result.sessionId));
       return null;
     } catch (err) {
       return (err as Error).message;
@@ -64,7 +64,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
             <input type="checkbox" name="startClaude" defaultChecked /> Start a Claude session
           </label>
           <p className={styles.hint}>
-            Branches from <code>{repo.base}</code>.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> in a shell tab.</>}
+            Branches from <code>{repo.base}</code> and opens a Ghostty tab.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}
           </p>
           {error && <p className={styles.error}>{error}</p>}
           <footer>

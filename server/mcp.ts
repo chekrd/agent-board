@@ -2,7 +2,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 import { ASK_TOOL, MCP_SERVER_NAME } from './config.ts';
-import { ask } from './sessions.ts';
 
 export const CATEGORIES = ['feature', 'bug', 'plan-problem', 'ci-failure', 'research', 'update', 'review-ready'] as const;
 
@@ -17,26 +16,31 @@ const inputSchema = {
   category: z.enum(CATEGORIES),
 };
 
-function server(sessionId: string) {
+export const askInput = z.object(inputSchema);
+
+// The dashboard reads calls to this tool from the session transcript, so the tool
+// itself only has to exist and acknowledge.
+function server() {
   const mcp = new McpServer({ name: MCP_SERVER_NAME, version: '1.0.0' });
   mcp.registerTool(ASK_TOOL, {
     title: 'Ask the human',
     description:
-      'Put a question or request on the user\'s dashboard when you genuinely need them: a problem with the plan, ' +
-      'failures you cannot fix yourself, a decision that is theirs to make, or finished work ready for review. ' +
-      'After calling this, end your turn; the answer arrives as the next user message.',
+      'The user supervises several Claude sessions from the agent-ide dashboard and does not watch every terminal. ' +
+      'Call this to put a question or request on that dashboard when you genuinely need them: a problem with the plan or ' +
+      'requirements you did not anticipate together, failures you cannot fix yourself (CI, tests, access, environment), ' +
+      'a decision that is theirs to make (product behavior, trade-offs, scope, anything irreversible or outward-facing), ' +
+      'or finished work ready for review. Do not use it for routine progress or for questions the code answers. ' +
+      'Give context in `details`, offer concrete `options` and mark the one you recommend. ' +
+      'After calling this, end your turn; the answer arrives as the next user message, usually starting with Re: "<title>".',
     inputSchema,
-  }, async (args) => {
-    ask(sessionId, { title: args.title, details: args.details, options: args.options ?? [], category: args.category });
-    return {
-      content: [{ type: 'text', text: 'Posted to the user\'s dashboard. End your turn now and wait; their answer will arrive as the next user message.' }],
-    };
-  });
+  }, async () => ({
+    content: [{ type: 'text', text: 'Posted to the user\'s dashboard. End your turn now and wait; their answer will arrive as the next user message.' }],
+  }));
   return mcp;
 }
 
-export async function handleMcp(sessionId: string, request: Request) {
+export async function handleMcp(request: Request) {
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  await server(sessionId).connect(transport);
+  await server().connect(transport);
   return transport.handleRequest(request);
 }

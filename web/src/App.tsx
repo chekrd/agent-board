@@ -47,7 +47,7 @@ export function App() {
       </aside>
       <main className={styles.main}>
         {selected ? (
-          <Detail key={selected.id} session={selected} sessions={sessions} repos={repos} tab={route.tab} />
+          <Detail key={selected.id} session={selected} repos={repos} tab={route.tab} />
         ) : (
           <div className={styles.placeholder}>Select a session</div>
         )}

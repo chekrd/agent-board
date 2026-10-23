@@ -15,6 +15,7 @@
       background: var(--muted);
     }
     &[data-status="working"]::before { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    &[data-status="waiting"]::before { background: var(--accent); }
     &[data-status="exited"]::before { background: transparent; border: 1px solid var(--muted); }
   }
 

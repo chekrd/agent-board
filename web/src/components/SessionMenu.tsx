@@ -8,21 +8,17 @@ export function SessionMenu({ session }: { session: Session }) {
     document.getElementById(id)?.hidePopover();
     sessionAction(session.id, action, body).catch(reportError);
   };
+  const exited = session.status === 'exited';
 
   return (
     <>
       <button popoverTarget={id} data-variant="ghost" aria-label="Session actions">⋯</button>
       <div id={id} popover="auto" className={styles.menu}>
-        <button onClick={act('ghostty')}>Open in Ghostty</button>
-        {session.status === 'exited' ? (
-          <button onClick={act('resume')}>Resume</button>
-        ) : (
-          <button onClick={act('stop')}>Stop session</button>
-        )}
+        <button onClick={act('focus')}>{exited ? 'Continue in Ghostty' : 'Focus in Ghostty'}</button>
+        {!exited && <button onClick={act('quit')}>Quit Claude</button>}
         <button onClick={act('archive', { archived: !session.archived })}>{session.archived ? 'Unarchive' : 'Archive'}</button>
-        <button onClick={act('forget')} data-variant="danger">Remove from list</button>
+        {exited && <button onClick={act('forget')} data-variant="danger">Remove from list</button>}
       </div>
     </>
   );
 }
-

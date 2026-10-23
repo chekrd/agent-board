@@ -33,8 +33,6 @@
     }
   }
 
-  .closeShell { margin-left: auto; }
-
   .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
   .overview { overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 24px; max-width: 960px; }
@@ -52,7 +50,14 @@
 
   .questionMeta { color: var(--muted); font-size: 12px; strong { color: var(--accent); } }
 
-  .none { color: var(--muted); }
+  .lastMessage {
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .overview h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
 
   .facts {
     display: grid;
