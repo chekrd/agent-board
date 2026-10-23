@@ -32,10 +32,30 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; &:hover { background: var(--surface-2); } }
     .wtName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     small { color: var(--muted); }
   }
+
+  .worktree { padding: 4px 6px; border-radius: 6px; &:hover { background: var(--surface-2); } }
+
+  .wtRow { display: flex; align-items: center; gap: 8px; }
+
+  .conversations {
+    margin: 2px 0 2px 12px;
+    font-size: 12px;
+    summary { color: var(--muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    ul { list-style: none; padding: 4px 0 0 12px; display: flex; flex-direction: column; gap: 2px; }
+    li { display: flex; align-items: center; gap: 8px; }
+    button { padding-block: 1px; font-size: 12px; }
+  }
+
+  .repoSettings summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+
+  .repoSettings[open] summary { margin-bottom: 8px; }
+
+  .roots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+  .root { display: inline-flex; align-items: center; gap: 2px; padding-left: 8px; border: 1px solid var(--border); border-radius: 999px; code { font-size: 12px; } }
 
   .addRepo { display: flex; gap: 8px; input { flex: 1; } }
 

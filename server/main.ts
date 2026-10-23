@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { serve, upgradeWebSocket } from '@hono/node-server';
@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import * as pty from 'node-pty';
 import { WebSocketServer } from 'ws';
 import { HOST, PORT, WEB_DIST } from './config.ts';
-import { repos, sessions } from './db.ts';
+import { repos, roots, sessions } from './db.ts';
 import { loginEnv } from './env.ts';
 import { addWorktree, fullDiff, removeWorktree, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
@@ -47,15 +47,29 @@ app.post('/api/hook/:id', async (c) => {
 app.all('/mcp/:id', (c) => handleMcp(c.req.param('id'), c.req.raw));
 
 app.post('/api/pick-folder', async (c) => {
-  const { stdout } = await run('/usr/bin/osascript', ['-e', 'POSIX path of (choose folder with prompt "Choose a git repository")']);
+  const { stdout } = await run('/usr/bin/osascript', ['-e', 'POSIX path of (choose folder with prompt "Choose a repository, or a folder to scan for repositories")']);
   return c.json({ path: stdout.trim().replace(/\/$/, '') });
 });
 
 app.post('/api/repos', async (c) => {
-  const { path } = await c.req.json<{ path: string }>();
-  const id = repos.add(await repoRoot(path));
+  const path = (await c.req.json<{ path: string }>()).path.trim().replace(/(.)\/$/, '$1');
+  const root = await repoRoot(path).catch(() => null);
+  if (root) repos.add(root);
+  else if ((await stat(path).catch(() => null))?.isDirectory()) roots.add(path);
+  else throw new Error(`not a folder: ${path}`);
+  await refreshWorkspace({ scan: !root });
+  return c.json({ scanned: !root });
+});
+
+app.delete('/api/roots', async (c) => {
+  roots.remove((await c.req.json<{ path: string }>()).path);
   await refreshWorkspace();
-  return c.json({ id });
+  return c.body(null, 204);
+});
+
+app.post('/api/rescan', async (c) => {
+  await refreshWorkspace({ scan: true });
+  return c.body(null, 204);
 });
 
 app.patch('/api/repos/:id', async (c) => {
@@ -67,7 +81,7 @@ app.patch('/api/repos/:id', async (c) => {
 app.delete('/api/repos/:id', async (c) => {
   const id = Number(c.req.param('id'));
   for (const s of sessions.all().filter((s) => s.repoId === id)) await S.forget(s.id);
-  repos.remove(id);
+  repos.hide(id);
   await refreshWorkspace();
   return c.body(null, 204);
 });
@@ -97,8 +111,11 @@ app.delete('/api/worktrees', async (c) => {
 });
 
 app.post('/api/sessions', async (c) => {
-  const body = await c.req.json<{ repoId: number; worktree: string; kind: 'claude' | 'shell'; prompt?: string; title?: string }>();
-  const id = body.kind === 'shell' ? await S.startShell(body) : await S.startClaude(body);
+  const body = await c.req.json<{ repoId: number; worktree: string; kind: 'claude' | 'shell'; prompt?: string; title?: string; continueId?: string; takeOver?: boolean }>();
+  const id = body.kind === 'shell'
+    ? await S.startShell(body)
+    : body.takeOver && body.continueId ? await S.takeOver({ ...body, continueId: body.continueId }) : await S.startClaude(body);
+  await refreshWorkspace();
   return c.json({ id });
 });
 
@@ -176,9 +193,9 @@ app.get('*', async (c) => {
   return html ? c.html(html) : c.text('UI not built: run `pnpm build`', 503);
 });
 
-await refreshWorkspace();
+await refreshWorkspace({ scan: true });
 setInterval(() => void S.pollTmux().catch((err) => console.warn('tmux poll failed', err)), 2000);
-setInterval(() => void refreshWorkspace().catch((err) => console.warn('workspace refresh failed', err)), 30_000);
+setInterval(() => void refreshWorkspace({ scan: true }).catch((err) => console.warn('workspace refresh failed', err)), 30_000);
 
 serve({ fetch: app.fetch, hostname: HOST, port: PORT, websocket: { server: new WebSocketServer({ noServer: true }) } }, () => {
   console.log(`agent-ide listening on http://${HOST}:${PORT}`);

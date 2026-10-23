@@ -33,7 +33,13 @@ db.exec(`
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS roots (
+    path TEXT PRIMARY KEY
+  );
 `);
+
+const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
+if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
 
 export interface Repo {
   id: number;
@@ -106,14 +112,22 @@ const toSession = (r: Row): Session => ({
   updatedAt: r.updated_at,
 });
 
+export const roots = {
+  all: () => db.prepare('SELECT path FROM roots ORDER BY path').all().map((r) => String(r.path)),
+  add: (path: string) => db.prepare('INSERT OR IGNORE INTO roots (path) VALUES (?)').run(path),
+  remove: (path: string) => db.prepare('DELETE FROM roots WHERE path = ?').run(path),
+};
+
 export const repos = {
-  all: () => db.prepare('SELECT * FROM repos ORDER BY path').all().map(toRepo),
+  all: () => db.prepare('SELECT * FROM repos WHERE hidden = 0 ORDER BY path').all().map(toRepo),
+  known: () => new Set(db.prepare('SELECT path FROM repos').all().map((r) => String(r.path))),
   get: (id: number) => {
     const r = db.prepare('SELECT * FROM repos WHERE id = ?').get(id);
     return r ? toRepo(r) : undefined;
   },
   add: (path: string) =>
-    Number(db.prepare('INSERT INTO repos (path) VALUES (?) ON CONFLICT(path) DO UPDATE SET path = path RETURNING id').get(path)!.id),
+    Number(db.prepare('INSERT INTO repos (path) VALUES (?) ON CONFLICT(path) DO UPDATE SET hidden = 0 RETURNING id').get(path)!.id),
+  addFound: (path: string) => db.prepare('INSERT OR IGNORE INTO repos (path) VALUES (?)').run(path).changes > 0,
   update: (id: number, patch: Partial<Pick<Repo, 'baseBranch' | 'setupCommand' | 'worktreeRoot'>>) => {
     const cur = repos.get(id);
     if (!cur) return;
@@ -121,9 +135,10 @@ export const repos = {
     db.prepare('UPDATE repos SET base_branch = ?, setup_command = ?, worktree_root = ? WHERE id = ?')
       .run(next.baseBranch || null, next.setupCommand || null, next.worktreeRoot || null, id);
   },
-  remove: (id: number) => {
+  // Hidden rather than deleted so a rescan of its root does not bring it back.
+  hide: (id: number) => {
     db.prepare('DELETE FROM sessions WHERE repo_id = ?').run(id);
-    db.prepare('DELETE FROM repos WHERE id = ?').run(id);
+    db.prepare('UPDATE repos SET hidden = 1 WHERE id = ?').run(id);
   },
 };
 

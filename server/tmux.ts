@@ -6,7 +6,7 @@ import { loginEnv, which } from './env.ts';
 const run = promisify(execFile);
 
 export const TMUX = await which('tmux');
-export const TMUX_ARGS = ['-L', TMUX_SOCKET, '-f', TMUX_CONF];
+export const TMUX_ARGS = ['-u', '-L', TMUX_SOCKET, '-f', TMUX_CONF];
 
 async function tmux(...args: string[]) {
   const { stdout } = await run(TMUX, [...TMUX_ARGS, ...args], { env: loginEnv });
@@ -15,12 +15,15 @@ async function tmux(...args: string[]) {
 
 const target = (name: string) => `=${name}:`;
 
+// The tmux server keeps the environment of whoever started it, which may predate a locale fix.
+const localeArgs = ['LANG', 'LC_ALL', 'LC_CTYPE'].flatMap((k) => (loginEnv[k] ? ['-e', `${k}=${loginEnv[k]}`] : []));
+
 export async function newSession(name: string, cwd: string, command: string) {
-  await tmux('new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50', command);
+  await tmux('new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50', ...localeArgs, command);
 }
 
 export async function respawn(name: string, cwd: string, command: string) {
-  await tmux('respawn-pane', '-k', '-c', cwd, '-t', target(name), command);
+  await tmux('respawn-pane', '-k', '-c', cwd, ...localeArgs, '-t', target(name), command);
 }
 
 export async function kill(name: string) {
@@ -37,8 +40,9 @@ export async function listPanes(): Promise<Map<string, PaneState>> {
   let out = '';
   try {
     out = await tmux('list-panes', '-a', '-F', '#{session_name}\t#{pane_dead}\t#{pane_dead_status}');
-  } catch {
-    return panes; // no tmux server running yet
+  } catch (err) {
+    if (/no server running|error connecting/.test(String((err as { stderr?: string }).stderr))) return panes;
+    throw err;
   }
   for (const line of out.split('\n').filter(Boolean)) {
     const [name, dead, status] = line.split('\t');

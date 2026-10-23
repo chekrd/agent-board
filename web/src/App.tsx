@@ -8,7 +8,7 @@ import { useRoute } from './router.ts';
 import { useStore } from './store.ts';
 
 export function App() {
-  const { repos, sessions, connected } = useStore();
+  const { roots, repos, sessions, connected } = useStore();
   const route = useRoute();
   const { active, archived } = orderTiles(sessions);
   const selected = sessions.find((s) => s.id === route.sessionId);
@@ -32,7 +32,7 @@ export function App() {
           ))}
           {!active.length && (
             <p className={styles.empty}>
-              {repos.length ? 'No sessions yet. Start one with New task.' : 'Add a repository under Repos to begin.'}
+              {repos.length ? 'No sessions yet. Start one with New task.' : 'Add a repository or a folder of repositories under Repos to begin.'}
             </p>
           )}
           {archived.length > 0 && (
@@ -53,7 +53,7 @@ export function App() {
         )}
       </main>
       <NewTaskDialog repos={repos} />
-      <WorkspaceDialog repos={repos} sessions={sessions} />
+      <WorkspaceDialog roots={roots} repos={repos} sessions={sessions} />
     </div>
   );
 }

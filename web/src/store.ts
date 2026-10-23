@@ -5,12 +5,13 @@ import { orderKey } from './order.ts';
 import type { RepoView, Session } from './types.ts';
 
 interface State {
+  roots: string[];
   repos: RepoView[];
   sessions: Session[];
   connected: boolean;
 }
 
-let state: State = { repos: [], sessions: [], connected: false };
+let state: State = { roots: [], repos: [], sessions: [], connected: false };
 const subscribers = new Set<() => void>();
 
 function set(next: State) {

@@ -1,12 +1,15 @@
 import { useActionState, useState } from 'react';
 import { api } from '../api.ts';
 import { go, sessionPath } from '../router.ts';
-import type { RepoView, Session } from '../types.ts';
+import type { Conversation, RepoView, Session, WorktreeView } from '../types.ts';
+import { ago } from '../util.ts';
 import styles from './Dialog.module.css';
 
-export function WorkspaceDialog({ repos, sessions }: { repos: RepoView[]; sessions: Session[] }) {
+const closeDialog = () => document.querySelector<HTMLDialogElement>('#workspace')?.close();
+
+export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; repos: RepoView[]; sessions: Session[] }) {
   const [path, setPath] = useState('');
-  const [error, addRepo, adding] = useActionState(async () => {
+  const [error, addPath, adding] = useActionState(async () => {
     try {
       await api('POST', '/api/repos', { path });
       setPath('');
@@ -22,15 +25,27 @@ export function WorkspaceDialog({ repos, sessions }: { repos: RepoView[]; sessio
   };
 
   return (
-    <dialog id="workspace" closedby="any" className={styles.dialog} style={{ width: 'min(900px, 94vw)' }}>
+    <dialog id="workspace" closedby="any" className={styles.dialog} style={{ width: 'min(960px, 94vw)' }}>
       <div className={styles.form}>
         <h2>Repositories &amp; worktrees</h2>
-        <form action={addRepo} className={styles.addRepo}>
-          <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/to/repository" required />
+        <form action={addPath} className={styles.addRepo}>
+          <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="A repository, or a folder to scan for repositories" required />
           <button type="button" onClick={pick}>Choose…</button>
-          <button type="submit" data-variant="primary" disabled={adding}>Add repository</button>
+          <button type="submit" data-variant="primary" disabled={adding}>{adding ? 'Scanning…' : 'Add'}</button>
         </form>
         {error && <p className={styles.error}>{error}</p>}
+        {roots.length > 0 && (
+          <div className={styles.roots}>
+            <span className={styles.hint}>Scanned folders:</span>
+            {roots.map((root) => (
+              <span key={root} className={styles.root}>
+                <code>{root}</code>
+                <button data-variant="ghost" title="Stop scanning this folder; repositories already found stay" onClick={() => api('DELETE', '/api/roots', { path: root })}>×</button>
+              </span>
+            ))}
+            <button data-variant="ghost" onClick={() => api('POST', '/api/rescan')}>Rescan</button>
+          </div>
+        )}
         {repos.map((repo) => (
           <RepoSection key={repo.id} repo={repo} sessions={sessions} />
         ))}
@@ -56,10 +71,10 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
     }));
   };
 
-  const start = (worktree: string, kind: 'claude' | 'shell') =>
+  const start = (worktree: string, kind: 'claude' | 'shell', extra: { continueId?: string; takeOver?: boolean } = {}) =>
     run(async () => {
-      const { id } = await api<{ id: string }>('POST', '/api/sessions', { repoId: repo.id, worktree, kind });
-      document.querySelector<HTMLDialogElement>('#workspace')?.close();
+      const { id } = await api<{ id: string }>('POST', '/api/sessions', { repoId: repo.id, worktree, kind, ...extra });
+      closeDialog();
       go(sessionPath(id, 'terminal'));
     });
 
@@ -79,41 +94,21 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
       <div className={styles.repoHead}>
         <h3>{repo.name}</h3>
         <code>{repo.path}</code>
-        <button data-variant="danger" onClick={() => run(() => api('DELETE', `/api/repos/${repo.id}`))} title="Stops its sessions; files and worktrees stay on disk">
-          Remove repo
+        <button data-variant="danger" onClick={() => run(() => api('DELETE', `/api/repos/${repo.id}`))} title="Hides it and stops its sessions; files and worktrees stay on disk">
+          Remove
         </button>
       </div>
       {repo.error && <p className={styles.error}>{repo.error}</p>}
-      <form action={save} className={styles.settings}>
-        <label>
-          Base branch
-          <input name="baseBranch" defaultValue={repo.baseBranch ?? ''} placeholder={`${repo.base} (detected)`} />
-        </label>
-        <label>
-          Worktree folder
-          <input name="worktreeRoot" defaultValue={repo.worktreeRoot ?? ''} placeholder={repo.defaultWorktreeRoot} />
-        </label>
-        <label>
-          Setup command after create
-          <input name="setupCommand" defaultValue={repo.setupCommand ?? ''} placeholder="e.g. pnpm install" />
-        </label>
-        <button type="submit">Save</button>
-      </form>
       <ul className={styles.worktrees}>
-        {repo.worktrees.map((w) => {
-          const count = sessions.filter((s) => s.worktree === w.path && s.kind === 'claude').length;
-          return (
-            <li key={w.path}>
-              <span className={styles.wtName} title={w.path}>
-                {w.branch ?? `detached ${w.head.slice(0, 8)}`} <small>{w.path}</small>
-              </span>
-              {count > 0 && <small>{count} session{count > 1 ? 's' : ''}</small>}
-              <button onClick={() => start(w.path, 'claude')}>Claude</button>
-              <button onClick={() => start(w.path, 'shell')}>Shell</button>
-              {!w.isMain && <button data-variant="danger" onClick={() => setRemoving(w.path)}>Remove</button>}
-            </li>
-          );
-        })}
+        {repo.worktrees.map((w) => (
+          <WorktreeRow
+            key={w.path}
+            worktree={w}
+            sessions={sessions.filter((s) => s.worktree === w.path)}
+            onStart={(kind, extra) => start(w.path, kind, extra)}
+            onRemove={w.isMain ? undefined : () => setRemoving(w.path)}
+          />
+        ))}
       </ul>
       {removing && (
         <form action={remove} className={styles.confirm}>
@@ -126,7 +121,89 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
           </footer>
         </form>
       )}
+      <details className={styles.repoSettings}>
+        <summary>Settings</summary>
+        <form action={save} className={styles.settings}>
+          <label>
+            Base branch
+            <input name="baseBranch" defaultValue={repo.baseBranch ?? ''} placeholder={`${repo.base} (detected)`} />
+          </label>
+          <label>
+            Worktree folder
+            <input name="worktreeRoot" defaultValue={repo.worktreeRoot ?? ''} placeholder={repo.defaultWorktreeRoot} />
+          </label>
+          <label>
+            Setup command after create
+            <input name="setupCommand" defaultValue={repo.setupCommand ?? ''} placeholder="e.g. pnpm install" />
+          </label>
+          <button type="submit">Save</button>
+        </form>
+      </details>
       {error && <p className={styles.error}>{error}</p>}
     </section>
+  );
+}
+
+type Start = (kind: 'claude' | 'shell', extra?: { continueId?: string; takeOver?: boolean }) => void;
+
+function WorktreeRow({ worktree: w, sessions, onStart, onRemove }: { worktree: WorktreeView; sessions: Session[]; onStart: Start; onRemove?: () => void }) {
+  const latest = w.conversations[0];
+  return (
+    <li className={styles.worktree}>
+      <div className={styles.wtRow}>
+        <span className={styles.wtName} title={w.path}>
+          {w.branch ?? `detached ${w.head.slice(0, 8)}`} <small>{w.path}</small>
+        </span>
+        {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
+        <button onClick={() => onStart('claude')}>New Claude</button>
+        <button onClick={() => onStart('shell')}>Shell</button>
+        {onRemove && <button data-variant="danger" onClick={onRemove}>Remove</button>}
+      </div>
+      {w.conversations.length > 0 && (
+        <details className={styles.conversations}>
+          <summary>{w.conversations.length} conversation{w.conversations.length > 1 ? 's' : ''}{latest && <> · latest: {label(latest)}</>}</summary>
+          <ul>
+            {w.conversations.map((c) => (
+              <li key={c.id}>
+                <span className={styles.wtName} title={c.firstPrompt ?? ''}>{label(c)}</span>
+                <small>{ago(c.updatedAt)}</small>
+                <ConversationAction conversation={c} sessions={sessions} onStart={onStart} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </li>
+  );
+}
+
+const label = (c: Conversation) => c.title ?? c.firstPrompt?.split('\n')[0] ?? c.id.slice(0, 8);
+
+function ConversationAction({ conversation: c, sessions, onStart, primary = false }: { conversation: Conversation; sessions: Session[]; onStart: Start; primary?: boolean }) {
+  const managed = sessions.find((s) => s.id === c.id);
+  const variant = primary ? 'primary' : undefined;
+  const hint = primary ? `: ${label(c)}` : '';
+  if (managed && managed.status !== 'exited') {
+    return (
+      <button data-variant={variant} title={`Open${hint}`} onClick={() => { closeDialog(); go(sessionPath(c.id, 'terminal')); }}>
+        Open
+      </button>
+    );
+  }
+  if (c.livePid && !managed) {
+    return (
+      <button
+        data-variant={variant}
+        title={`Running in another terminal (pid ${c.livePid}). Quits it there and continues here${hint}`}
+        onClick={() => onStart('claude', { continueId: c.id, takeOver: true })}
+      >
+        Take over
+      </button>
+    );
+  }
+  return (
+    <button data-variant={variant} title={`Continue${hint}`} onClick={() => onStart('claude', { continueId: c.id })}>
+      Continue
+    </button>
   );
 }

@@ -13,6 +13,7 @@ export function Tile({ session, repos, selected }: { session: Session; repos: Re
   return (
     <article
       className={styles.tile}
+      data-tile
       data-asking={q ? true : undefined}
       data-selected={selected || undefined}
       data-status={session.status}
