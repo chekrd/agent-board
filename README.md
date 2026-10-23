@@ -27,4 +27,5 @@ State lives in `~/Library/Application Support/agent-ide/` (`state.db`, per-sessi
 ## Notes
 
 - Brand-new folders trigger Claude's "trust this folder" prompt once; answer it in the terminal.
+- Light/dark follows the system, including the terminal. Claude sessions use the custom theme `~/.claude/themes/agent-ide.json`, whose base the app switches between `light` and `dark`; Claude reloads it live. Sessions started before this change pick it up on their next resume. In Ghostty, Claude uses the same theme, so a fixed dark Ghostty theme looks off in light mode; `theme = light:<x>,dark:<y>` in the Ghostty config avoids that.
 - The terminal uses ghostty-web; set `localStorage['terminal-engine'] = 'xterm'` in the app window to switch to xterm.js.

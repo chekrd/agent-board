@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { conversation, hasTranscript, liveConversations } from './conversations.ts';
 import { ASK_TOOL, MCP_SERVER_NAME, ORIGIN, SESSIONS_DIR, SYSTEM_PROMPT_FILE } from './config.ts';
@@ -18,6 +19,25 @@ export const CLAUDE = await which('claude');
 
 const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Notification', 'Stop'];
 
+export type ColorScheme = 'light' | 'dark';
+
+// tmux hides the terminal background from Claude Code's `auto` theme, and a running
+// Claude ignores theme changes in --settings but reloads ~/.claude/themes/, so sessions
+// use this custom theme and its base follows the system scheme reported by the UI.
+const THEME_SLUG = 'agent-ide';
+const THEME_FILE = join(homedir(), '.claude', 'themes', `${THEME_SLUG}.json`);
+let colorScheme: ColorScheme | undefined;
+
+export async function setColorScheme(scheme: ColorScheme) {
+  if (scheme === colorScheme) return;
+  colorScheme = scheme;
+  await mkdir(dirname(THEME_FILE), { recursive: true });
+  await writeFile(THEME_FILE, JSON.stringify({ name: 'Agent IDE (follows system)', base: scheme }, null, 2));
+}
+
+await setColorScheme(await run('/usr/bin/defaults', ['read', '-g', 'AppleInterfaceStyle'])
+  .then(({ stdout }) => (stdout.trim() === 'Dark' ? 'dark' : 'light'), () => 'light'));
+
 async function writeSessionFiles(id: string) {
   const dir = join(SESSIONS_DIR, id);
   await mkdir(dir, { recursive: true });
@@ -25,6 +45,7 @@ async function writeSessionFiles(id: string) {
   const settings = {
     hooks: Object.fromEntries(HOOK_EVENTS.map((e) => [e, [{ hooks: [{ type: 'command', command: hook }] }]])),
     permissions: { allow: [`mcp__${MCP_SERVER_NAME}__${ASK_TOOL}`] },
+    theme: `custom:${THEME_SLUG}`,
   };
   const mcp = { mcpServers: { [MCP_SERVER_NAME]: { type: 'http', url: `${ORIGIN}/mcp/${id}` } } };
   await writeFile(join(dir, 'settings.json'), JSON.stringify(settings, null, 2));

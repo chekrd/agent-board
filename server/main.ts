@@ -67,6 +67,13 @@ app.delete('/api/roots', async (c) => {
   return c.body(null, 204);
 });
 
+app.post('/api/appearance', async (c) => {
+  const { scheme } = await c.req.json<{ scheme: string }>();
+  if (scheme !== 'light' && scheme !== 'dark') throw new Error('scheme must be light or dark');
+  await S.setColorScheme(scheme);
+  return c.body(null, 204);
+});
+
 app.post('/api/rescan', async (c) => {
   await refreshWorkspace({ scan: true });
   return c.body(null, 204);

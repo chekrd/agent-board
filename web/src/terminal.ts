@@ -1,4 +1,5 @@
-import type { IDisposable } from 'ghostty-web';
+import type { IDisposable, ITheme } from 'ghostty-web';
+import type { ColorScheme } from './colorScheme.ts';
 
 export type Engine = 'ghostty' | 'xterm';
 
@@ -22,18 +23,42 @@ export const engine: Engine = (() => {
   }
 })();
 
-const theme = {
-  background: '#0d0f13',
-  foreground: '#e4e6ea',
-  cursor: '#ff8a3d',
-  selectionBackground: '#3a4150',
+const themes: Record<ColorScheme, ITheme> = {
+  dark: {
+    background: '#0d0f13',
+    foreground: '#e4e6ea',
+    cursor: '#ff8a3d',
+    selectionBackground: '#3a4150',
+  },
+  light: {
+    background: '#ffffff',
+    foreground: '#1a1d22',
+    cursor: '#c2410c',
+    cursorAccent: '#ffffff',
+    selectionBackground: '#cfe0f7',
+    black: '#24292f',
+    red: '#cf222e',
+    green: '#116329',
+    yellow: '#7d4e00',
+    blue: '#0969da',
+    magenta: '#8250df',
+    cyan: '#1b7c83',
+    white: '#6e7781',
+    brightBlack: '#57606a',
+    brightRed: '#a40e26',
+    brightGreen: '#1a7f37',
+    brightYellow: '#633c01',
+    brightBlue: '#218bff',
+    brightMagenta: '#a475f9',
+    brightCyan: '#3192aa',
+    brightWhite: '#8c959f',
+  },
 };
 
 const options = {
   fontSize: 13,
   fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
   cursorBlink: true,
-  theme,
 };
 
 async function load() {
@@ -57,9 +82,9 @@ async function load() {
 
 let loaded: ReturnType<typeof load> | undefined;
 
-export async function createTerminal(parent: HTMLElement): Promise<TerminalHandle> {
+export async function createTerminal(parent: HTMLElement, scheme: ColorScheme): Promise<TerminalHandle> {
   const { Terminal, FitAddon, instance } = await (loaded ??= load());
-  const term = new Terminal({ ...options, ghostty: await instance?.() });
+  const term = new Terminal({ ...options, theme: themes[scheme], ghostty: await instance?.() });
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(parent);

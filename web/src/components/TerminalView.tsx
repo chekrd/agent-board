@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { wsUrl } from '../api.ts';
+import { useColorScheme } from '../colorScheme.ts';
 import { createTerminal } from '../terminal.ts';
 import styles from './TerminalView.module.css';
 
@@ -9,6 +10,7 @@ export function TerminalView({ sessionId, disconnected = false }: { sessionId: s
   const ref = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [attempt, setAttempt] = useState(0);
+  const scheme = useColorScheme();
 
   useEffect(() => {
     if (state !== 'closed' || disconnected) return;
@@ -22,7 +24,7 @@ export function TerminalView({ sessionId, disconnected = false }: { sessionId: s
     setState('connecting');
 
     (async () => {
-      const term = await createTerminal(ref.current!);
+      const term = await createTerminal(ref.current!, scheme);
       cleanups.push(() => term.dispose());
       if (controller.signal.aborted) return term.dispose();
 
@@ -51,7 +53,7 @@ export function TerminalView({ sessionId, disconnected = false }: { sessionId: s
       cleanups.reverse().forEach((fn) => fn());
       if (ref.current) ref.current.replaceChildren();
     };
-  }, [sessionId, attempt]);
+  }, [sessionId, attempt, scheme]);
 
   return (
     <div className={styles.wrap}>
