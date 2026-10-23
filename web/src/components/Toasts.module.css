@@ -1,0 +1,26 @@
+@layer components {
+  .toasts {
+    inset: auto 16px 16px auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(480px, calc(100vw - 32px));
+  }
+
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--del);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+    button { margin-left: auto; }
+  }
+}

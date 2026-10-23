@@ -140,11 +140,14 @@ app.get('/api/diff', async (c) => {
   return c.json(diff);
 });
 
+const uiEntry = async () =>
+  (await readFile(join(WEB_DIST, 'index.html'), 'utf8').catch(() => '')).match(/src="([^"]+\.js)"/)?.[1] ?? null;
+
 app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;
   return {
-    onOpen(_evt, ws) {
-      ws.send(JSON.stringify(snapshot()));
+    async onOpen(_evt, ws) {
+      ws.send(JSON.stringify({ ...snapshot(), uiEntry: await uiEntry() }));
       off = onChange(() => ws.send(JSON.stringify(snapshot())));
     },
     onClose() {

@@ -29,7 +29,11 @@ async function connect() {
     try {
       const ws = new WebSocketStream(wsUrl('/ws/events'));
       const { readable } = await ws.opened;
-      for await (const message of readable) set({ ...JSON.parse(String(message)), connected: true });
+      for await (const message of readable) {
+        const { uiEntry, ...next } = JSON.parse(String(message));
+        if (uiEntry && !import.meta.env.DEV && new URL(uiEntry, location.href).href !== import.meta.url) location.reload();
+        set({ ...next, connected: true });
+      }
     } catch {
       // reconnect below
     }

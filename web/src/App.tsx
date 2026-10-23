@@ -1,6 +1,7 @@
 import styles from './App.module.css';
 import { Detail } from './components/Detail.tsx';
 import { NewTaskDialog } from './components/NewTaskDialog.tsx';
+import { Toasts } from './components/Toasts.tsx';
 import { Tile } from './components/Tile.tsx';
 import { WorkspaceDialog } from './components/WorkspaceDialog.tsx';
 import { orderTiles } from './order.ts';
@@ -54,6 +55,7 @@ export function App() {
       </main>
       <NewTaskDialog repos={repos} />
       <WorkspaceDialog roots={roots} repos={repos} sessions={sessions} />
+      <Toasts />
     </div>
   );
 }
