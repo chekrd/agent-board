@@ -10,6 +10,7 @@ import { headless } from './headless.ts';
 import { clip } from './priority.ts';
 import { notify, repoView } from './workspace.ts';
 
+const MODEL = 'opus';
 const MAX_PARALLEL = 2;
 const TIMEOUT_MS = 20 * 60_000;
 const ACTIVITY_EVERY_MS = 1000;
@@ -169,6 +170,7 @@ async function advise(s: Session) {
       timeoutMs: TIMEOUT_MS,
       signal: run.controller.signal,
       args: [
+        '--model', MODEL,
         '--mcp-config', JSON.stringify(mcpConfig),
         '--allowedTools', `mcp__${MCP_NAME}__${SCRATCH_TOOL}`,
         '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, 'Bash(git push:*)',
