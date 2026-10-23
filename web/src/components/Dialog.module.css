@@ -1,0 +1,43 @@
+@layer components {
+  .dialog { overflow-y: auto; }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px 20px;
+    h2 { font-size: 16px; }
+    label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+    label > :is(input, textarea, select) { color: var(--text); font-size: 13px; }
+    footer { display: flex; justify-content: flex-end; gap: 8px; }
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+
+  .check { flex-direction: row !important; align-items: center; color: var(--text) !important; }
+
+  .hint { color: var(--muted); font-size: 12px; }
+
+  .error { color: var(--del); }
+
+  .section { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-top: 1px solid var(--border); }
+
+  .repoHead { display: flex; align-items: baseline; gap: 8px; h3 { font-size: 14px; } code { color: var(--muted); font-size: 11px; flex: 1; } }
+
+  .settings { display: grid; grid-template-columns: 1fr 1fr 1.5fr auto; gap: 8px; align-items: end; }
+
+  .worktrees {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; &:hover { background: var(--surface-2); } }
+    .wtName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    small { color: var(--muted); }
+  }
+
+  .addRepo { display: flex; gap: 8px; input { flex: 1; } }
+
+  .confirm { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+}

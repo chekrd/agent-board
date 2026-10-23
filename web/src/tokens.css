@@ -1,0 +1,96 @@
+@layer reset, tokens, base, components;
+
+@layer reset {
+  *, *::before, *::after { box-sizing: border-box; }
+  body, h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+}
+
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f4f5f7, #0d0f13);
+    --surface: light-dark(#ffffff, #15181e);
+    --surface-2: light-dark(#eceef2, #1c2028);
+    --border: light-dark(#d9dce2, #2a2f39);
+    --text: light-dark(#1a1d22, #e4e6ea);
+    --muted: light-dark(#5d6571, #8b93a1);
+    --accent: light-dark(#c2410c, #ff8a3d);
+    --accent-soft: light-dark(#fff1e7, #2f1f14);
+    --accent-text: light-dark(#ffffff, #1a0d03);
+    --ok: light-dark(#15803d, #4ade80);
+    --warn: light-dark(#a16207, #facc15);
+    --add: light-dark(#15803d, #4ade80);
+    --del: light-dark(#b91c1c, #f87171);
+    --radius: 8px;
+    --font: system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --terminal-bg: #0d0f13;
+  }
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  code, pre, kbd { font-family: var(--mono); font-size: 0.95em; }
+
+  button {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    &:hover { border-color: var(--muted); }
+    &:disabled { opacity: 0.5; cursor: default; }
+    &[data-variant="primary"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+    &[data-variant="ghost"] { background: none; border-color: transparent; color: var(--muted); &:hover { color: var(--text); } }
+    &[data-variant="danger"] { color: var(--del); }
+  }
+
+  input, textarea, select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    &:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  }
+
+  select, ::picker(select) { appearance: base-select; }
+  ::picker(select) { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+
+  dialog {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0;
+    width: min(680px, 92vw);
+    max-height: 86vh;
+    opacity: 1;
+    transition: opacity 150ms, display 150ms allow-discrete, overlay 150ms allow-discrete;
+    @starting-style { opacity: 0; }
+    &:not([open]) { opacity: 0; }
+    &::backdrop { background: rgb(0 0 0 / 0.45); }
+  }
+
+  [popover] {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 4px;
+    margin: 4px 0;
+    position-area: bottom span-left;
+    position-try-fallbacks: flip-block;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  }
+
+  ::view-transition-group(.tile) { animation-duration: 280ms; }
+}

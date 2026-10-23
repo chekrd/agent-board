@@ -1,0 +1,21 @@
+@layer components {
+  .form { display: flex; flex-direction: column; gap: 6px; }
+
+  .options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    button { display: flex; flex-direction: column; align-items: flex-start; white-space: normal; text-align: left; }
+    small { font-weight: 400; opacity: 0.8; }
+  }
+
+  .reply {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    input, textarea { flex: 1; min-width: 0; }
+    textarea { resize: vertical; }
+  }
+
+  .error { color: var(--del); font-size: 12px; }
+}

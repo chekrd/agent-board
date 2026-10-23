@@ -1,0 +1,12 @@
+@layer components {
+  .markdown {
+    line-height: 1.55;
+    & > * + * { margin-top: 0.7em; }
+    h1, h2, h3, h4 { font-size: 1.05em; }
+    ul, ol { padding-left: 1.4em; }
+    code { background: var(--surface-2); padding: 1px 4px; border-radius: 4px; }
+    pre { background: var(--surface-2); padding: 10px 12px; border-radius: 6px; overflow-x: auto; code { background: none; padding: 0; } }
+    a { color: var(--accent); }
+    table { border-collapse: collapse; td, th { border: 1px solid var(--border); padding: 4px 8px; } }
+  }
+}

@@ -1,0 +1,28 @@
+@layer components {
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+
+    &::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    &[data-status="working"]::before { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    &[data-status="exited"]::before { background: transparent; border: 1px solid var(--muted); }
+  }
+
+  .stat { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+  .add { color: var(--add); }
+  .del { color: var(--del); }
+
+  @keyframes pulse {
+    50% { opacity: 0.3; }
+  }
+}
