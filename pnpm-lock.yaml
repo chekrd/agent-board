@@ -66,6 +66,9 @@ importers:
       oxlint:
         specifier: ^1.89.0
         version: 1.89.0
+      shiki:
+        specifier: 4.5.0
+        version: 4.5.0
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
