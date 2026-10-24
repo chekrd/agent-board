@@ -7,8 +7,9 @@
 }
 
 @layer tokens {
-  :root {
+  :root, [data-theme="dark"] {
     color-scheme: light dark;
+    &[data-theme="dark"] { color-scheme: dark; }
     --bg: light-dark(#f4f5f7, #0d0f13);
     --surface: light-dark(#ffffff, #15181e);
     --surface-2: light-dark(#eceef2, #1c2028);

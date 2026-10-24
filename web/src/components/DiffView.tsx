@@ -9,7 +9,7 @@ import { fileAnchor, FileTree } from './FileTree.tsx';
 
 registerCustomTheme('darcula', async () => (await import('../themes/darcula.json')).default as ThemeRegistration);
 
-const THEME = { dark: 'darcula', light: 'light-plus' };
+const THEME = 'darcula';
 
 type Layout = 'split' | 'unified';
 
@@ -68,7 +68,7 @@ export function DiffView({ worktree }: { worktree: string }) {
   }, [diff, layout]);
 
   return (
-    <div className={styles.view}>
+    <div className={styles.view} data-theme="dark">
       <div className={styles.toolbar}>
         {diff && (
           <span>
@@ -87,7 +87,7 @@ export function DiffView({ worktree }: { worktree: string }) {
           {diff && !files.length && <p className={styles.empty}>No changes against {diff.base}.</p>}
           {files.map((f) => (
             <section key={f.name} id={fileAnchor(f.name)} data-file={f.name} className={styles.file}>
-              <FileDiff fileDiff={f} options={{ diffStyle: layout, theme: THEME, overflow: 'scroll', lineDiffType: 'word' }} />
+              <FileDiff fileDiff={f} options={{ diffStyle: layout, theme: THEME, themeType: 'dark', overflow: 'scroll', lineDiffType: 'word' }} />
             </section>
           ))}
         </div>
