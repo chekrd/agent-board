@@ -1,6 +1,6 @@
 import { sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
-import { locate, sessionLabel } from '../util.ts';
+import { ago, locate, sessionLabel } from '../util.ts';
 import { AnswerForm } from './AnswerForm.tsx';
 import styles from './Detail.module.css';
 import { DiffView } from './DiffView.tsx';
@@ -57,6 +57,12 @@ function Overview({ session }: { session: Session }) {
   const live = session.status !== 'exited';
   return (
     <div className={styles.overview}>
+      {session.summary && (
+        <section className={styles.summary}>
+          <h4>Summary <span>· updated {ago(session.summary.at)}</span></h4>
+          <p>{session.summary.text}</p>
+        </section>
+      )}
       {q && (
         <section className={styles.question}>
           <div className={styles.questionMeta}>

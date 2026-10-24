@@ -30,6 +30,13 @@ interface Meta {
   lastMessage: string | null;
   ask: Ask | null;
   pr: Omit<PrFlow, 'url'> | null;
+  turns: Turn[];
+}
+
+export interface Turn {
+  id: string;
+  role: 'developer' | 'claude';
+  text: string;
 }
 
 const metaCache = new Map<string, Meta>();
@@ -58,12 +65,12 @@ const jsonLines = (text: string) =>
     }
   });
 
-function promptText(entry: Record<string, any>): string | null {
+function promptText(entry: Record<string, any>, max = 500): string | null {
   if (entry.type !== 'user' || entry.isMeta || entry.isSidechain) return null;
   const content = entry.message?.content;
   const text = typeof content === 'string' ? content : Array.isArray(content) ? content.find((c) => c.type === 'text')?.text : null;
   if (!text || text.startsWith('<')) return null;
-  return text.trim().slice(0, 500);
+  return text.trim().slice(0, max);
 }
 
 const blocks = (entry: Record<string, any>): Record<string, any>[] =>
@@ -78,6 +85,15 @@ function latestAsk(entries: Record<string, any>[]): Ask | null {
     else if (ask && promptText(entry)) ask = null;
   }
   return ask;
+}
+
+function turns(entries: Record<string, any>[]): Turn[] {
+  return entries.flatMap((e): Turn[] => {
+    const prompt = promptText(e, 4000);
+    if (prompt) return [{ id: e.uuid, role: 'developer', text: prompt }];
+    const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, 4000) }] : [];
+  });
 }
 
 function lastMessage(entries: Record<string, any>[]) {
@@ -154,6 +170,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     lastMessage: lastMessage(tail),
     ask: latestAsk(tail),
     pr: await prFlow(tail),
+    turns: turns(tail),
   };
   metaCache.set(file, meta);
   return meta;

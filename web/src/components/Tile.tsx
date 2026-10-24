@@ -32,7 +32,11 @@ export function Tile({ session, repos, selected }: { session: Session; repos: Re
         <DiffStat stat={session.diffstat} />
         {!q && <StatusChip session={session} />}
       </div>
-      {!q && session.status === 'idle' && session.lastMessage && <p className={styles.excerpt}>{session.lastMessage}</p>}
+      {session.summary ? (
+        <p className={styles.excerpt} data-summary title={session.summary.text}>{session.summary.text}</p>
+      ) : (
+        !q && session.status === 'idle' && session.lastMessage && <p className={styles.excerpt}>{session.lastMessage}</p>
+      )}
       {q && (
         <section className={styles.question}>
           <div className={styles.rank}>

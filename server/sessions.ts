@@ -12,6 +12,7 @@ import { fullDiff, pullRequestUrl, repoRoot } from './git.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
+import { summarizeStale } from './summary.ts';
 import { notify, refreshWorkspace, repoView, workspace } from './workspace.ts';
 
 const run = promisify(execFile);
@@ -181,6 +182,7 @@ async function syncLive() {
   }
   if (changed) notify();
   adviseOpen();
+  void summarizeStale();
 }
 
 function liveTty(s: Session) {
