@@ -8,7 +8,7 @@ import { sessions, type Advice, type Session } from './db.ts';
 import { describeTool } from './conversations.ts';
 import { addScratchCopy, removeScratchCopy } from './git.ts';
 import { headless } from './headless.ts';
-import { clip } from './priority.ts';
+import { clip, scheduleRerank } from './priority.ts';
 import { notify, repoView } from './workspace.ts';
 
 const MODEL = 'opus';
@@ -196,6 +196,7 @@ async function advise(s: Session) {
     };
     if (!done.choice && !done.answer) throw new Error('the advisor gave an empty answer');
     run.save(done);
+    scheduleRerank();
   } catch (err) {
     run.save({ state: 'failed', activity: null, error: (err as Error).message, at: Date.now() });
   } finally {

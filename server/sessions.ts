@@ -217,7 +217,7 @@ async function isCommand(s: Session, text: string) {
 export async function answer(id: string, reply: { choice?: string; text?: string; files?: string[] }, commands = true) {
   const s = must(id);
   const tty = liveTty(s);
-  if (s.status === 'waiting') throw new Error(`Claude is showing ${s.waitingFor ?? 'a prompt'} in its terminal; answer that there first`);
+  if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
   const text = reply.text?.trim() ?? '';
   const files = await checkUploads(reply.files);
   if (!reply.choice && !text && !files.length) throw new Error('empty answer');

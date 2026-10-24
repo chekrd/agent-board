@@ -6,3 +6,5 @@ Rank by how much the developer's attention unblocks valuable work:
 4. Lower: updates, research findings and informational questions.
 
 Within the same level, a question that blocks more work ranks higher, and one that has waited longer breaks ties.
+
+A question the second opinion answered with high confidence (75 or more) is quick to settle: move it up within its level, since a glance and Accept unblocks the agent. Low or missing confidence changes nothing.

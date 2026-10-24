@@ -51,7 +51,6 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             {!q.multiSelect && (
               <input
                 placeholder="Or write your own answer…"
-               
                 value={a.other}
                 onChange={(e) => set(i, { other: e.currentTarget.value, ...(e.currentTarget.value && { labels: [] }) })}
               />
