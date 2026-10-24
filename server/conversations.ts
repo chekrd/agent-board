@@ -34,7 +34,7 @@ interface Meta {
   interactive: boolean;
   lastMessage: string | null;
   activity: Activity | null;
-  answeredMenus: string[];
+  toolResults: string[];
   ask: Ask | null;
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
@@ -172,9 +172,9 @@ export function parseMenu(toolUseId: string, input: any): Menu | null {
   };
 }
 
-// Claude Code writes an AskUserQuestion call to the transcript only once it is answered or cancelled.
-const answeredMenus = (entries: Record<string, any>[]) =>
-  entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => String(b.id)));
+const toolResults = (entries: Record<string, any>[]) =>
+  entries.flatMap((e) => (e.type === 'user' && Array.isArray(e.message?.content) ? e.message.content : [])
+    .filter((b: Record<string, any>) => b.type === 'tool_result').map((b: Record<string, any>) => String(b.tool_use_id)));
 
 // The current turn started at the developer's last prompt; its step is Claude's latest block.
 function activity(entries: Record<string, any>[]): Activity | null {
@@ -257,7 +257,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
     activity: activity(tail),
-    answeredMenus: answeredMenus(tail),
+    toolResults: toolResults(tail),
     ask: latestAsk(tail),
     pr: await prFlow(tail),
     turns: turns(tail),
