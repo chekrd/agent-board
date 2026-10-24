@@ -159,7 +159,7 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
               value={o.label}
               disabled={pending}
               data-variant={o.recommended ? 'primary' : undefined}
-              title={o.description}
+              title={o.description || 'Send this choice to Claude'}
             >
               {o.label}
               {o.description && <small>{o.description}</small>}
@@ -198,7 +198,7 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
             ))}
           </ul>
         )}
-        <textarea {...field} rows={2} />
+        <textarea {...field} rows={2} title="Your message to Claude; Enter sends, Shift+Enter adds a line" />
         {q && (
           <button type="submit" name="intent" value="dismiss" data-variant="ghost" disabled={pending} title="Clear without answering">
             Dismiss
@@ -251,10 +251,11 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
       <div className={styles.advice} data-state="running">
         <div className={styles.adviceHead}>
           <span className={styles.spinner} aria-hidden />
-          <span title="Another model reads the code and suggests what you would likely answer">Second opinion in progress · <Elapsed since={a.startedAt} /></span>
+          <span title="Another model reads the code and suggests what you would likely answer">Second opinion in progress</span>
+          <span title="How long the second opinion has run"><Elapsed since={a.startedAt} /></span>
           <button type="submit" name="intent" value="stop" data-variant="ghost" disabled={pending} title="Stop the advisor">Stop</button>
         </div>
-        <p className={styles.activity}>{a.activity ?? 'Working'}</p>
+        <p className={styles.activity} title="What the second opinion is doing right now">{a.activity ?? 'Working'}</p>
       </div>
     );
   }
@@ -274,9 +275,9 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
           {a.confidence}%
         </span>
       </div>
-      {a.choice && <strong className={styles.adviceChoice}>{a.choice}</strong>}
-      {a.answer && <p className={styles.adviceAnswer}>{a.answer}</p>}
-      {a.reasoning && <p className={styles.adviceReason}>{a.reasoning}</p>}
+      {a.choice && <strong className={styles.adviceChoice} title="The option the second opinion would pick">{a.choice}</strong>}
+      {a.answer && <p className={styles.adviceAnswer} title="The reply it would send">{a.answer}</p>}
+      {a.reasoning && <p className={styles.adviceReason} title="Why it would decide this way">{a.reasoning}</p>}
       <div className={styles.adviceActions}>
         <button type="submit" name="intent" value="accept" data-variant="primary" disabled={pending} title="Send the suggested answer to Claude">Accept &amp; send</button>
         <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)} title="Copy the suggestion into the reply box to change it first">Edit</button>

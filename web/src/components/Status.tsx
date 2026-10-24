@@ -30,8 +30,9 @@ export function AttentionChip({ session }: { session: Session }) {
 export function DiffStat({ stat }: { stat: Session['diffstat'] }) {
   if (!stat) return null;
   return (
-    <span className={styles.stat} title={`${stat.insertions} lines added and ${stat.deletions} removed in ${stat.files} files, against the base branch`}>
-      <span className={styles.add}>+{stat.insertions}</span> <span className={styles.del}>−{stat.deletions}</span>
+    <span className={styles.stat}>
+      <span className={styles.add} title={`Lines added in ${stat.files} files`}>+{stat.insertions}</span>{' '}
+      <span className={styles.del} title={`Lines removed in ${stat.files} files`}>−{stat.deletions}</span>
     </span>
   );
 }

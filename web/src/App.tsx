@@ -43,12 +43,12 @@ function Board() {
     <>
       <header className={styles.header}>
         <h1>
-          Docket
+          <span title="Every Claude session, the ones that need you first">Docket</span>
           {deciding > 0 && <span className={styles.count} title="Decisions waiting for you">{deciding}</span>}
         </h1>
         <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Docket; the board updates live' : 'Disconnected from Docket; reconnecting'} />
-        <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
-        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
+        <button commandfor="workspace" command="show-modal" data-variant="ghost" title="Manage repositories and worktrees">Repos</button>
+        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length} title="Create a worktree and start Claude in it">New task</button>
       </header>
       <main className={styles.board}>
         <div className={styles.tiles}>

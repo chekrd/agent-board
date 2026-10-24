@@ -17,13 +17,13 @@ export function SessionMenu({ session, worktree }: { session: Session; worktree:
 
   return (
     <>
-      <button popoverTarget={id} data-variant="ghost" aria-label="Session actions">⋯</button>
+      <button popoverTarget={id} data-variant="ghost" aria-label="Session actions" title="More actions">⋯</button>
       <div id={id} popover="auto" className={styles.menu}>
-        <button onClick={act('focus')}>{exited ? 'Continue in Ghostty' : 'Focus in Ghostty'}</button>
-        {!exited && <button onClick={act('quit')}>Quit Claude</button>}
-        <button onClick={act('archive', { archived: !session.archived })}>{session.archived ? 'Unarchive' : 'Archive'}</button>
-        {exited && <button onClick={act('forget')} data-variant="danger">Remove from list</button>}
-        {worktree && !worktree.isMain && <button onClick={deleteWorktree} data-variant="danger">Delete worktree…</button>}
+        <button onClick={act('focus')} title={exited ? 'Continue this conversation in a new Ghostty tab' : 'Switch to its Ghostty tab'}>{exited ? 'Continue in Ghostty' : 'Focus in Ghostty'}</button>
+        {!exited && <button onClick={act('quit')} title="Stop the Claude process; the conversation can be continued later">Quit Claude</button>}
+        <button onClick={act('archive', { archived: !session.archived })} title={session.archived ? 'Put it back on the board' : 'Move it off the board into Archived'}>{session.archived ? 'Unarchive' : 'Archive'}</button>
+        {exited && <button onClick={act('forget')} data-variant="danger" title="Drop the tile; the conversation and worktree stay">Remove from list</button>}
+        {worktree && !worktree.isMain && <button onClick={deleteWorktree} data-variant="danger" title="Quit Claude and delete the worktree and its local branch">Delete worktree…</button>}
       </div>
     </>
   );

@@ -19,21 +19,21 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
         <AttentionChip session={session} />
         {q && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
         {!!session.summary?.learnings?.length && (
-          <span className={styles.learned} title={`Claude found something notable:\n\n${session.summary.learnings.join('\n\n')}`}>Worth knowing</span>
+          <span className={styles.learned} title="Claude found something notable; open the task to read it">Worth knowing</span>
         )}
         <span className={styles.age} title={q ? 'When Claude asked' : session.summary ? 'When the status was last updated' : 'When the session started'}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>
-      <a className={styles.name} href={sessionPath(session.id)}>{sessionLabel(session, branch)}</a>
-      <span className={styles.where} title="Repository · branch">{repo?.name} · {branch}</span>
+      <a className={styles.name} href={sessionPath(session.id)} title="The task's name; opens the task">{sessionLabel(session, branch)}</a>
+      <span className={styles.where}><span title="Repository">{repo?.name}</span> · <span title="Branch">{branch}</span></span>
       {session.menu ? (
-        <p className={styles.problem}>{session.menu.questions.map((m) => m.question).join(' · ')}</p>
+        <p className={styles.problem} title="What Claude asks you in its terminal">{session.menu.questions.map((m) => m.question).join(' · ')}</p>
       ) : decision ? (
-        <p className={styles.problem}>{decision.problem}</p>
+        <p className={styles.problem} title="What Claude needs you to decide">{decision.problem}</p>
       ) : session.status === 'waiting' ? (
-        <p className={styles.problem}>Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>
+        <p className={styles.problem} title="Answer it in the terminal">Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>
       ) : (
-        headline && <p className={styles.headline}>{headline}</p>
+        headline && <p className={styles.headline} title={session.summary ? 'Where the task stands' : "Claude's last message"}>{headline}</p>
       )}
       <Working session={session} />
       <footer className={styles.foot}>

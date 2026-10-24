@@ -104,8 +104,10 @@ export function DiffView({ worktree }: { worktree: string }) {
       <div className={styles.toolbar}>
         {diff && (
           <span>
-            {diff.stat.files} files · <span className={styles.add}>+{diff.stat.insertions}</span>{' '}
-            <span className={styles.del}>−{diff.stat.deletions}</span> against <code>{diff.base}</code> @ <code>{diff.mergeBase.slice(0, 8)}</code>
+            <span title="Files changed">{diff.stat.files} files</span> · <span className={styles.add} title="Lines added">+{diff.stat.insertions}</span>{' '}
+            <span className={styles.del} title="Lines removed">−{diff.stat.deletions}</span> against{' '}
+            <code title="The base branch the diff compares against">{diff.base}</code> @{' '}
+            <code title="The commit where this branch left the base branch">{diff.mergeBase.slice(0, 8)}</code>
           </span>
         )}
         <span className={styles.hint} title="The diff merges everything in the worktree, whether committed or not">committed + staged + unstaged + untracked</span>

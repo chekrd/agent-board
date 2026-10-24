@@ -9,7 +9,7 @@ import { DiffView } from './DiffView.tsx';
 import { Markdown } from './Markdown.tsx';
 import { MenuCard } from './MenuCard.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
-import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
+import { AttentionChip, PrChip } from './Status.tsx';
 import { FocusButton } from './Tile.tsx';
 import { Working } from './Working.tsx';
 
@@ -41,12 +41,12 @@ export function Detail({ session, repos, tab }: Props) {
       <header className={styles.header}>
         <a className={styles.back} href="/" title="All tasks (Esc)">←</a>
         <div className={styles.heading}>
-          <h2>{sessionLabel(session, branch)}</h2>
+          <h2 title="The task's name">{sessionLabel(session, branch)}</h2>
           <div className={styles.meta}>
             <AttentionChip session={session} />
-            <span title="Repository · branch · the base branch the diff compares against">{repo?.name} · {branch} · base {repo?.base}</span>
+            <span title="Repository">{repo?.name}</span>
+            <span title="Branch">{branch}</span>
             <PrChip pr={session.pr} status={session.status} />
-            <DiffStat stat={session.diffstat} />
           </div>
         </div>
         <div className={styles.actions}>
@@ -78,7 +78,7 @@ function Overview({ session }: { session: Session }) {
       {!!summary?.learnings?.length && (
         <section className={styles.know}>
           <h4 title="Something notable Claude found or learned; shown only when it is worth your attention">Worth knowing</h4>
-          <ul>{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
+          <ul title="Something notable Claude found or learned">{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
         </section>
       )}
       {session.menu ? (
@@ -99,14 +99,14 @@ function Overview({ session }: { session: Session }) {
         )
       )}
       <section className={styles.status}>
-        <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>
+        <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span title="When the status was last rewritten">· updated {ago(summary.at)}</span>}</h4>
         {summary ? (
           <>
-            <p>{summary.text}</p>
-            {!!summary.progress?.length && <ul>{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
+            <p title="Where the task stands, in one sentence">{summary.text}</p>
+            {!!summary.progress?.length && <ul title="What has been done so far">{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
           </>
         ) : (
-          <p className={styles.pending}>No summary yet; it is written once Claude replies.</p>
+          <p className={styles.pending} title="A model writes the status after Claude's first reply">No summary yet; it is written once Claude replies.</p>
         )}
       </section>
       {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
@@ -114,19 +114,19 @@ function Overview({ session }: { session: Session }) {
         <h4 title="Where this session lives">Facts</h4>
         <dl className={styles.facts}>
           <dt title="Your first message in this session">Task</dt>
-          <dd>{session.firstPrompt ?? '—'}</dd>
+          <dd title="Your first message in this session">{session.firstPrompt ?? '—'}</dd>
           <dt title="The git worktree Claude works in">Worktree</dt>
-          <dd><code>{session.worktree}</code></dd>
+          <dd title="The git worktree Claude works in"><code>{session.worktree}</code></dd>
           {session.pr?.result && (
             <>
               <dt title="The last result reported for the pull request's checks">Pull request</dt>
-              <dd><code>{session.pr.result}</code></dd>
+              <dd title="The last result reported for the pull request's checks"><code>{session.pr.result}</code></dd>
             </>
           )}
           <dt title="The Ghostty tab's terminal device">Terminal</dt>
-          <dd>{session.tty ? <code>{session.tty}</code> : '—'}</dd>
+          <dd title="The Ghostty tab's terminal device">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
           <dt title="Claude Code's session id; claude --resume takes it">Session</dt>
-          <dd><code>{session.id}</code></dd>
+          <dd title="Claude Code's session id; claude --resume takes it"><code>{session.id}</code></dd>
         </dl>
       </section>
     </div>
@@ -144,10 +144,10 @@ function LatestReply({ text }: { text: string }) {
   return (
     <section className={styles.reply}>
       <h4 title="The last message Claude wrote in the terminal, unchanged">Claude's latest reply</h4>
-      <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined}>
+      <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined} title="The last message Claude wrote in the terminal, unchanged">
         <Markdown source={text} />
       </div>
-      {folded && <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)}>{full ? 'Show less' : 'Show all'}</button>}
+      {folded && <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)} title={full ? 'Fold the reply' : 'Show the whole reply'}>{full ? 'Show less' : 'Show all'}</button>}
     </section>
   );
 }
@@ -171,21 +171,25 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
         {session.rankReason && <em title="Why it got this priority">{session.rankReason}</em>}
         {q && <span className={styles.age} title="When Claude asked">asked {ago(q.askedAt)}</span>}
       </div>
-      <h3>{decision.problem}</h3>
-      {decision.brief ? <p className={styles.brief}>{decision.brief}</p> : decision.details && <Markdown source={decision.details} />}
+      <h3 title="What Claude needs you to decide">{decision.problem}</h3>
+      {decision.brief ? (
+        <p className={styles.brief} title="A short explanation of the decision, written by a model">{decision.brief}</p>
+      ) : (
+        decision.details && <div title="The question as Claude wrote it"><Markdown source={decision.details} /></div>
+      )}
       <button type="button" className={styles.elaborate} data-variant="ghost" aria-expanded={open} onClick={toggle} title={open ? undefined : 'A model reads the code and explains the background and each choice'}>
         {open ? 'Less' : 'Elaborate'}
       </button>
       {open && (
         <div className={styles.elaboration}>
           {!explanation || explanation.state === 'thinking' ? (
-            <p className={styles.thinking}><span className={styles.spinner} aria-hidden /> Reading the code to explain this…</p>
+            <p className={styles.thinking} title="A model is reading the code to explain the decision"><span className={styles.spinner} aria-hidden /> Reading the code to explain this…</p>
           ) : explanation.state === 'failed' ? (
             <p className={styles.failed}>
               Could not explain: {explanation.error} <button type="button" data-variant="ghost" onClick={request}>Retry</button>
             </p>
           ) : (
-            <Markdown source={explanation.text} />
+            <div title="Written by a model that read the code"><Markdown source={explanation.text} /></div>
           )}
           {decision.brief && decision.details && (
             <details className={styles.original}>

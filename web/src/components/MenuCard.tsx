@@ -38,11 +38,11 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             : { labels: a.labels[0] === label ? [] : [label], other: '' });
         return (
           <fieldset key={q.question} className={styles.question} disabled={pending}>
-            <legend>{q.header}{q.multiSelect && <span title="You can select more than one option"> · pick any</span>}</legend>
-            <h3>{q.question}</h3>
+            <legend title="The question's topic">{q.header}{q.multiSelect && <span title="You can select more than one option"> · pick any</span>}</legend>
+            <h3 title="Claude's question">{q.question}</h3>
             <div className={styles.options}>
               {q.options.map((o) => (
-                <button key={o.label} type="button" aria-pressed={a.labels.includes(o.label)} onClick={() => toggle(o.label)}>
+                <button key={o.label} type="button" aria-pressed={a.labels.includes(o.label)} title={o.description || 'Select this option'} onClick={() => toggle(o.label)}>
                   {o.label}
                   {o.description && <small>{o.description}</small>}
                 </button>
@@ -51,6 +51,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             {!q.multiSelect && (
               <input
                 placeholder="Or write your own answer…"
+                title="Answer in your own words instead of an option"
                 value={a.other}
                 onChange={(e) => set(i, { other: e.currentTarget.value, ...(e.currentTarget.value && { labels: [] }) })}
               />
@@ -59,7 +60,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
         );
       })}
       <div className={styles.submit}>
-        <button type="submit" data-variant="primary" disabled={pending || !complete}>Send answer</button>
+        <button type="submit" data-variant="primary" disabled={pending || !complete} title="Picks your answers in Claude's terminal menu">Send answer</button>
       </div>
       {error && <p className={styles.error}>{error}</p>}
     </form>
