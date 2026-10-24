@@ -137,13 +137,21 @@
     &[open] summary { margin-bottom: 12px; }
   }
 
-  .lastMessage {
-    margin-top: 16px;
-    padding: 12px 16px;
+  .reply {
+    padding: 14px 18px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--surface);
   }
+
+  .replyBody {
+    max-height: 16lh;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, black calc(100% - 3lh), transparent);
+    &[data-full] { max-height: none; mask-image: none; }
+  }
+
+  .more { padding: 4px 0 0; }
 
   .facts {
     display: grid;

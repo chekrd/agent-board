@@ -98,8 +98,9 @@ function Overview({ session }: { session: Session }) {
           </section>
         )
       )}
+      {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
       <details className={styles.context}>
-        <summary>Conversation and facts</summary>
+        <summary>Facts</summary>
         <dl className={styles.facts}>
           <dt>Task</dt>
           <dd>{session.firstPrompt ?? '—'}</dd>
@@ -116,14 +117,21 @@ function Overview({ session }: { session: Session }) {
           <dt>Session</dt>
           <dd><code>{session.id}</code></dd>
         </dl>
-        {session.lastMessage && (
-          <div className={styles.lastMessage}>
-            <h4>Claude's last message</h4>
-            <Markdown source={session.lastMessage} />
-          </div>
-        )}
       </details>
     </div>
+  );
+}
+
+function LatestReply({ text }: { text: string }) {
+  const [full, setFull] = useState(false);
+  return (
+    <section className={styles.reply}>
+      <h4>Claude's latest reply</h4>
+      <div className={styles.replyBody} data-full={full || undefined}>
+        <Markdown source={text} />
+      </div>
+      <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)}>{full ? 'Show less' : 'Show all'}</button>
+    </section>
   );
 }
 
