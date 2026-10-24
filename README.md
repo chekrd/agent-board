@@ -1,4 +1,4 @@
-# Agent IDE
+# Docket
 
 A local dashboard for running many Claude Code sessions in git worktrees. macOS only.
 
@@ -29,7 +29,7 @@ Code changes never restart the server on their own. After pulling or editing ser
 
 Development: `pnpm start` runs the server in the foreground (stop the launchd agent first with `pnpm service:uninstall`), `pnpm dev` serves the UI with HMR on :5173, `pnpm check` typechecks and lints.
 
-State lives in `~/Library/Application Support/agent-ide/` (`state.db`, per-session hook/MCP config, `server.log`).
+State lives in `~/Library/Application Support/docket/` (`state.db`, per-session hook/MCP config, `server.log`).
 
 ## Notes
 

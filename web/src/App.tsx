@@ -43,7 +43,7 @@ function Board() {
     <>
       <header className={styles.header}>
         <h1>
-          Agent IDE
+          Docket
           {deciding > 0 && <span className={styles.count} title="Decisions waiting for you">{deciding}</span>}
         </h1>
         <span className={styles.connection} data-connected={connected} title={connected ? 'Connected' : 'Disconnected'} />

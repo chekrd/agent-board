@@ -91,7 +91,7 @@ export interface FullDiff {
 // the merge-base, staged into a throwaway index so the real one is never touched.
 export async function fullDiff(worktree: string, base: string, statOnly = false): Promise<FullDiff> {
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
-  const dir = await mkdtemp(join(tmpdir(), 'agent-ide-index-'));
+  const dir = await mkdtemp(join(tmpdir(), 'docket-index-'));
   const index = join(dir, 'index');
   try {
     let realIndex = (await git(worktree, ['rev-parse', '--git-path', 'index'])).trim();

@@ -184,5 +184,5 @@ setInterval(() => void S.sync().catch((err) => console.warn('session sync failed
 setInterval(() => void refreshWorkspace({ scan: true }).catch((err) => console.warn('workspace refresh failed', err)), 30_000);
 
 serve({ fetch: app.fetch, hostname: HOST, port: PORT, websocket: { server: new WebSocketServer({ noServer: true }) } }, () => {
-  console.log(`agent-ide listening on http://${HOST}:${PORT}`);
+  console.log(`docket listening on http://${HOST}:${PORT}`);
 });

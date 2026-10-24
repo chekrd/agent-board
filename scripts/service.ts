@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DATA_DIR, ROOT } from '../server/config.ts';
 
-const LABEL = 'dev.agent-ide';
+const LABEL = 'dev.docket';
 const PLIST = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 const DOMAIN = `gui/${process.getuid!()}`;
 const LOG = join(DATA_DIR, 'server.log');

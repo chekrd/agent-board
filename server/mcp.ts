@@ -25,7 +25,7 @@ function server() {
   mcp.registerTool(ASK_TOOL, {
     title: 'Ask the human',
     description:
-      'The user supervises several Claude sessions from the agent-ide dashboard and does not watch every terminal. ' +
+      'The user supervises several Claude sessions from the Docket board and does not watch every terminal. ' +
       'Call this to put a question or request on that dashboard when you genuinely need them: a problem with the plan or ' +
       'requirements you did not anticipate together, failures you cannot fix yourself (CI, tests, access, environment), ' +
       'a decision that is theirs to make (product behavior, trade-offs, scope, anything irreversible or outward-facing), ' +
