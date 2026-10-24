@@ -8,7 +8,7 @@ import { SessionMenu } from './SessionMenu.tsx';
 import styles from './Tile.module.css';
 
 export function Tile({ session, repos, selected }: { session: Session; repos: RepoView[]; selected: boolean }) {
-  const { repo, branch } = locate(repos, session);
+  const { repo, worktree, branch } = locate(repos, session);
   const q = session.question;
 
   return (
@@ -24,7 +24,7 @@ export function Tile({ session, repos, selected }: { session: Session; repos: Re
           {sessionLabel(session, branch)}
         </a>
         <FocusButton session={session} />
-        <SessionMenu session={session} />
+        <SessionMenu session={session} worktree={worktree} />
       </header>
       <div className={styles.meta}>
         <span className={styles.where}>{repo?.name} · {branch}</span>

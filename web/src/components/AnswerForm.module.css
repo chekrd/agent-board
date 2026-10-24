@@ -10,11 +10,39 @@
   }
 
   .reply {
+    position: relative;
     display: flex;
     gap: 6px;
     align-items: flex-start;
     input, textarea { flex: 1; min-width: 0; }
     textarea { resize: vertical; }
+  }
+
+  .commands {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 10;
+    list-style: none;
+    margin: 0;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+    font-size: 12px;
+
+    li {
+      display: flex;
+      gap: 8px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      &[aria-selected="true"] { background: var(--accent-soft); }
+    }
+    code { flex: none; font-family: var(--mono); }
+    span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 
   .error { color: var(--del); font-size: 12px; }

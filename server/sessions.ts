@@ -8,7 +8,7 @@ import { conversationMeta, liveConversations, type LiveProcess } from './convers
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote, which } from './env.ts';
-import { fullDiff, pullRequestUrl, repoRoot } from './git.ts';
+import { fullDiff, pullRequestUrl, removeWorktree, repoRoot } from './git.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
@@ -200,7 +200,13 @@ export async function focus(id: string) {
 export async function answer(id: string, reply: { choice?: string; text?: string }) {
   const s = must(id);
   const tty = liveTty(s);
-  if (!reply.choice && !reply.text?.trim()) throw new Error('empty answer');
+  const text = reply.text?.trim() ?? '';
+  if (!reply.choice && !text) throw new Error('empty answer');
+  // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
+  if (!reply.choice && /^[/!]/.test(text)) {
+    await ghostty.send(tty, text);
+    return;
+  }
   const parts = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', reply.text?.trim() ?? '']
     .filter(Boolean);
   await ghostty.send(tty, parts.join(' — '));
@@ -235,10 +241,44 @@ export function archive(id: string, archived: boolean) {
 }
 
 export function stopWorktree(worktree: string) {
-  for (const s of sessions.all().filter((s) => s.worktree === worktree)) if (s.pid) process.kill(s.pid, 'SIGTERM');
+  for (const s of sessions.all().filter((s) => s.worktree === worktree)) if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
   sessions.removeByWorktree(worktree);
   scheduleRerank();
   notify();
+}
+
+function alive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForExit(pids: number[], timeoutMs: number) {
+  const until = Date.now() + timeoutMs;
+  while (pids.some(alive) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+  if (pids.some(alive)) throw new Error('Claude did not quit; nothing was deleted');
+}
+
+export async function deleteWorktree(id: string) {
+  const s = must(id);
+  const repo = repoView(s.repoId);
+  const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
+  if (!repo || !worktree) throw new Error('worktree not found');
+  if (worktree.isMain) throw new Error('this is the repository itself, not a worktree');
+  const nested = workspace().flatMap((r) => r.worktrees.map((w) => w.path)).filter((p) => p.startsWith(`${s.worktree}/`));
+  const inside = (dir: string) => (dir === s.worktree || dir.startsWith(`${s.worktree}/`)) && !nested.some((n) => dir === n || dir.startsWith(`${n}/`));
+  const claudes = [...(await liveConversations()).values()].filter((p) => inside(p.cwd) && alive(p.pid));
+  const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
+  for (const o of sessions.all().filter((o) => o.worktree === s.worktree)) stopAdvice(o.id);
+  for (const p of claudes) process.kill(p.pid, 'SIGTERM');
+  await waitForExit(claudes.map((p) => p.pid), 10_000);
+  await ghostty.closeTerminalsIn(s.worktree, ttys, nested);
+  stopWorktree(s.worktree);
+  await removeWorktree(repo.path, s.worktree, { force: true, deleteBranch: worktree.branch !== repo.base });
+  await refreshWorkspace();
 }
 
 function clearQuestion(id: string) {

@@ -91,6 +91,7 @@ function turns(entries: Record<string, any>[]): Turn[] {
   return entries.flatMap((e): Turn[] => {
     const prompt = promptText(e, 4000);
     if (prompt) return [{ id: e.uuid, role: 'developer', text: prompt }];
+    if (e.message?.model === '<synthetic>' || e.isApiErrorMessage) return [];
     const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, 4000) }] : [];
   });

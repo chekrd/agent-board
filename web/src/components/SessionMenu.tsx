@@ -1,14 +1,19 @@
 import { sessionAction } from '../api.ts';
-import type { Session } from '../types.ts';
+import type { Session, WorktreeView } from '../types.ts';
 import styles from './SessionMenu.module.css';
 
-export function SessionMenu({ session }: { session: Session }) {
+export function SessionMenu({ session, worktree }: { session: Session; worktree: WorktreeView | undefined }) {
   const id = `menu-${session.id}`;
   const act = (action: string, body?: unknown) => () => {
     document.getElementById(id)?.hidePopover();
     sessionAction(session.id, action, body).catch(reportError);
   };
   const exited = session.status === 'exited';
+  const deleteWorktree = () => {
+    const what = worktree?.branch ? `the worktree and its local branch ${worktree.branch}` : 'the worktree';
+    if (!confirm(`Delete ${what}?\n\n${session.worktree}\n\nClaude quits and the worktree's Ghostty tabs close. Uncommitted changes and unpushed commits are lost.`)) return;
+    act('delete-worktree')();
+  };
 
   return (
     <>
@@ -18,6 +23,7 @@ export function SessionMenu({ session }: { session: Session }) {
         {!exited && <button onClick={act('quit')}>Quit Claude</button>}
         <button onClick={act('archive', { archived: !session.archived })}>{session.archived ? 'Unarchive' : 'Archive'}</button>
         {exited && <button onClick={act('forget')} data-variant="danger">Remove from list</button>}
+        {worktree && !worktree.isMain && <button onClick={deleteWorktree} data-variant="danger">Delete worktree…</button>}
       </div>
     </>
   );

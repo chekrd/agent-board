@@ -9,6 +9,7 @@ import { WebSocketServer } from 'ws';
 import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
+import { listCommands } from './commands.ts';
 import { addWorktree, fullDiff, removeWorktree, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
@@ -131,10 +132,13 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'quit': S.quit(id); break;
     case 'forget': await S.forget(id); break;
     case 'archive': S.archive(id, body.archived ?? true); break;
+    case 'delete-worktree': await S.deleteWorktree(id); break;
     default: return c.text('unknown action', 404);
   }
   return c.body(null, 204);
 });
+
+app.get('/api/commands', async (c) => c.json(await listCommands(c.req.query('worktree') ?? '')));
 
 app.get('/api/diff', async (c) => {
   const worktree = c.req.query('worktree') ?? '';

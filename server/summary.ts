@@ -19,17 +19,34 @@ const schema = {
   required: ['summary'],
 };
 
+let looping = false;
+let again = false;
+
 export async function summarizeStale() {
-  for (const s of sessions.all()) {
-    if (running.size >= MAX_PARALLEL) return;
-    if (s.archived || s.status === 'working' || running.has(s.id)) continue;
-    if (Date.now() - (failed.get(s.id) ?? 0) < RETRY_AFTER_MS) continue;
-    const meta = await conversationMeta(s.cwd, s.id);
-    const latest = meta?.turns.at(-1);
-    if (!latest || latest.role !== 'claude' || latest.id === s.summary?.basis) continue;
-    void summarize(s, meta!.turns);
+  if (looping) return void (again = true);
+  looping = true;
+  try {
+    for (const { id } of sessions.all()) {
+      if (running.size >= MAX_PARALLEL) return;
+      const s = sessions.get(id);
+      if (!s || !due(s)) continue;
+      const meta = await conversationMeta(s.cwd, s.id);
+      const latest = meta?.turns.at(-1);
+      const current = sessions.get(id);
+      if (!latest || latest.role !== 'claude' || !current || !due(current) || latest.id === current.summary?.basis) continue;
+      void summarize(current, meta!.turns);
+    }
+  } finally {
+    looping = false;
+    if (again) {
+      again = false;
+      void summarizeStale();
+    }
   }
 }
+
+const due = (s: Session) =>
+  !s.archived && s.status !== 'working' && s.status !== 'waiting' && !running.has(s.id) && Date.now() - (failed.get(s.id) ?? 0) >= RETRY_AFTER_MS;
 
 // Only the turns since the previous summary, so a long session costs the same as a short one.
 function newTurns(turns: Turn[], basis: string | undefined) {
@@ -66,7 +83,7 @@ async function summarize(s: Session, turns: Turn[]) {
     const out = await headless(prompt(s, newTurns(turns, s.summary?.basis)), {
       cwd: DATA_DIR,
       timeoutMs: 120_000,
-      args: ['--model', MODEL, '--strict-mcp-config', '--tools', '', '--json-schema', JSON.stringify(schema)],
+      args: ['--model', MODEL, '--setting-sources', '', '--strict-mcp-config', '--tools', '', '--json-schema', JSON.stringify(schema)],
     });
     const text = String(out.structured_output?.summary ?? '').trim();
     if (!text) throw new Error('empty summary');

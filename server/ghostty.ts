@@ -51,3 +51,23 @@ else
 end if
 activate`, cwd, input);
 }
+
+// Working directory comes from the shell's OSC 7 reports, so a tab whose shell has
+// no integration is only found through the tty of a process known to run in it.
+export async function closeTerminalsIn(dir: string, knownTtys: string[], nested: string[]) {
+  const out = await script(`set out to ""
+set sep to character id 9
+repeat with t in terminals
+  set wd to ""
+  try
+    set wd to working directory of t
+  end try
+  set out to out & (id of t) & sep & wd & sep & (tty of t) & linefeed
+end repeat
+return out`);
+  const inside = (wd: string, d: string) => wd === d || wd.startsWith(`${d}/`);
+  const ids = out.split('\n').filter(Boolean).map((line) => line.split('\t')).filter(([, wd, tty]) =>
+    knownTtys.includes(tty) || (inside(wd, dir) && !nested.some((n) => inside(wd, n)))).map(([id]) => id);
+  for (const id of ids) await script('close (first terminal whose id is item 1 of argv)', id);
+  return ids.length;
+}
