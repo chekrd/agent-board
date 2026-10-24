@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
-import { conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
+import { listCommands } from './commands.ts';
+import { alive, conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote, which } from './env.ts';
@@ -13,7 +15,7 @@ import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
 import { summarizeStale } from './summary.ts';
-import { notify, refreshWorkspace, repoView, workspace } from './workspace.ts';
+import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './workspace.ts';
 
 const run = promisify(execFile);
 
@@ -94,6 +96,7 @@ async function locateWorktree(cwd: string) {
 const statusOf = (p: LiveProcess): SessionStatus => (p.status === 'busy' ? 'working' : p.status === 'waiting' ? 'waiting' : 'idle');
 
 const ignored = new Map<string, number>();
+const deleting = new Set<string>();
 
 async function adopt(id: string, p: LiveProcess) {
   const at = ignored.get(id);
@@ -105,6 +108,8 @@ async function adopt(id: string, p: LiveProcess) {
   }
   ignored.delete(id);
   const meta = await conversationMeta(p.cwd, id);
+  // A sync that started before a worktree was deleted must not bring its sessions back.
+  if (deleting.has(worktree.path) || !existsSync(p.cwd)) return false;
   sessions.insert({
     id, repoId: worktree.repoId, worktree: worktree.path, cwd: p.cwd, pid: p.pid, tty: await ttyOf(p.pid),
     title: meta?.title ?? null, firstPrompt: meta?.firstPrompt ?? null, status: statusOf(p),
@@ -197,13 +202,19 @@ export async function focus(id: string) {
   else await ghostty.focus(liveTty(s));
 }
 
-export async function answer(id: string, reply: { choice?: string; text?: string }) {
+async function isCommand(s: Session, text: string) {
+  if (text.startsWith('!')) return true;
+  const name = text.match(/^\/(\S+)/)?.[1];
+  return !!name && (await listCommands(s.worktree)).some((c) => c.name === name);
+}
+
+export async function answer(id: string, reply: { choice?: string; text?: string }, commands = true) {
   const s = must(id);
   const tty = liveTty(s);
   const text = reply.text?.trim() ?? '';
   if (!reply.choice && !text) throw new Error('empty answer');
   // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
-  if (!reply.choice && /^[/!]/.test(text)) {
+  if (commands && !reply.choice && (await isCommand(s, text))) {
     await ghostty.send(tty, text);
     return;
   }
@@ -217,12 +228,12 @@ export async function answer(id: string, reply: { choice?: string; text?: string
 export async function acceptAdvice(id: string) {
   const a = must(id).advice;
   if (a?.state !== 'done') throw new Error('no advice to accept');
-  await answer(id, { choice: a.choice ?? undefined, text: a.answer });
+  await answer(id, { choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
 export function quit(id: string) {
   const s = must(id);
-  if (s.pid) process.kill(s.pid, 'SIGTERM');
+  if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
 }
 
 export async function forget(id: string) {
@@ -247,19 +258,34 @@ export function stopWorktree(worktree: string) {
   notify();
 }
 
-function alive(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function waitForExit(pids: number[], timeoutMs: number) {
   const until = Date.now() + timeoutMs;
   while (pids.some(alive) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
   if (pids.some(alive)) throw new Error('Claude did not quit; nothing was deleted');
+}
+
+// git removes the whole directory, so a worktree inside it would lose its files.
+function refuseNested(path: string) {
+  const nested = workspace().flatMap((r) => r.worktrees.map((w) => w.path)).filter((p) => p.startsWith(`${path}/`));
+  if (nested.length) throw new Error(`${nested.join(', ')} is a worktree inside this one; remove it first`);
+}
+
+async function removing(path: string, work: () => Promise<void>) {
+  refuseNested(path);
+  deleting.add(path);
+  try {
+    await work();
+  } finally {
+    deleting.delete(path);
+    await refreshWorkspace();
+  }
+}
+
+export async function removeWorktreeAndSessions(repo: RepoView, path: string, opts: { force: boolean; deleteBranch: boolean }) {
+  await removing(path, async () => {
+    await removeWorktree(repo.path, path, opts);
+    stopWorktree(path);
+  });
 }
 
 export async function deleteWorktree(id: string) {
@@ -268,17 +294,17 @@ export async function deleteWorktree(id: string) {
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
   if (worktree.isMain) throw new Error('this is the repository itself, not a worktree');
-  const nested = workspace().flatMap((r) => r.worktrees.map((w) => w.path)).filter((p) => p.startsWith(`${s.worktree}/`));
-  const inside = (dir: string) => (dir === s.worktree || dir.startsWith(`${s.worktree}/`)) && !nested.some((n) => dir === n || dir.startsWith(`${n}/`));
-  const claudes = [...(await liveConversations()).values()].filter((p) => inside(p.cwd) && alive(p.pid));
-  const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
-  for (const o of sessions.all().filter((o) => o.worktree === s.worktree)) stopAdvice(o.id);
-  for (const p of claudes) process.kill(p.pid, 'SIGTERM');
-  await waitForExit(claudes.map((p) => p.pid), 10_000);
-  await ghostty.closeTerminalsIn(s.worktree, ttys, nested);
-  stopWorktree(s.worktree);
-  await removeWorktree(repo.path, s.worktree, { force: true, deleteBranch: worktree.branch !== repo.base });
-  await refreshWorkspace();
+  const isBase = worktree.branch === repo.base.replace(/^origin\//, '');
+  await removing(s.worktree, async () => {
+    const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === s.worktree || p.cwd.startsWith(`${s.worktree}/`));
+    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
+    for (const o of sessions.all().filter((o) => o.worktree === s.worktree)) stopAdvice(o.id);
+    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
+    await waitForExit(claudes.map((p) => p.pid), 10_000);
+    await ghostty.closeTerminalsIn(s.worktree, ttys);
+    await removeWorktree(repo.path, s.worktree, { force: true, deleteBranch: !isBase });
+    stopWorktree(s.worktree);
+  });
 }
 
 function clearQuestion(id: string) {

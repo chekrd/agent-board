@@ -173,7 +173,7 @@ async function advise(s: Session) {
         '--model', MODEL,
         '--mcp-config', JSON.stringify(mcpConfig),
         '--allowedTools', `mcp__${MCP_NAME}__${SCRATCH_TOOL}`,
-        '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, 'Bash(git push:*)',
+        '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, `NotebookEdit(/${s.worktree}/**)`, 'Bash(git push:*)',
         '--permission-prompts', 'none',
         '--json-schema', JSON.stringify(schema(s.question!.options.map((o) => o.label))),
       ],

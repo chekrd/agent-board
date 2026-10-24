@@ -3,6 +3,9 @@ import { api, sessionAction } from '../api.ts';
 import type { Advice, Command, Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
 
+// Outside the component: Detail remounts the form when a question opens or clears.
+const drafts = new Map<string, string>();
+
 export function AnswerForm({ session, compact = false }: { session: Session; compact?: boolean }) {
   const q = session.question;
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
@@ -20,7 +23,11 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
     }
   }, null);
   const reply = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraftState] = useState(() => drafts.get(session.id) ?? '');
+  const setDraft = (value: string) => {
+    drafts.set(session.id, value);
+    setDraftState(value);
+  };
   const [picked, setPicked] = useState(0);
   const [closed, setClosed] = useState(false);
   const [focused, setFocused] = useState(false);

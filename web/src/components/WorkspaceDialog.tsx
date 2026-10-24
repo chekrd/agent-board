@@ -94,7 +94,7 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
       <div className={styles.repoHead}>
         <h3>{repo.name}</h3>
         <code>{repo.path}</code>
-        <button data-variant="danger" onClick={() => run(() => api('DELETE', `/api/repos/${repo.id}`))} title="Hides it and stops its sessions; files and worktrees stay on disk">
+        <button data-variant="danger" onClick={() => run(() => api('DELETE', `/api/repos/${repo.id}`))} title="Hides it and drops its tiles; running Claudes, files and worktrees are left alone">
           Remove
         </button>
       </div>

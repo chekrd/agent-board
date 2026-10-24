@@ -1,9 +1,12 @@
+import { execFile } from 'node:child_process';
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { ASK_TOOL_NAME } from './config.ts';
 import type { PrFlow } from './db.ts';
 
+const run = promisify(execFile);
 const CLAUDE_DIR = join(homedir(), '.claude');
 const HEAD_BYTES = 128 << 10;
 const TAIL_BYTES = 512 << 10;
@@ -177,13 +180,27 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
   return meta;
 }
 
-function alive(pid: number) {
+export function alive(pid: number) {
   try {
     process.kill(pid, 0);
     return true;
   } catch {
     return false;
   }
+}
+
+const words = (s: string) => s.trim().split(/\s+/).join(' ');
+
+// A crashed Claude leaves its file behind and macOS reuses pids, so the process must also
+// have started when the file says. procStart is written in UTC.
+async function startTimes(pids: number[]) {
+  if (!pids.length) return new Map<number, string>();
+  const { stdout } = await run('/bin/ps', ['-o', 'pid=,lstart=', '-p', pids.join(',')], { env: { ...process.env, TZ: 'UTC' } })
+    .catch((err) => ({ stdout: String(err.stdout ?? '') }));
+  return new Map(stdout.split('\n').filter((l) => l.trim()).map((l) => {
+    const [pid, ...start] = l.trim().split(/\s+/);
+    return [Number(pid), start.join(' ')];
+  }));
 }
 
 export interface LiveProcess {
@@ -195,19 +212,23 @@ export interface LiveProcess {
 
 // Claude Code keeps one ~/.claude/sessions/<pid>.json per running process, with its live status.
 export async function liveConversations(): Promise<Map<string, LiveProcess>> {
-  const live = new Map<string, LiveProcess>();
   const dir = join(CLAUDE_DIR, 'sessions');
   const files = await readdir(dir).catch(() => []);
-  await Promise.all(files.filter((f) => /^\d+\.json$/.test(f)).map(async (f) => {
+  const infos = (await Promise.all(files.filter((f) => /^\d+\.json$/.test(f)).map(async (f) => {
     try {
       const info = JSON.parse(await readFile(join(dir, f), 'utf8'));
       const interactive = info.kind === 'interactive' && (info.entrypoint ?? 'cli') === 'cli';
-      if (!info.sessionId || !info.cwd || !interactive || !alive(info.pid)) return;
-      live.set(info.sessionId, { pid: info.pid, cwd: info.cwd, status: info.status, waitingFor: info.waitingFor ?? null });
+      return info.sessionId && info.cwd && interactive && alive(info.pid) ? [info] : [];
     } catch {
-      // being rewritten
+      return []; // being rewritten
     }
-  }));
+  }))).flat();
+  const started = await startTimes(infos.map((i) => i.pid));
+  const live = new Map<string, LiveProcess>();
+  for (const info of infos) {
+    if (!started.has(info.pid) || (info.procStart && words(info.procStart) !== started.get(info.pid))) continue;
+    live.set(info.sessionId, { pid: info.pid, cwd: info.cwd, status: info.status, waitingFor: info.waitingFor ?? null });
+  }
   return live;
 }
 

@@ -10,7 +10,7 @@ import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
-import { addWorktree, fullDiff, removeWorktree, repoRoot } from './git.ts';
+import { addWorktree, fullDiff, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
 import { onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
@@ -18,7 +18,7 @@ import { onChange, refreshWorkspace, repoView, snapshot, workspace } from './wor
 const run = promisify(execFile);
 const app = new Hono();
 
-const allowedHosts = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
+const allowedHosts = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`, '127.0.0.1:5173', 'localhost:5173']);
 const allowedOrigins = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PORT}`, 'http://127.0.0.1:5173', 'http://localhost:5173']);
 
 // Loopback alone does not stop a web page from reaching us; reject foreign hosts
@@ -26,7 +26,7 @@ const allowedOrigins = new Set([`http://${HOST}:${PORT}`, `http://localhost:${PO
 app.use(async (c, next) => {
   const host = c.req.header('host') ?? '';
   const origin = c.req.header('origin');
-  if (!allowedHosts.has(host) && !host.endsWith(':5173')) return c.text('forbidden host', 403);
+  if (!allowedHosts.has(host)) return c.text('forbidden host', 403);
   if (origin && !allowedOrigins.has(origin)) return c.text('forbidden origin', 403);
   await next();
 });
@@ -101,9 +101,7 @@ app.delete('/api/worktrees', async (c) => {
   const body = await c.req.json<{ repoId: number; path: string; force?: boolean; deleteBranch?: boolean }>();
   const repo = repoView(body.repoId);
   if (!repo) throw new Error('unknown repo');
-  S.stopWorktree(body.path);
-  await removeWorktree(repo.path, body.path, { force: !!body.force, deleteBranch: !!body.deleteBranch });
-  await refreshWorkspace();
+  await S.removeWorktreeAndSessions(repo, body.path, { force: !!body.force, deleteBranch: !!body.deleteBranch });
   return c.body(null, 204);
 });
 
