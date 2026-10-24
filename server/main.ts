@@ -155,6 +155,8 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'stop-advice': stopAdvice(id); break;
     case 'elaborate': elaborate(id); break;
     case 'focus': await S.focus(id); break;
+    case 'finder': await S.openIn(id, 'finder'); break;
+    case 'vscode': await S.openIn(id, 'vscode'); break;
     case 'quit': S.quit(id); break;
     case 'forget': await S.forget(id); break;
     case 'archive': S.archive(id, body.archived ?? true); break;

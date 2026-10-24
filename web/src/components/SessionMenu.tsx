@@ -21,6 +21,8 @@ export function SessionMenu({ session, worktree }: { session: Session; worktree:
       <button popoverTarget={id} data-variant="ghost" aria-label="Session actions" title="More actions">⋯</button>
       <div id={id} popover="auto" className={styles.menu}>
         <button onClick={act('focus')} title={exited ? 'Continue this conversation in a new Ghostty tab' : 'Switch to its Ghostty tab'}>{exited ? 'Continue' : 'Terminal'}</button>
+        <button onClick={act('finder')} title={session.worktree}>Open in Finder</button>
+        <button onClick={act('vscode')} title={session.worktree}>Open in VS Code</button>
         {!exited && <button onClick={act('quit')} title="Stop the Claude process; the conversation can be continued later">Quit Claude</button>}
         <button onClick={act('archive', { archived: !session.archived })}>{session.archived ? 'Unarchive' : 'Archive'}</button>
         {exited && <button onClick={act('forget')} data-variant="danger" title="Drop the tile; the conversation and worktree stay">Remove from list</button>}

@@ -273,6 +273,12 @@ export async function acceptAdvice(id: string) {
   await answer(id, { choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
+export async function openIn(id: string, app: 'finder' | 'vscode') {
+  const s = must(id);
+  if (!existsSync(s.worktree)) throw new Error(`${s.worktree} no longer exists`);
+  await run('/usr/bin/open', [...(app === 'vscode' ? ['-b', 'com.microsoft.VSCode'] : []), s.worktree]);
+}
+
 export function quit(id: string) {
   const s = must(id);
   if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
