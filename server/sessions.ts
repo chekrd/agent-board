@@ -127,6 +127,7 @@ async function readTranscript(s: Session) {
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
   if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
+  if (meta.menu?.toolUseId !== s.menu?.toolUseId) patch.menu = meta.menu;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
   if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
@@ -228,6 +229,50 @@ export async function answer(id: string, reply: { choice?: string; text?: string
   await ghostty.send(tty, parts.join(' — '));
   clearQuestion(id);
   notify();
+}
+
+export interface MenuAnswer {
+  labels: string[];
+  other: string;
+}
+
+// Drives Claude Code's AskUserQuestion dialog. Each question opens with the cursor on its first
+// option; a single choice moves on as soon as it is picked, a multiple choice needs Tab, and
+// with more than one question (or a multiple choice) a review step needs one more Enter.
+export async function answerMenu(id: string, body: { toolUseId: string; answers: MenuAnswer[] }) {
+  const s = must(id);
+  const tty = liveTty(s);
+  const menu = s.menu;
+  if (!menu || menu.toolUseId !== body.toolUseId) throw new Error('this question is no longer open');
+  if (body.answers?.length !== menu.questions.length) throw new Error('answer every question');
+  const strokes: ghostty.Keystroke[] = [];
+  const down = (n: number) => strokes.push(...Array.from({ length: n }, () => ({ key: 'arrow_down' })));
+  menu.questions.forEach((q, i) => {
+    const a = body.answers[i];
+    const other = a.other?.trim() ?? '';
+    const picked = a.labels.map((l) => q.options.findIndex((o) => o.label === l));
+    if (picked.includes(-1)) throw new Error(`unknown option for "${q.question}"`);
+    if (q.multiSelect) {
+      if (other) throw new Error('a multiple-choice question takes only its options here; write anything else in the terminal');
+      if (!picked.length) throw new Error(`pick at least one option for "${q.question}"`);
+      let cursor = 0;
+      for (const index of picked.toSorted((x, y) => x - y)) {
+        down(index - cursor);
+        strokes.push({ key: 'enter' });
+        cursor = index;
+      }
+      strokes.push({ key: 'tab' });
+    } else if (other) {
+      down(q.options.length);
+      strokes.push({ text: other }, { key: 'enter' });
+    } else {
+      if (picked.length !== 1) throw new Error(`pick one option for "${q.question}"`);
+      down(picked[0]);
+      strokes.push({ key: 'enter' });
+    }
+  });
+  if (menu.questions.length > 1 || menu.questions[0].multiSelect) strokes.push({ key: 'enter' });
+  await ghostty.keys(tty, strokes);
 }
 
 export async function acceptAdvice(id: string) {

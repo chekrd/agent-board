@@ -7,6 +7,7 @@ import { AnswerForm } from './AnswerForm.tsx';
 import styles from './Detail.module.css';
 import { DiffView } from './DiffView.tsx';
 import { Markdown } from './Markdown.tsx';
+import { MenuCard } from './MenuCard.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
 import { FocusButton } from './Tile.tsx';
@@ -80,7 +81,9 @@ function Overview({ session }: { session: Session }) {
           <ul>{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
         </section>
       )}
-      {decision ? (
+      {session.menu ? (
+        <MenuCard key={session.menu.toolUseId} sessionId={session.id} menu={session.menu} />
+      ) : decision ? (
         <DecisionCard key={decision.key} session={session} decision={decision} />
       ) : session.status === 'waiting' ? (
         <section className={styles.blocked}>

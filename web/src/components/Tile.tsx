@@ -26,7 +26,9 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
       </header>
       <a className={styles.name} href={sessionPath(session.id)}>{sessionLabel(session, branch)}</a>
       <span className={styles.where}>{repo?.name} · {branch}</span>
-      {decision ? (
+      {session.menu ? (
+        <p className={styles.problem}>{session.menu.questions.map((m) => m.question).join(' · ')}</p>
+      ) : decision ? (
         <p className={styles.problem}>{decision.problem}</p>
       ) : session.status === 'waiting' ? (
         <p className={styles.problem}>Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>

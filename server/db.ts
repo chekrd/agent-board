@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { DATA_DIR, DB_PATH, SESSIONS_DIR } from './config.ts';
-import type { Activity } from './conversations.ts';
+import type { Activity, Menu } from './conversations.ts';
 import type { DiffStat } from './git.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -52,7 +52,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -149,6 +149,7 @@ export interface Session {
   summary: Summary | null;
   explanation: Explanation | null;
   activity: Activity | null;
+  menu: Menu | null;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -186,6 +187,7 @@ const toSession = (r: Row): Session => ({
   summary: r.summary ? JSON.parse(r.summary) : null,
   explanation: r.explanation ? JSON.parse(r.explanation) : null,
   activity: r.activity ? JSON.parse(r.activity) : null,
+  menu: r.menu ? JSON.parse(r.menu) : null,
   archived: !!r.archived,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -236,6 +238,7 @@ const columns: Record<string, string> = {
   summary: 'summary',
   explanation: 'explanation',
   activity: 'activity',
+  menu: 'menu',
   archived: 'archived',
   pid: 'pid',
   tty: 'tty',
@@ -254,7 +257,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

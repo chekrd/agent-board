@@ -35,6 +35,23 @@ export async function send(tty: string, text: string) {
   await onTerminal(tty, 'send key "enter" to t');
 }
 
+export type Keystroke = { key: string } | { text: string };
+
+// Named keys rather than characters: `send key` goes through the keyboard layout, so a digit
+// would arrive as ě or š on a Czech one.
+export async function keys(tty: string, strokes: Keystroke[]) {
+  const args = strokes.map((k) => ('key' in k ? `k:${k.key}` : `t:${k.text.replace(/[^\P{Cc}\n\t]/gu, '')}`));
+  await onTerminal(tty, `repeat with i from 2 to count of argv
+  set s to item i of argv
+  if s starts with "k:" then
+    send key (text 3 thru -1 of s) to t
+  else
+    input text (text 3 thru -1 of s) to t
+  end if
+  delay 0.2
+end repeat`, ...args);
+}
+
 // Opens a tab in the front Ghostty window (or a new window) running the user's shell,
 // then types `input` into it, so the shell is still there after Claude quits.
 export async function newTab(cwd: string, input: string) {

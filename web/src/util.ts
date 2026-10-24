@@ -39,4 +39,4 @@ export function decisionOf(s: Session): DecisionView | null {
 export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';
 
 export const attentionOf = (s: Session): Attention =>
-  decisionOf(s) ? 'decide' : s.status === 'waiting' ? 'focus' : s.status;
+  s.menu || decisionOf(s) ? 'decide' : s.status === 'waiting' ? 'focus' : s.status;

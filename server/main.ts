@@ -130,6 +130,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
   switch (c.req.param('action')) {
     case 'answer': await S.answer(id, body); break;
     case 'dismiss': S.dismiss(id); break;
+    case 'answer-menu': await S.answerMenu(id, body); break;
     case 'accept-advice': await S.acceptAdvice(id); break;
     case 'retry-advice': retryAdvice(id); break;
     case 'stop-advice': stopAdvice(id); break;
