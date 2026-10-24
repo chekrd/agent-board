@@ -40,7 +40,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
     try {
       const result = await api<{ path: string; sessionId: string | null }>('POST', '/api/worktrees', {
         repoId: repo.id,
-        name: form.get('name'),
+        name: existing ? '' : form.get('name'),
         branch: form.get('branch'),
         path: form.get('path'),
         prompt: form.get('prompt'),
@@ -78,21 +78,15 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
             </label>
           </div>
           {existing ? (
-            <div className={styles.row}>
-              <label>
-                Branch
-                <input {...bind('branch')} required autoFocus list="new-task-branches" placeholder="Pick or type to filter" autoComplete="off" />
-                <datalist id="new-task-branches">
-                  {branches.map((b) => (
-                    <option key={b.name} value={b.name}>{b.worktree ?? ''}</option>
-                  ))}
-                </datalist>
-              </label>
-              <label>
-                Name
-                <input {...bind('name')} placeholder={fields.branch || 'same as branch'} />
-              </label>
-            </div>
+            <label>
+              Branch
+              <input {...bind('branch')} required autoFocus list="new-task-branches" placeholder="Pick or type to filter" autoComplete="off" />
+              <datalist id="new-task-branches">
+                {branches.map((b) => (
+                  <option key={b.name} value={b.name}>{b.worktree ?? ''}</option>
+                ))}
+              </datalist>
+            </label>
           ) : (
             <>
               <label title="Names the worktree folder, and the branch unless you set one">

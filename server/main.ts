@@ -116,7 +116,7 @@ app.post('/api/worktrees', async (c) => {
     if (setup) await S.openShell(path, setup);
     return c.json({ path, sessionId: null });
   }
-  const sessionId = await S.startClaude({ repoId: repo.id, worktree: path, prompt: body.prompt, title: name || branch, setup });
+  const sessionId = await S.startClaude({ repoId: repo.id, worktree: path, prompt: body.prompt, title: name, setup });
   return c.json({ path, sessionId });
 });
 
