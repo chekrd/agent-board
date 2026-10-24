@@ -176,7 +176,6 @@ export const roots = {
 
 export const repos = {
   all: () => db.prepare('SELECT * FROM repos WHERE hidden = 0 ORDER BY path').all().map(toRepo),
-  known: () => new Set(db.prepare('SELECT path FROM repos').all().map((r) => String(r.path))),
   get: (id: number) => {
     const r = db.prepare('SELECT * FROM repos WHERE id = ?').get(id);
     return r ? toRepo(r) : undefined;

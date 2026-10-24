@@ -45,7 +45,7 @@ for (const leftover of await readdir(SCRATCH_DIR)) void removeScratchCopy(join(S
 
 function needsAdvice(s: Session) {
   const q = s.question;
-  if (!q || s.archived || running.has(s.id)) return false;
+  if (!q || s.archived || s.status === 'exited' || running.has(s.id)) return false;
   return !s.advice || s.advice.toolUseId !== q.toolUseId || s.advice.state === 'thinking';
 }
 
@@ -172,6 +172,7 @@ async function advise(s: Session) {
       args: [
         '--model', MODEL,
         '--mcp-config', JSON.stringify(mcpConfig),
+        '--add-dir', SCRATCH_DIR,
         '--allowedTools', `mcp__${MCP_NAME}__${SCRATCH_TOOL}`,
         '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, `NotebookEdit(/${s.worktree}/**)`, 'Bash(git push:*)',
         '--permission-prompts', 'none',

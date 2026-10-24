@@ -68,6 +68,8 @@ export async function addWorktree(repo: string, opts: { branch: string; task: st
   return gitWt(repo, ['add', opts.branch, '--task', opts.task, '--base', opts.base, '--root', opts.root, ...(opts.path ? ['--path', opts.path] : [])]);
 }
 
+export const isClean = async (worktree: string) => !(await git(worktree, ['status', '--porcelain'])).trim();
+
 export async function removeWorktree(repo: string, path: string, opts: { force: boolean; deleteBranch: boolean }) {
   await gitWt(repo, ['rm', path, ...(opts.force ? ['--force'] : []), ...(opts.deleteBranch ? ['--delete-branch'] : [])]);
 }
@@ -122,6 +124,7 @@ export async function pullRequestUrl(worktree: string, id: number) {
   const remote = (await remotes.get(worktree)!)
     .replace(/^git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/(.+)$/, 'https://dev.azure.com/$1/$2/_git/$3')
     .replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
+    .replace(/^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/, 'https://$1/$2')
     .replace(/^(https?:\/\/)[^@/]+@/, '$1')
     .replace(/\.git$/, '');
   if (remote.includes('/_git/')) return `${remote}/pullrequest/${id}`;
@@ -129,7 +132,9 @@ export async function pullRequestUrl(worktree: string, id: number) {
   return null;
 }
 
-const cloneInto = (src: string, dest: string) => run('/bin/cp', ['-cR', src, `${dest}/`]);
+// clonefile fails across volumes, so a repo outside the data volume gets a plain copy.
+const cloneInto = (src: string, dest: string) =>
+  run('/bin/cp', ['-cR', src, `${dest}/`]).catch(() => run('/bin/cp', ['-R', src, `${dest}/`]));
 
 // A detached worktree whose files are APFS clones of `worktree`, uncommitted and ignored files included.
 export async function addScratchCopy(worktree: string, dest: string) {

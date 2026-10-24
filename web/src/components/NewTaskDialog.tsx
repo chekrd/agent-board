@@ -4,10 +4,19 @@ import { go, sessionPath } from '../router.ts';
 import type { RepoView } from '../types.ts';
 import styles from './Dialog.module.css';
 
+const EMPTY = { name: '', branch: '', path: '', prompt: '', startClaude: true };
+
 export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [repoId, setRepoId] = useState<number | null>(null);
-  const [name, setName] = useState('');
+  const [fields, setFields] = useState(EMPTY);
+  const name = fields.name;
+  // Controlled, because React resets a form action's uncontrolled fields even when it fails.
+  const bind = (key: 'name' | 'branch' | 'path' | 'prompt') => ({
+    name: key,
+    value: fields[key],
+    onChange: (e: { currentTarget: { value: string } }) => setFields({ ...fields, [key]: e.currentTarget.value }),
+  });
   const repo = repos.find((r) => r.id === repoId) ?? repos[0];
 
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
@@ -21,7 +30,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
         startClaude: form.get('startClaude') === 'on',
       });
       dialog.current?.close();
-      setName('');
+      setFields(EMPTY);
       if (result.sessionId) go(sessionPath(result.sessionId));
       return null;
     } catch (err) {
@@ -44,24 +53,24 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
           </label>
           <label>
             Name
-            <input name="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="fix-login-redirect" pattern="[A-Za-z0-9._\/\-]+" />
+            <input {...bind('name')} required autoFocus placeholder="fix-login-redirect" pattern="[A-Za-z0-9._\/\-]+" />
           </label>
           <div className={styles.row}>
             <label>
               Branch
-              <input name="branch" placeholder={name || 'same as name'} />
+              <input {...bind('branch')} placeholder={name || 'same as name'} />
             </label>
             <label>
               Worktree path
-              <input name="path" placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}/${repo.path.split('/').at(-1)}`} />
+              <input {...bind('path')} placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}/${repo.path.split('/').at(-1)}`} />
             </label>
           </div>
           <label>
             Prompt for Claude
-            <textarea name="prompt" rows={6} placeholder="What should Claude work on? Leave empty to start an idle session." />
+            <textarea {...bind('prompt')} rows={6} placeholder="What should Claude work on? Leave empty to start an idle session." />
           </label>
           <label className={styles.check}>
-            <input type="checkbox" name="startClaude" defaultChecked /> Start a Claude session
+            <input type="checkbox" name="startClaude" checked={fields.startClaude} onChange={(e) => setFields({ ...fields, startClaude: e.currentTarget.checked })} /> Start a Claude session
           </label>
           <p className={styles.hint}>
             Branches from <code>{repo.base}</code> and opens a Ghostty tab.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}

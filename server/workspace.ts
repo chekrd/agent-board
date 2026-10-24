@@ -1,6 +1,7 @@
 import { basename, dirname, join } from 'node:path';
 import { liveConversations, listConversations, type Conversation } from './conversations.ts';
 import { repos, roots, sessions, type Repo } from './db.ts';
+import { SCRATCH_DIR } from './config.ts';
 import { detectBase, listWorktrees, type Worktree } from './git.ts';
 import { findRepos } from './scan.ts';
 
@@ -41,17 +42,22 @@ async function scanRoots() {
   }
 }
 
+let started = 0;
+let applied = 0;
+
+// Refreshes overlap; one that began before a delete must not put the deleted worktree back.
 export async function refreshWorkspace({ scan = false } = {}) {
+  const generation = ++started;
   if (scan) await scanRoots();
   const live = await liveConversations();
-  cache = await Promise.all(repos.all().map(async (repo): Promise<RepoView> => {
+  const next = await Promise.all(repos.all().map(async (repo): Promise<RepoView> => {
     const view = {
       ...repo,
       name: basename(repo.path),
       defaultWorktreeRoot: repo.worktreeRoot ?? join(dirname(repo.path), 'worktrees'),
     };
     try {
-      const worktrees = await Promise.all((await listWorktrees(repo.path)).map(async (w) => ({
+      const worktrees = await Promise.all((await listWorktrees(repo.path)).filter((w) => !w.path.startsWith(`${SCRATCH_DIR}/`)).map(async (w) => ({
         ...w,
         conversations: await listConversations(w.path, live),
       })));
@@ -60,6 +66,9 @@ export async function refreshWorkspace({ scan = false } = {}) {
       return { ...view, base: repo.baseBranch ?? 'master', worktrees: [], error: String(err) };
     }
   }));
+  if (generation < applied) return;
+  applied = generation;
+  cache = next;
   notify();
 }
 

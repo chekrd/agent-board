@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { serve, upgradeWebSocket } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -13,7 +14,7 @@ import { listCommands } from './commands.ts';
 import { addWorktree, fullDiff, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
-import { onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
+import { notify, onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
 
 const run = promisify(execFile);
 const app = new Hono();
@@ -48,7 +49,9 @@ app.post('/api/pick-folder', async (c) => {
 
 app.post('/api/repos', async (c) => {
   const path = (await c.req.json<{ path: string }>()).path.trim().replace(/(.)\/$/, '$1');
-  const root = await repoRoot(path).catch(() => null);
+  // A dotfiles repo in ~ would otherwise swallow every folder picked under it.
+  const found = await repoRoot(path).catch(() => null);
+  const root = found === homedir() && path !== found ? null : found;
   if (root) repos.add(root);
   else if ((await stat(path).catch(() => null))?.isDirectory()) roots.add(path);
   else throw new Error(`not a folder: ${path}`);
@@ -86,8 +89,10 @@ app.post('/api/worktrees', async (c) => {
   if (!repo) throw new Error('unknown repo');
   const name = body.name.trim();
   if (!name) throw new Error('name is required');
+  const wanted = body.path?.trim().replace(/^~(?=\/|$)/, homedir()) || undefined;
+  if (wanted && !isAbsolute(wanted)) throw new Error('the worktree path must be absolute');
   const path = await addWorktree(repo.path, {
-    branch: body.branch?.trim() || name, task: name, base: repo.base, root: repo.defaultWorktreeRoot, path: body.path?.trim() || undefined,
+    branch: body.branch?.trim() || name, task: name, base: repo.base, root: repo.defaultWorktreeRoot, path: wanted,
   });
   await refreshWorkspace();
   if (body.startClaude === false) {
@@ -145,6 +150,7 @@ app.get('/api/diff', async (c) => {
   if (!repo) throw new Error('unknown worktree');
   const diff = await fullDiff(worktree, repo.base);
   for (const s of sessions.all().filter((s) => s.worktree === worktree)) sessions.update(s.id, { diffstat: diff.stat });
+  notify();
   return c.json(diff);
 });
 
@@ -155,8 +161,8 @@ app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;
   return {
     async onOpen(_evt, ws) {
-      ws.send(JSON.stringify({ ...snapshot(), uiEntry: await uiEntry() }));
       off = onChange(() => ws.send(JSON.stringify(snapshot())));
+      ws.send(JSON.stringify({ ...snapshot(), uiEntry: await uiEntry() }));
     },
     onClose() {
       off?.();

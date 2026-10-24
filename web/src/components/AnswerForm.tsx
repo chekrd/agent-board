@@ -15,8 +15,10 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
       else if (intent === 'accept') await sessionAction(session.id, 'accept-advice');
       else if (intent === 'retry') await sessionAction(session.id, 'retry-advice');
       else if (intent === 'stop') await sessionAction(session.id, 'stop-advice');
-      else await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined });
-      setDraft('');
+      else {
+        await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined });
+        setDraft('');
+      }
       return null;
     } catch (err) {
       return (err as Error).message;

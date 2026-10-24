@@ -21,11 +21,6 @@ ${body}`, tty, ...args);
   return out;
 }
 
-export async function ttys(): Promise<Set<string>> {
-  const out = await script('return tty of terminals');
-  return new Set(out.split(', ').filter(Boolean));
-}
-
 export async function focus(tty: string) {
   await onTerminal(tty, 'focus t\nactivate');
 }

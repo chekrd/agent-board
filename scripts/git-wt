@@ -32,6 +32,13 @@ real() {
   (cd "$1" 2>/dev/null && pwd -P)
 }
 
+absolute() {
+  case $1 in
+    /*) echo "$1" ;;
+    *) echo "$PWD/$1" ;;
+  esac
+}
+
 common_dir() {
   git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null
 }
@@ -82,17 +89,22 @@ add() {
   [ -n "$branch" ] || usage
   git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "not a valid branch name: $branch"
 
-  [ -n "$root" ] || root="$(dirname "$main")/worktrees"
+  root=$(absolute "${root:-$(dirname "$main")/worktrees}")
   task=$(printf '%s' "${task:-$branch}" | tr / -)
-  [ -n "$path" ] || path="$root/$task/$(basename "$main")"
+  case $task in
+    '' | . | ..) die "not a valid task name: $task" ;;
+  esac
+  path=$(absolute "${path:-$root/$task/$(basename "$main")}")
 
   if [ -e "$path" ]; then
     top=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || true)
-    if [ "$(common_dir "$path")" = "$(common_dir "$main")" ] && [ -n "$top" ] && [ "$(real "$top")" = "$(real "$path")" ]; then
-      echo "$path"
-      return
+    if [ "$(common_dir "$path")" != "$(common_dir "$main")" ] || [ -z "$top" ] || [ "$(real "$top")" != "$(real "$path")" ]; then
+      die "$path already exists and is not a worktree of $main"
     fi
-    die "$path already exists and is not a worktree of $main"
+    current=$(branch_of_worktree "$path")
+    [ "$current" = "$branch" ] || die "$path already exists on branch ${current:-(detached)}, not $branch"
+    (cd "$path" && pwd)
+    return
   fi
 
   if has_ref "refs/heads/$branch"; then
@@ -107,7 +119,7 @@ add() {
     git -C "$path" branch --quiet --set-upstream-to="origin/$branch" "$branch" >&2
   fi
   copy_included "$path"
-  echo "$path"
+  (cd "$path" && pwd)
 }
 
 rm_worktree() {
@@ -121,13 +133,16 @@ rm_worktree() {
     esac
   done
 
+  # A branch wins over a folder of the same name, which would resolve to the enclosing worktree.
   if [ -z "$target" ]; then
     path=$(git rev-parse --show-toplevel)
+  elif path=$(worktree_of_branch "$target") && [ -n "$path" ]; then
+    :
   elif [ -d "$target" ]; then
     path=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null) || die "not a worktree: $target"
+    [ "$(real "$path")" = "$(real "$target")" ] || die "$target is inside the worktree $path, not a worktree itself"
   else
-    path=$(worktree_of_branch "$target")
-    [ -n "$path" ] || die "no worktree has branch $target"
+    die "no worktree has branch $target"
   fi
   [ "$(common_dir "$path")" = "$(common_dir "$main")" ] || die "$path is not a worktree of $main"
   [ "$(real "$path")" != "$(real "$main")" ] || die "cannot remove the main checkout"

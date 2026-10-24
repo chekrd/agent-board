@@ -43,8 +43,18 @@ export interface Turn {
 }
 
 const metaCache = new Map<string, Meta>();
+const MAX_CACHED = 300;
+const MAX_DIR_NAME = 200;
 
-const projectDir = (cwd: string) => join(CLAUDE_DIR, 'projects', cwd.replace(/[^A-Za-z0-9]/g, '-'));
+// Claude cuts longer project folder names to 200 characters and appends a hash it does not document.
+async function projectDir(cwd: string) {
+  const name = cwd.replace(/[^A-Za-z0-9]/g, '-');
+  const projects = join(CLAUDE_DIR, 'projects');
+  if (name.length <= MAX_DIR_NAME) return join(projects, name);
+  const prefix = `${name.slice(0, MAX_DIR_NAME)}-`;
+  const match = (await readdir(projects).catch(() => [])).find((d) => d.startsWith(prefix));
+  return join(projects, match ?? name);
+}
 
 async function readSlice(file: string, from: 'head' | 'tail') {
   const fh = await open(file, 'r');
@@ -162,7 +172,11 @@ async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
 
 async function readMeta(file: string, mtime: number): Promise<Meta> {
   const cached = metaCache.get(file);
-  if (cached?.mtime === mtime) return cached;
+  if (cached?.mtime === mtime) {
+    metaCache.delete(file);
+    metaCache.set(file, cached);
+    return cached;
+  }
   const head = jsonLines(await readSlice(file, 'head'));
   const tail = jsonLines(await readSlice(file, 'tail'));
   const titled = [...head, ...tail].findLast((e) => e.type === 'custom-title' || e.type === 'ai-title');
@@ -176,7 +190,9 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     pr: await prFlow(tail),
     turns: turns(tail),
   };
+  metaCache.delete(file);
   metaCache.set(file, meta);
+  if (metaCache.size > MAX_CACHED) metaCache.delete(metaCache.keys().next().value!);
   return meta;
 }
 
@@ -233,7 +249,7 @@ export async function liveConversations(): Promise<Map<string, LiveProcess>> {
 }
 
 export async function listConversations(cwd: string, live: Map<string, LiveProcess>, limit = 15): Promise<Conversation[]> {
-  const dir = projectDir(cwd);
+  const dir = await projectDir(cwd);
   const files = (await readdir(dir).catch(() => [])).filter((f) => f.endsWith('.jsonl'));
   const stats = await Promise.all(files.map(async (f) => {
     const s = await stat(join(dir, f)).catch(() => null);
@@ -251,7 +267,7 @@ export async function listConversations(cwd: string, live: Map<string, LiveProce
 }
 
 export async function conversationMeta(cwd: string, id: string) {
-  const file = join(projectDir(cwd), `${id}.jsonl`);
+  const file = join(await projectDir(cwd), `${id}.jsonl`);
   const s = await stat(file).catch(() => null);
   return s ? readMeta(file, s.mtimeMs) : null;
 }

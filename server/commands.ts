@@ -72,7 +72,13 @@ async function skillsIn(dir: string, prefix = ''): Promise<Command[]> {
   return skills.flat();
 }
 
-const readJson = async (file: string) => JSON.parse(await readFile(file, 'utf8').catch(() => '{}'));
+const readJson = async (file: string) => {
+  try {
+    return JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    return {};
+  }
+};
 
 async function pluginCommands(cwd: string): Promise<Command[]> {
   const settings = await Promise.all([join(CLAUDE_DIR, 'settings.json'), join(cwd, '.claude', 'settings.json'), join(cwd, '.claude', 'settings.local.json')].map(readJson));

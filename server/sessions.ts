@@ -9,8 +9,9 @@ import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
-import { quote, which } from './env.ts';
-import { fullDiff, pullRequestUrl, removeWorktree, repoRoot } from './git.ts';
+import { quote } from './env.ts';
+import { fullDiff, isClean, pullRequestUrl, removeWorktree, repoRoot } from './git.ts';
+import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
@@ -19,19 +20,17 @@ import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './
 
 const run = promisify(execFile);
 
-export const CLAUDE = await which('claude');
-
 const STARTUP_GRACE_MS = 60_000;
 const IGNORE_RETRY_MS = 30_000;
 
 // A launch script keeps the prompt out of the user's shell, whose quoting rules may not be POSIX.
-async function launch(id: string, worktree: string, args: string[], setup?: string | null) {
+async function launch(id: string, cwd: string, args: string[], setup?: string | null) {
   const dir = join(SESSIONS_DIR, id);
   await mkdir(dir, { recursive: true });
   const script = join(dir, 'start.sh');
-  const lines = ['#!/bin/sh', setup ?? '', `exec ${[CLAUDE, ...args].map(quote).join(' ')}`].filter(Boolean);
+  const lines = ['#!/bin/sh', `cd ${quote(cwd)} || exit`, setup ?? '', `exec ${[CLAUDE, ...args].map(quote).join(' ')}`].filter(Boolean);
   await writeFile(script, `${lines.join('\n')}\n`);
-  await ghostty.newTab(worktree, `/bin/sh ${quote(script)}`);
+  await ghostty.newTab(cwd, `/bin/sh ${quote(script)}`);
 }
 
 export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null }) {
@@ -50,27 +49,28 @@ export async function startClaude(opts: { repoId: number; worktree: string; prom
   return id;
 }
 
-export async function continueConversation(opts: { repoId: number; worktree: string; continueId: string }) {
+export async function continueConversation(opts: { repoId: number; worktree: string; continueId: string; cwd?: string }) {
   const id = opts.continueId;
+  const cwd = opts.cwd ?? opts.worktree;
   const existing = sessions.get(id);
   if (existing && existing.status !== 'exited') {
     await focus(id);
     return id;
   }
   if ((await liveConversations()).has(id)) throw new Error('this conversation is open in a terminal that is not a Ghostty tab');
-  const meta = await conversationMeta(opts.worktree, id);
+  const meta = await conversationMeta(cwd, id);
   if (!meta) throw new Error('conversation not found in this worktree');
   sessions.insert({
-    id, repoId: opts.repoId, worktree: opts.worktree, cwd: opts.worktree, pid: null, tty: null,
+    id, repoId: opts.repoId, worktree: opts.worktree, cwd, pid: null, tty: null,
     title: meta.title, firstPrompt: meta.firstPrompt, status: 'idle',
   });
-  await launch(id, opts.worktree, ['--resume', id]);
+  await launch(id, cwd, ['--resume', id]);
   notify();
   return id;
 }
 
-export async function openShell(worktree: string, command?: string | null) {
-  await ghostty.newTab(worktree, command ?? '');
+export async function openShell(worktree: string, setup?: string | null) {
+  await ghostty.newTab(worktree, setup ? `/bin/sh -c ${quote(setup)}` : '');
 }
 
 async function ttyOf(pid: number) {
@@ -108,10 +108,11 @@ async function adopt(id: string, p: LiveProcess) {
   }
   ignored.delete(id);
   const meta = await conversationMeta(p.cwd, id);
+  const tty = await ttyOf(p.pid);
   // A sync that started before a worktree was deleted must not bring its sessions back.
   if (deleting.has(worktree.path) || !existsSync(p.cwd)) return false;
   sessions.insert({
-    id, repoId: worktree.repoId, worktree: worktree.path, cwd: p.cwd, pid: p.pid, tty: await ttyOf(p.pid),
+    id, repoId: worktree.repoId, worktree: worktree.path, cwd: p.cwd, pid: p.pid, tty,
     title: meta?.title ?? null, firstPrompt: meta?.firstPrompt ?? null, status: statusOf(p),
   });
   void refreshDiffstat(id);
@@ -133,6 +134,8 @@ async function readTranscript(s: Session) {
     patch.question = input?.success
       ? { toolUseId: ask!.toolUseId, ...input.data, options: input.data.options ?? [], askedAt: ask!.at }
       : null;
+    // The MCP server rejected this call, so Claude never saw it as a question either.
+    if (ask && !input?.success) patch.dismissedAsk = ask.toolUseId;
     patch.rank = null;
     patch.rankReason = null;
     patch.advice = null;
@@ -198,7 +201,7 @@ function liveTty(s: Session) {
 
 export async function focus(id: string) {
   const s = must(id);
-  if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, continueId: id });
+  if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: id });
   else await ghostty.focus(liveTty(s));
 }
 
@@ -211,6 +214,7 @@ async function isCommand(s: Session, text: string) {
 export async function answer(id: string, reply: { choice?: string; text?: string }, commands = true) {
   const s = must(id);
   const tty = liveTty(s);
+  if (s.status === 'waiting') throw new Error(`Claude is showing ${s.waitingFor ?? 'a prompt'} in its terminal; answer that there first`);
   const text = reply.text?.trim() ?? '';
   if (!reply.choice && !text) throw new Error('empty answer');
   // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
@@ -281,30 +285,35 @@ async function removing(path: string, work: () => Promise<void>) {
   }
 }
 
+// Claudes go first: one still running would write into the deleted tree and recreate parts of it.
 export async function removeWorktreeAndSessions(repo: RepoView, path: string, opts: { force: boolean; deleteBranch: boolean }) {
+  const worktree = repo.worktrees.find((w) => w.path === path);
+  if (!worktree) throw new Error('worktree not found');
+  if (worktree.isMain) throw new Error('this is the repository itself, not a worktree');
   await removing(path, async () => {
-    await removeWorktree(repo.path, path, opts);
+    if (!opts.force && !(await isClean(path))) {
+      throw new Error('the worktree has uncommitted or untracked changes; tick Force to discard them');
+    }
+    const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === path || p.cwd.startsWith(`${path}/`));
+    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
+    for (const o of sessions.all().filter((o) => o.worktree === path)) stopAdvice(o.id);
+    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
+    await waitForExit(claudes.map((p) => p.pid), 10_000);
+    await ghostty.closeTerminalsIn(path, ttys);
+    const keepBranch = !worktree.branch || longLived(repo, worktree.branch);
+    await removeWorktree(repo.path, path, { force: opts.force, deleteBranch: opts.deleteBranch && !keepBranch });
     stopWorktree(path);
   });
 }
 
+const longLived = (repo: RepoView, branch: string) =>
+  ['master', 'main', 'develop', 'trunk', repo.base, repo.base.replace(/^[^/]+\//, '')].includes(branch) || branch.startsWith('release/');
+
 export async function deleteWorktree(id: string) {
   const s = must(id);
   const repo = repoView(s.repoId);
-  const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
-  if (!repo || !worktree) throw new Error('worktree not found');
-  if (worktree.isMain) throw new Error('this is the repository itself, not a worktree');
-  const isBase = worktree.branch === repo.base.replace(/^origin\//, '');
-  await removing(s.worktree, async () => {
-    const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === s.worktree || p.cwd.startsWith(`${s.worktree}/`));
-    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
-    for (const o of sessions.all().filter((o) => o.worktree === s.worktree)) stopAdvice(o.id);
-    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
-    await waitForExit(claudes.map((p) => p.pid), 10_000);
-    await ghostty.closeTerminalsIn(s.worktree, ttys);
-    await removeWorktree(repo.path, s.worktree, { force: true, deleteBranch: !isBase });
-    stopWorktree(s.worktree);
-  });
+  if (!repo) throw new Error('worktree not found');
+  await removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
 }
 
 function clearQuestion(id: string) {

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { loginEnv, which } from './env.ts';
 
-const CLAUDE = await which('claude');
+export const CLAUDE = await which('claude');
 
 export interface HeadlessOptions {
   cwd: string;
@@ -52,6 +52,8 @@ export function headless(prompt: string, opts: HeadlessOptions): Promise<Record<
         reject(new Error(`claude -p printed invalid JSON: ${out.slice(0, 300)}`));
       }
     });
+    // Claude may exit before reading a long prompt; `close` reports that, and EPIPE must not crash the server.
+    child.stdin.on('error', () => {});
     child.stdin.end(prompt);
   });
 }
