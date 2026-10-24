@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition, type CSSProperties, type Ke
 import { api } from '../api.ts';
 import type { FullDiff } from '../types.ts';
 import styles from './DiffView.module.css';
-import { fileAnchor, FileTree } from './FileTree.tsx';
+import { fileAnchor, FileTree, treeOrder } from './FileTree.tsx';
 
 registerCustomTheme('darcula', async () => (await import('../themes/darcula.json')).default as ThemeRegistration);
 
@@ -146,7 +146,7 @@ export function DiffView({ worktree }: { worktree: string }) {
     e.preventDefault();
   };
 
-  const files = diff ? parsePatchFiles(diff.patch).flatMap((p) => p.files) : [];
+  const files = diff ? treeOrder(parsePatchFiles(diff.patch).flatMap((p) => p.files)) : [];
   const shown = focused ? [whole?.name === focused ? whole : files.find((f) => f.name === focused)].filter((f) => !!f) : files;
 
   useEffect(() => {

@@ -35,11 +35,18 @@ const letter = (f: FileDiffMetadata) => (f.type === 'new' ? 'A' : f.type === 'de
 const counts = (f: FileDiffMetadata) =>
   f.hunks.reduce((sum, h) => ({ add: sum.add + h.additionLines, del: sum.del + h.deletionLines }), { add: 0, del: 0 });
 
+const sortedDirs = (dir: Dir) => [...dir.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
+const sortedFiles = (dir: Dir) => dir.files.toSorted((a, b) => a.name.localeCompare(b.name));
+
+const flatten = (dir: Dir): FileDiffMetadata[] => [...sortedDirs(dir).flatMap(flatten), ...sortedFiles(dir)];
+
+export const treeOrder = (files: FileDiffMetadata[]) => flatten(build(files));
+
 export const fileAnchor = (name: string) => `file-${encodeURIComponent(name)}`;
 
 function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null; onSelect: (name: string) => void }) {
-  const dirs = [...dir.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const files = dir.files.toSorted((a, b) => a.name.localeCompare(b.name));
+  const dirs = sortedDirs(dir);
+  const files = sortedFiles(dir);
   return (
     <ul role="group">
       {dirs.map((d) => (
