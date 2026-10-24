@@ -9,6 +9,7 @@ const MODEL = 'sonnet';
 const MAX_PARALLEL = 2;
 const MAX_CONTEXT = 24_000;
 const RETRY_AFTER_MS = 5 * 60_000;
+const WHILE_WORKING_EVERY_MS = 60_000;
 
 const running = new Set<string>();
 const failed = new Map<string, number>();
@@ -17,14 +18,15 @@ const schema = {
   type: 'object',
   properties: {
     headline: { type: 'string' },
-    know: { type: 'array', items: { type: 'string' } },
+    progress: { type: 'array', items: { type: 'string' } },
+    learnings: { type: 'array', items: { type: 'string' } },
     decision: {
       type: 'object',
       properties: { problem: { type: 'string' }, brief: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } },
       required: ['problem', 'brief', 'options'],
     },
   },
-  required: ['headline', 'know', 'decision'],
+  required: ['headline', 'progress', 'learnings', 'decision'],
 };
 
 let looping = false;
@@ -54,9 +56,11 @@ export async function summarizeStale() {
 }
 
 const due = (s: Session) =>
-  !s.archived && s.status !== 'working' && s.status !== 'waiting' && !running.has(s.id) && Date.now() - (failed.get(s.id) ?? 0) >= RETRY_AFTER_MS;
+  !s.archived && !running.has(s.id) && Date.now() - (failed.get(s.id) ?? 0) >= RETRY_AFTER_MS &&
+  (s.status !== 'working' || Date.now() - (s.summary?.at ?? 0) >= WHILE_WORKING_EVERY_MS);
 
-const fresh = (s: Session, latest: string) => s.summary?.basis === latest && s.summary.question === (s.question?.toolUseId ?? null);
+const fresh = (s: Session, latest: string) =>
+  s.summary?.basis === latest && s.summary.question === (s.question?.toolUseId ?? null) && !!s.summary.learnings;
 
 // Only the turns since the previous summary, so a long session costs the same as a short one. Claude's
 // latest message always goes in: it is what any open decision is read from.
@@ -71,6 +75,8 @@ function newTurns(turns: Turn[], basis: string | undefined) {
   }
   return picked;
 }
+
+const list = (items: string[] | undefined) => items?.map((i) => `- ${i}`).join('\n') || '(none)';
 
 function prompt(s: Session, turns: Turn[]) {
   const transcript = turns.map((t) => `[${t.role}]\n${t.text}`).join('\n\n');
@@ -87,9 +93,11 @@ ${clip(q.details, 6000)}`
 Repository: ${repoView(s.repoId)?.name ?? s.worktree}
 Task as first given: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 
-Previous briefing: ${s.summary?.text ?? '(none yet)'}
-Things to know so far:
-${s.summary?.know?.map((k) => `- ${k}`).join('\n') || '(none yet)'}
+Previous headline: ${s.summary?.text ?? '(none yet)'}
+Progress so far:
+${list(s.summary?.progress)}
+Worth knowing so far:
+${list(s.summary?.learnings)}
 
 Conversation since then (latest last; earlier parts may be cut):
 ${transcript}
@@ -98,7 +106,8 @@ ${question}
 
 Reply with:
 - headline: 1 or 2 short sentences of plain text, under 200 characters: where the task stands right now.
-- know: 2 to 5 short plain-text points the developer should know, carried over from the previous list and updated: outcomes, what changed, test or CI results, risks, blockers, surprises. Concrete facts (files, numbers, decisions), no narration, nothing the headline already says.
+- progress: up to 4 short plain-text points on what has been done and what comes next, carried over from the previous list and updated. Concrete (files, results, decisions), no narration, nothing the headline already says.
+- learnings: what is worth knowing, carried over from the previous list. Most tasks have nothing here, so return [] unless something clears this bar: a finding the developer would want to hear even if they never looked at this task again, and that they could not have guessed from the task itself. For example: the real cause differs from what was assumed; the plan, ticket or a requirement turned out wrong; a hidden risk, side effect or affected area outside the task; a non-obvious gotcha in the codebase, tooling or environment worth remembering; a result that should change priorities. Never: what was done, routine results, passing tests, plans or next steps, or context that only matters for the open decision (that belongs in its brief). Each point is one or two plain sentences saying what was found and why it matters. Drop a point that turned out wrong or does not clear this bar.
 - decision: ${q
     ? 'restate the open question. problem: one plain sentence naming what has to be decided. brief: 2 to 4 sentences of plain text with the context needed to decide and the trade-off, and which way Claude leans. options: [].'
     : 'if Claude\'s latest message ends by asking the developer to decide, approve or provide something, fill problem (one plain sentence), brief (2 to 4 sentences: context, trade-off, what Claude leans to) and options (the short labels of the concrete choices it offered, or [] when it needs free text). Otherwise all three empty.'}`;
@@ -121,8 +130,8 @@ async function summarize(s: Session, turns: Turn[]) {
     const decision = problem || s.question
       ? { problem: problem || s.question!.title, brief: String(r.decision?.brief ?? '').trim(), options: s.question ? [] : (r.decision?.options ?? []).map(String).filter(Boolean) }
       : null;
-    const know = (r.know ?? []).map(String).filter(Boolean);
-    sessions.update(s.id, { summary: { text, know, decision, question: s.question?.toolUseId ?? null, basis, at: Date.now() } });
+    const strings = (v: unknown) => (Array.isArray(v) ? v.map(String).map((x) => x.trim()).filter(Boolean) : []);
+    sessions.update(s.id, { summary: { text, progress: strings(r.progress), learnings: strings(r.learnings), decision, question: s.question?.toolUseId ?? null, basis, at: Date.now() } });
     failed.delete(s.id);
     notify();
   } catch (err) {

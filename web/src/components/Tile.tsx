@@ -18,6 +18,9 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
       <header className={styles.head}>
         <AttentionChip session={session} />
         {q && <span className={styles.rank} title={session.rankReason ?? undefined}>{session.rank ? `#${session.rank}` : '…'}</span>}
+        {!!session.summary?.learnings?.length && (
+          <span className={styles.learned} title={session.summary.learnings.join('\n\n')}>Worth knowing</span>
+        )}
         <span className={styles.age}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>

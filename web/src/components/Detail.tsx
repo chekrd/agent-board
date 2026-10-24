@@ -74,17 +74,12 @@ function Overview({ session }: { session: Session }) {
   return (
     <div className={styles.overview}>
       <Working session={session} large />
-      <section className={styles.know}>
-        <h4>What you should know {summary && <span>· updated {ago(summary.at)}</span>}</h4>
-        {summary ? (
-          <>
-            <p className={styles.headline}>{summary.text}</p>
-            {!!summary.know?.length && <ul>{summary.know.map((k) => <li key={k}>{k}</li>)}</ul>}
-          </>
-        ) : (
-          <p className={styles.pending}>No briefing yet; it is written once Claude finishes a turn.</p>
-        )}
-      </section>
+      {!!summary?.learnings?.length && (
+        <section className={styles.know}>
+          <h4>Worth knowing</h4>
+          <ul>{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
+        </section>
+      )}
       {decision ? (
         <DecisionCard key={decision.key} session={session} decision={decision} />
       ) : session.status === 'waiting' ? (
@@ -100,6 +95,17 @@ function Overview({ session }: { session: Session }) {
           </section>
         )
       )}
+      <section className={styles.status}>
+        <h4>Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>
+        {summary ? (
+          <>
+            <p>{summary.text}</p>
+            {!!summary.progress?.length && <ul>{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
+          </>
+        ) : (
+          <p className={styles.pending}>No summary yet; it is written once Claude replies.</p>
+        )}
+      </section>
       {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
       <section>
         <h4>Facts</h4>

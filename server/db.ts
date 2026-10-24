@@ -111,7 +111,8 @@ export interface Decision {
 
 export interface Summary {
   text: string;
-  know?: string[];
+  progress?: string[];
+  learnings?: string[];
   decision?: Decision | null;
   question?: string | null;
   basis: string;
