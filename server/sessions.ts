@@ -10,7 +10,7 @@ import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, 
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
-import { fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch } from './git.ts';
+import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
 import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
@@ -395,6 +395,17 @@ export async function checkoutExistingBranch(repo: RepoView, branch: string) {
 
 const longLived = (repo: RepoView, branch: string) =>
   ['master', 'main', 'develop', 'trunk', repo.base, repo.base.replace(/^[^/]+\//, '')].includes(branch) || branch.startsWith('release/');
+
+// What Delete worktree would throw away, for its confirmation.
+export async function deleteWorktreeLoss(id: string) {
+  const s = must(id);
+  const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
+  if (!worktree) throw new Error('worktree not found');
+  const repo = repoView(s.repoId)!;
+  const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
+  const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
+  return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
+}
 
 export async function deleteWorktree(id: string) {
   const s = must(id);

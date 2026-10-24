@@ -140,6 +140,8 @@ app.post('/api/shell', async (c) => {
   return c.body(null, 204);
 });
 
+app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));
+
 app.post('/api/sessions/:id/:action', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({}));
