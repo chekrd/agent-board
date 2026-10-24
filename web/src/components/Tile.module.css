@@ -4,11 +4,11 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-height: 132px;
+    min-height: 150px;
     cursor: pointer;
     transition: border-color 120ms, box-shadow 120ms;
 
@@ -29,8 +29,6 @@
     gap: 6px;
     button { padding: 0 6px; }
   }
-
-  .rank { font-size: 12px; font-weight: 700; color: var(--accent); }
 
   .learned {
     font-size: 11px;

@@ -25,7 +25,6 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
     <article className={styles.tile} data-tile data-attention={attentionOf(session)} onClick={open}>
       <header className={styles.head}>
         <AttentionChip session={session} />
-        {(session.menu || decision) && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
         {!!session.summary?.learnings?.length && (
           <span className={styles.learned} title="Claude found something notable; open the task to read it">Worth knowing</span>
         )}

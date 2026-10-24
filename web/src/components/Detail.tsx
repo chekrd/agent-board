@@ -48,7 +48,6 @@ export function Detail({ session, repos, tab }: Props) {
           </div>
         </div>
         <div className={styles.actions}>
-          <FocusButton session={session} primary />
           <SessionMenu session={session} worktree={worktree} />
         </div>
       </header>
