@@ -7,7 +7,7 @@ export interface Route {
 
 navigation.addEventListener('navigate', (event) => {
   const url = new URL(event.destination.url);
-  if (!event.canIntercept || event.hashChange || event.downloadRequest !== null) return;
+  if (!event.canIntercept || event.hashChange || event.downloadRequest !== null || event.navigationType === 'reload') return;
   if (url.origin !== location.origin || url.pathname.startsWith('/api')) return;
   event.intercept();
 });
