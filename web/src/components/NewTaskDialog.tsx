@@ -53,7 +53,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
             </label>
             <label>
               Worktree path
-              <input name="path" placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}`} />
+              <input name="path" placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}/${repo.path.split('/').at(-1)}`} />
             </label>
           </div>
           <label>

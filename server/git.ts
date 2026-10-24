@@ -55,15 +55,21 @@ export async function listWorktrees(repo: string): Promise<Worktree[]> {
   });
 }
 
-export async function addWorktree(repo: string, path: string, branch: string, base: string) {
-  const exists = await ok(git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]));
-  await git(repo, exists ? ['worktree', 'add', path, branch] : ['worktree', 'add', '-b', branch, path, base]);
+const GIT_WT = join(import.meta.dirname, '..', 'scripts', 'git-wt');
+
+async function gitWt(repo: string, args: string[]) {
+  const { stdout } = await run(GIT_WT, args, { cwd: repo, env: { ...loginEnv, GIT_OPTIONAL_LOCKS: '0' } }).catch((err) => {
+    throw new Error(String(err.stderr || err.message).trim());
+  });
+  return stdout.trim();
+}
+
+export async function addWorktree(repo: string, opts: { branch: string; task: string; base: string; root: string; path?: string }) {
+  return gitWt(repo, ['add', opts.branch, '--task', opts.task, '--base', opts.base, '--root', opts.root, ...(opts.path ? ['--path', opts.path] : [])]);
 }
 
 export async function removeWorktree(repo: string, path: string, opts: { force: boolean; deleteBranch: boolean }) {
-  const branch = (await listWorktrees(repo)).find((w) => w.path === path)?.branch;
-  await git(repo, ['worktree', 'remove', ...(opts.force ? ['--force'] : []), path]);
-  if (opts.deleteBranch && branch) await git(repo, ['branch', '-D', branch]);
+  await gitWt(repo, ['rm', path, ...(opts.force ? ['--force'] : []), ...(opts.deleteBranch ? ['--delete-branch'] : [])]);
 }
 
 export interface DiffStat {

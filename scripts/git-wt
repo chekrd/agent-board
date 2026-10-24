@@ -1,0 +1,156 @@
+#!/bin/sh
+# Worktrees laid out as <parent of the repo>/worktrees/<task>/<repo folder>, so one task
+# can span several sibling repositories and ../<sibling> paths keep working inside it.
+set -eu
+
+usage() {
+  cat >&2 <<'EOF'
+usage: git wt add <branch> [--task <name>] [--from <ref>] [--base <ref>] [--root <dir>] [--path <dir>]
+       git wt rm [<branch> | <path>] [--force] [--delete-branch]
+
+add  Creates (or reuses) the worktree for <branch> and prints its path. The task folder
+     defaults to the branch, with / turned into -. A new branch starts from <ref>, else
+     origin/<branch> when that exists, else --base or the base branch (master, main or
+     origin/HEAD).
+     Files matched by the main checkout's .worktreeinclude are copied in.
+rm   Removes the worktree of <branch>, the one at <path>, or the current one, and the
+     task folder once it is empty.
+EOF
+  exit 2
+}
+
+die() {
+  echo "git wt: $*" >&2
+  exit 1
+}
+
+main_checkout() {
+  git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p'
+}
+
+real() {
+  (cd "$1" 2>/dev/null && pwd -P)
+}
+
+common_dir() {
+  git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null
+}
+
+has_ref() {
+  git -C "$main" show-ref --verify --quiet "$1"
+}
+
+base_branch() {
+  for b in master main; do
+    if has_ref "refs/heads/$b"; then
+      echo "$b"
+      return
+    fi
+  done
+  git -C "$main" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo HEAD
+}
+
+worktree_of_branch() {
+  git -C "$main" worktree list --porcelain | awk -v ref="refs/heads/$1" '
+    /^worktree / { path = substr($0, 10) }
+    $0 == "branch " ref { print path; exit }'
+}
+
+branch_of_worktree() {
+  git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
+copy_included() {
+  [ -f "$main/.worktreeinclude" ] || return 0
+  git -C "$main" ls-files -z --others --ignored --exclude-from="$main/.worktreeinclude" |
+    tar -C "$main" --null -T - -cf - | tar -C "$1" -xf -
+}
+
+add() {
+  branch= task= from= base= root= path=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --task) task=${2:?}; shift 2 ;;
+      --from) from=${2:?}; shift 2 ;;
+      --base) base=${2:?}; shift 2 ;;
+      --root) root=${2:?}; shift 2 ;;
+      --path) path=${2:?}; shift 2 ;;
+      -*) usage ;;
+      *) [ -z "$branch" ] || usage; branch=$1; shift ;;
+    esac
+  done
+  [ -n "$branch" ] || usage
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "not a valid branch name: $branch"
+
+  [ -n "$root" ] || root="$(dirname "$main")/worktrees"
+  task=$(printf '%s' "${task:-$branch}" | tr / -)
+  [ -n "$path" ] || path="$root/$task/$(basename "$main")"
+
+  if [ -e "$path" ]; then
+    top=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null || true)
+    if [ "$(common_dir "$path")" = "$(common_dir "$main")" ] && [ -n "$top" ] && [ "$(real "$top")" = "$(real "$path")" ]; then
+      echo "$path"
+      return
+    fi
+    die "$path already exists and is not a worktree of $main"
+  fi
+
+  if has_ref "refs/heads/$branch"; then
+    git -C "$main" worktree add --quiet "$path" "$branch" >&2
+  elif [ -z "$from" ] && has_ref "refs/remotes/origin/$branch"; then
+    git -C "$main" worktree add --quiet --track -b "$branch" "$path" "origin/$branch" >&2
+  else
+    git -C "$main" worktree add --quiet --no-track -b "$branch" "$path" "${from:-${base:-$(base_branch)}}" >&2
+  fi
+
+  if has_ref "refs/remotes/origin/$branch" && ! git -C "$path" rev-parse --quiet --verify '@{upstream}' >/dev/null 2>&1; then
+    git -C "$path" branch --quiet --set-upstream-to="origin/$branch" "$branch" >&2
+  fi
+  copy_included "$path"
+  echo "$path"
+}
+
+rm_worktree() {
+  target= force= delete_branch=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --force) force=--force; shift ;;
+      --delete-branch) delete_branch=1; shift ;;
+      -*) usage ;;
+      *) [ -z "$target" ] || usage; target=$1; shift ;;
+    esac
+  done
+
+  if [ -z "$target" ]; then
+    path=$(git rev-parse --show-toplevel)
+  elif [ -d "$target" ]; then
+    path=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null) || die "not a worktree: $target"
+  else
+    path=$(worktree_of_branch "$target")
+    [ -n "$path" ] || die "no worktree has branch $target"
+  fi
+  [ "$(common_dir "$path")" = "$(common_dir "$main")" ] || die "$path is not a worktree of $main"
+  [ "$(real "$path")" != "$(real "$main")" ] || die "cannot remove the main checkout"
+
+  branch=$(branch_of_worktree "$path")
+  git -C "$main" worktree remove $force "$path"
+  if [ -n "$delete_branch" ] && [ -n "$branch" ]; then
+    git -C "$main" branch --quiet -D "$branch"
+  fi
+  parent=$(dirname "$path")
+  if [ "$(basename "$parent")" != worktrees ]; then
+    rmdir "$parent" 2>/dev/null || true
+  fi
+}
+
+[ $# -gt 0 ] || usage
+command=$1
+shift
+main=$(main_checkout)
+[ -n "$main" ] || die "not inside a git repository"
+
+case $command in
+  add) add "$@" ;;
+  rm) rm_worktree "$@" ;;
+  *) usage ;;
+esac

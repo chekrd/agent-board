@@ -86,8 +86,9 @@ app.post('/api/worktrees', async (c) => {
   if (!repo) throw new Error('unknown repo');
   const name = body.name.trim();
   if (!name) throw new Error('name is required');
-  const path = body.path?.trim() || join(repo.defaultWorktreeRoot, name);
-  await addWorktree(repo.path, path, body.branch?.trim() || name, repo.base);
+  const path = await addWorktree(repo.path, {
+    branch: body.branch?.trim() || name, task: name, base: repo.base, root: repo.defaultWorktreeRoot, path: body.path?.trim() || undefined,
+  });
   await refreshWorkspace();
   if (body.startClaude === false) {
     if (repo.setupCommand) await S.openShell(path, repo.setupCommand);
