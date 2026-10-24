@@ -211,11 +211,8 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
         {q && <span className={styles.age}>asked {ago(q.askedAt)}</span>}
       </div>
       <h3>{decision.problem}</h3>
-      {decision.brief ? (
-        <p className={styles.brief}>{decision.brief}</p>
-      ) : (
-        decision.details && <Markdown source={decision.details} />
-      )}
+      {decision.brief && <p className={styles.brief}>{decision.brief}</p>}
+      {decision.context && <div className={styles.context}><Markdown source={decision.context} /></div>}
       <button type="button" className={styles.elaborate} data-variant="ghost" aria-expanded={open} onClick={toggle} title={open ? undefined : 'A model reads the code and explains the background and each choice'}>
         {open ? 'Less' : 'Elaborate'}
       </button>
@@ -229,12 +226,6 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
             </p>
           ) : (
             <Markdown source={explanation.text} />
-          )}
-          {decision.brief && decision.details && (
-            <details className={styles.original}>
-              <summary>Claude's own write-up</summary>
-              <Markdown source={decision.details} />
-            </details>
           )}
         </div>
       )}

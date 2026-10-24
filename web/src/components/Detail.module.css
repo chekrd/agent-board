@@ -114,6 +114,8 @@
 
   .brief { font-size: 14px; line-height: 1.5; }
 
+  .context { font-size: 14px; line-height: 1.5; }
+
   .elaborate {
     align-self: flex-start;
     padding: 2px 0;
@@ -137,7 +139,6 @@
 
   .failed { color: var(--del); }
 
-  .original summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
 
   .blocked {
     display: flex;

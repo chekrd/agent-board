@@ -21,7 +21,7 @@ export interface DecisionView {
   key: string;
   problem: string;
   brief: string;
-  details: string | null;
+  context: string;
   options: QuestionOption[];
 }
 
@@ -30,10 +30,12 @@ export function decisionOf(s: Session): DecisionView | null {
   const summary = s.summary;
   if (q) {
     const d = summary?.question === q.toolUseId ? summary.decision : null;
-    return { key: `q:${q.toolUseId}`, problem: d?.problem || q.title, brief: d?.brief ?? '', details: q.details, options: q.options };
+    return { key: `q:${q.toolUseId}`, problem: d?.problem || q.title, brief: d?.brief ?? '', context: q.details, options: q.options };
   }
   const d = summary?.question === null && s.status === 'idle' ? summary.decision : null;
-  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, details: null, options: d.options.map((label) => ({ label })) } : null;
+  // Summaries written before options had descriptions stored bare labels.
+  const options = d?.options.map((o) => (typeof o === 'string' ? { label: o } : o)) ?? [];
+  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, context: d.context ?? '', options } : null;
 }
 
 export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';

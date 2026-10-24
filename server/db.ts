@@ -106,7 +106,8 @@ export interface PrFlow {
 export interface Decision {
   problem: string;
   brief: string;
-  options: string[];
+  context?: string;
+  options: QuestionOption[];
 }
 
 export interface Summary {

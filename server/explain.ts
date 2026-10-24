@@ -12,13 +12,13 @@ const decisionKey = (s: Session) =>
 function prompt(s: Session) {
   const q = s.question;
   const d = s.summary?.decision;
-  const options = q ? q.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ''}`).join('\n') : d?.options.map((o) => `- ${o}`).join('\n');
+  const options = q ? q.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ''}`).join('\n') : d?.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ''}`).join('\n');
   return `A developer runs a coding agent (Claude) in the git worktree ${s.worktree} (repository ${repoView(s.repoId)?.name ?? ''}, base branch ${repoView(s.repoId)?.base ?? 'unknown'}). The agent needs a decision from them, and they asked for a deeper explanation so they can understand the topic before deciding.
 
 The task: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 
 The decision: ${q?.title ?? d?.problem}
-${q ? clip(q.details, 6000) : d?.brief ?? ''}
+${q ? clip(q.details, 6000) : [d?.brief, d?.context].filter(Boolean).join('\n\n')}
 
 Choices:
 ${options || '(none; the developer answers in free text)'}

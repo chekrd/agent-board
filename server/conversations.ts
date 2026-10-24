@@ -12,6 +12,7 @@ const HEAD_BYTES = 128 << 10;
 const TAIL_BYTES = 512 << 10;
 const MAX_TAIL_BYTES = 8 << 20;
 const MAX_LINE = 256 << 10;
+const MAX_MESSAGE = 12_000;
 
 export interface Conversation {
   id: string;
@@ -141,13 +142,13 @@ function turns(entries: Record<string, any>[]): Turn[] {
     if (prompt) return [{ id: e.uuid, role: 'developer', text: prompt }];
     if (e.message?.model === '<synthetic>' || e.isApiErrorMessage) return [];
     const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-    return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, 4000) }] : [];
+    return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, MAX_MESSAGE) }] : [];
   });
 }
 
 function lastMessage(entries: Record<string, any>[]) {
   const text = entries.map((e) => blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).findLast(Boolean);
-  return text ? text.trim().slice(0, 4000) : null;
+  return text ? text.trim().slice(0, MAX_MESSAGE) : null;
 }
 
 export function describeTool(tool: Record<string, any>) {

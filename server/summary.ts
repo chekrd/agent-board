@@ -22,8 +22,16 @@ const schema = {
     learnings: { type: 'array', items: { type: 'string' } },
     decision: {
       type: 'object',
-      properties: { problem: { type: 'string' }, brief: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } },
-      required: ['problem', 'brief', 'options'],
+      properties: {
+        problem: { type: 'string' },
+        brief: { type: 'string' },
+        context: { type: 'string' },
+        options: {
+          type: 'array',
+          items: { type: 'object', properties: { label: { type: 'string' }, description: { type: 'string' } }, required: ['label', 'description'] },
+        },
+      },
+      required: ['problem', 'brief', 'context', 'options'],
     },
   },
   required: ['headline', 'progress', 'learnings', 'decision'],
@@ -60,7 +68,8 @@ const due = (s: Session) =>
   (s.status !== 'working' || Date.now() - (s.summary?.at ?? 0) >= WHILE_WORKING_EVERY_MS);
 
 const fresh = (s: Session, latest: string) =>
-  s.summary?.basis === latest && s.summary.question === (s.question?.toolUseId ?? null) && !!s.summary.learnings;
+  s.summary?.basis === latest && s.summary.question === (s.question?.toolUseId ?? null) && !!s.summary.learnings &&
+  (!s.summary.decision || s.summary.decision.context !== undefined);
 
 // Only the turns since the previous summary, so a long session costs the same as a short one. Claude's
 // latest message always goes in: it is what any open decision is read from.
@@ -109,8 +118,12 @@ Reply with:
 - progress: up to 4 short plain-text points on what has been done and what comes next, carried over from the previous list and updated. Concrete (files, results, decisions), no narration, nothing the headline already says.
 - learnings: what is worth knowing, carried over from the previous list. Most tasks have nothing here, so return [] unless something clears this bar: a finding the developer would want to hear even if they never looked at this task again, and that they could not have guessed from the task itself. For example: the real cause differs from what was assumed; the plan, ticket or a requirement turned out wrong; a hidden risk, side effect or affected area outside the task; a non-obvious gotcha in the codebase, tooling or environment worth remembering; a result that should change priorities. Never: what was done, routine results, passing tests, plans or next steps, or context that only matters for the open decision (that belongs in its brief). Each point is one or two plain sentences saying what was found and why it matters. Drop a point that turned out wrong or does not clear this bar.
 - decision: ${q
-    ? 'restate the open question. problem: one plain sentence naming what has to be decided. brief: 2 to 4 sentences of plain text with the context needed to decide and the trade-off, and which way Claude leans. options: [].'
-    : 'if Claude\'s latest message ends by asking the developer to decide, approve or provide something, fill problem (one plain sentence), brief (2 to 4 sentences: context, trade-off, what Claude leans to) and options (the short labels of the concrete choices it offered, or [] when it needs free text). Otherwise all three empty.'}`;
+    ? 'restate the open question. problem: one plain sentence naming what has to be decided. brief: 2 to 4 sentences of plain text with the context needed to decide and the trade-off, and which way Claude leans. context: "" (Claude\'s own details are shown next to it). options: [].'
+    : `if Claude's latest message ends by asking the developer to decide, approve or provide something, fill it in; otherwise leave every field empty. The developer decides from this card alone, without reading the conversation, so it must hold everything they need: never refer to a number, name or item from the conversation without saying what it is.
+  - problem: one plain sentence naming what has to be decided.
+  - brief: 2 to 4 sentences of plain text: the situation, the trade-off, and which way Claude leans.
+  - context: Markdown with the rest of what the decision needs. When the choice is among items, proposals, files or findings in Claude's message, list every one of them with its number if it has one, what it is and why it matters, one tight line each. "" when the brief already says it all.
+  - options: each concrete choice Claude offered. label: short button text. description: one plain sentence saying exactly what happens if it is chosen, naming the items it covers rather than only their numbers. [] when Claude needs free text.`}`;
 }
 
 async function summarize(s: Session, turns: Turn[]) {
@@ -127,8 +140,16 @@ async function summarize(s: Session, turns: Turn[]) {
     if (!text) throw new Error('empty summary');
     if (!sessions.get(s.id)) return;
     const problem = String(r.decision?.problem ?? '').trim();
+    const options = (Array.isArray(r.decision?.options) ? r.decision.options : [])
+      .map((o: any) => ({ label: String(o?.label ?? '').trim(), description: String(o?.description ?? '').trim() || undefined }))
+      .filter((o: { label: string }) => o.label);
     const decision = problem || s.question
-      ? { problem: problem || s.question!.title, brief: String(r.decision?.brief ?? '').trim(), options: s.question ? [] : (r.decision?.options ?? []).map(String).filter(Boolean) }
+      ? {
+        problem: problem || s.question!.title,
+        brief: String(r.decision?.brief ?? '').trim(),
+        context: s.question ? '' : String(r.decision?.context ?? '').trim(),
+        options: s.question ? [] : options,
+      }
       : null;
     const strings = (v: unknown) => (Array.isArray(v) ? v.map(String).map((x) => x.trim()).filter(Boolean) : []);
     sessions.update(s.id, { summary: { text, progress: strings(r.progress), learnings: strings(r.learnings), decision, question: s.question?.toolUseId ?? null, basis, at: Date.now() } });
