@@ -8,6 +8,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
 import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
+import { ARTIFACT_CSP, artifactFile } from './artifacts.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
@@ -138,6 +139,13 @@ app.post('/api/sessions', async (c) => {
 app.post('/api/shell', async (c) => {
   await S.openShell((await c.req.json<{ worktree: string }>()).worktree);
   return c.body(null, 204);
+});
+
+app.get('/api/sessions/:id/artifacts/:artifact', async (c) => {
+  const html = await readFile(artifactFile(c.req.param('id'), c.req.param('artifact')), 'utf8').catch(() => null);
+  if (html === null) return c.text('artifact not found', 404);
+  c.header('content-security-policy', ARTIFACT_CSP);
+  return c.html(html);
 });
 
 app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));

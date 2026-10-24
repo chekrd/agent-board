@@ -40,6 +40,12 @@ test('ask_human calls under the names used before the renames still count', asyn
   }
 });
 
+test('create_artifact calls are collected from the transcript', async () => {
+  const html = '<svg></svg>';
+  const m = await meta([prompt('Explain the flow'), assistant([text('Here is a diagram.'), toolUse('v1', 'mcp__agent-board__create_artifact', { title: 'Flow', html })])]);
+  assert.deepEqual(m.artifacts.map((a) => [a.toolUseId, a.input.title, a.input.html]), [['v1', 'Flow', html]]);
+});
+
 test('a custom title beats a later generated one', async () => {
   const m = await meta([
     prompt('Fix the login'),

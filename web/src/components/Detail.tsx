@@ -4,6 +4,7 @@ import { go, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { ago, decisionOf, locate, sessionLabel, type DecisionView } from '../util.ts';
 import { AnswerForm } from './AnswerForm.tsx';
+import { ArtifactLinks, Artifacts } from './Artifacts.tsx';
 import styles from './Detail.module.css';
 import { DiffView } from './DiffView.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -17,13 +18,15 @@ interface Props {
   session: Session;
   repos: RepoView[];
   tab: string;
+  item: string | null;
 }
 
-export function Detail({ session, repos, tab }: Props) {
+export function Detail({ session, repos, tab, item }: Props) {
   const { worktree, branch } = locate(repos, session);
   const tabs = [
     { key: 'details', label: 'Overview' },
     { key: 'diff', label: 'Diff' },
+    ...(session.artifacts.length ? [{ key: 'artifacts', label: `Artifacts (${session.artifacts.length})` }] : []),
   ];
   const current = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
 
@@ -61,6 +64,7 @@ export function Detail({ session, repos, tab }: Props) {
       <div className={styles.body}>
         {current === 'details' && <Overview session={session} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
+        {current === 'artifacts' && <Artifacts session={session} item={item} />}
       </div>
     </div>
   );
@@ -135,6 +139,12 @@ function Overview({ session }: { session: Session }) {
             <AnswerForm session={session} />
           </section>
         )
+      )}
+      {!!session.artifacts.length && (
+        <section>
+          <h4 title="Visual explanations Claude made in this session">Artifacts</h4>
+          <ArtifactLinks session={session} />
+        </section>
       )}
       <section className={styles.status}>
         <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>

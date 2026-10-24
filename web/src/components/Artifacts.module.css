@@ -1,0 +1,36 @@
+@layer components {
+  .artifacts { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    a {
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      text-decoration: none;
+      color: var(--muted);
+      &:hover { color: var(--text); }
+      &[aria-current="page"] { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+    }
+    .external { margin-left: auto; border-color: transparent; }
+  }
+
+  .frame { flex: 1; min-height: 0; width: 100%; border: 0; }
+
+  .empty { color: var(--muted); padding: 24px; }
+
+  .links {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    span { color: var(--muted); font-size: 12px; }
+  }
+}

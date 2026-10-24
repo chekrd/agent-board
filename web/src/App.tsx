@@ -24,7 +24,7 @@ export function App() {
     <div className={styles.app}>
       {route.sessionId ? (
         selected ? (
-          <Detail key={selected.id} session={selected} repos={repos} tab={route.tab} />
+          <Detail key={selected.id} session={selected} repos={repos} tab={route.tab} item={route.item} />
         ) : (
           <div className={styles.placeholder}>
             {connected ? <>This task is gone. <a href="/">All tasks</a></> : 'Connecting…'}

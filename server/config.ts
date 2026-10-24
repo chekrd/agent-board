@@ -21,3 +21,5 @@ export const MCP_SERVER_NAME = 'agent-board';
 export const OLD_MCP_SERVER_NAMES = ['docket', 'agent-ide'];
 export const ASK_TOOL = 'ask_human';
 export const ASK_TOOL_NAME = `mcp__${MCP_SERVER_NAME}__${ASK_TOOL}`;
+export const ARTIFACT_TOOL = 'create_artifact';
+export const ARTIFACT_TOOL_NAME = `mcp__${MCP_SERVER_NAME}__${ARTIFACT_TOOL}`;

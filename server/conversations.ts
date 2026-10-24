@@ -3,7 +3,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
+import { ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
 
 const run = promisify(execFile);
@@ -22,7 +22,7 @@ export interface Conversation {
   livePid: number | null;
 }
 
-export interface Ask {
+export interface ToolCall {
   toolUseId: string;
   input: Record<string, unknown>;
   at: number;
@@ -36,7 +36,8 @@ interface Meta {
   lastMessage: string | null;
   activity: Activity | null;
   toolResults: string[];
-  ask: Ask | null;
+  ask: ToolCall | null;
+  artifacts: ToolCall[];
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
 }
@@ -126,8 +127,8 @@ const blocks = (entry: Record<string, any>): Record<string, any>[] =>
 const ASK_TOOL_NAMES = new Set([ASK_TOOL_NAME, ...OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ASK_TOOL}`)]);
 
 // An ask_human call stays open until the user sends a prompt after it.
-function latestAsk(entries: Record<string, any>[]): Ask | null {
-  let ask: Ask | null = null;
+function latestAsk(entries: Record<string, any>[]): ToolCall | null {
+  let ask: ToolCall | null = null;
   for (const entry of entries) {
     const call = blocks(entry).findLast((b) => b.type === 'tool_use' && ASK_TOOL_NAMES.has(b.name));
     if (call) ask = { toolUseId: call.id, input: call.input ?? {}, at: Date.parse(entry.timestamp) || Date.now() };
@@ -135,6 +136,10 @@ function latestAsk(entries: Record<string, any>[]): Ask | null {
   }
   return ask;
 }
+
+const artifactCalls = (entries: Record<string, any>[]): ToolCall[] =>
+  entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && b.name === ARTIFACT_TOOL_NAME)
+    .map((b) => ({ toolUseId: b.id, input: b.input ?? {}, at: Date.parse(e.timestamp) || Date.now() })));
 
 function turns(entries: Record<string, any>[]): Turn[] {
   return entries.flatMap((e): Turn[] => {
@@ -259,6 +264,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     activity: activity(tail),
     toolResults: toolResults(tail),
     ask: latestAsk(tail),
+    artifacts: artifactCalls(tail),
     pr: await prFlow(tail),
     turns: turns(tail),
   };

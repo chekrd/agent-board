@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 export interface Route {
   sessionId: string | null;
   tab: string;
+  item: string | null;
 }
 
 navigation.addEventListener('navigate', (event) => {
@@ -18,8 +19,8 @@ const subscribe = (fn: () => void) => {
 };
 
 function parse(href: string): Route {
-  const match = new URL(href).pathname.match(/^\/s\/([^/]+)(?:\/([^/]+))?/);
-  return match ? { sessionId: match[1], tab: match[2] ?? 'details' } : { sessionId: null, tab: '' };
+  const match = new URL(href).pathname.match(/^\/s\/([^/]+)(?:\/([^/]+)(?:\/([^/]+))?)?/);
+  return match ? { sessionId: match[1], tab: match[2] ?? 'details', item: match[3] ?? null } : { sessionId: null, tab: '', item: null };
 }
 
 export function useRoute() {
@@ -27,6 +28,6 @@ export function useRoute() {
   return parse(href);
 }
 
-export const sessionPath = (id: string, tab = 'details') => `/s/${id}/${tab}`;
+export const sessionPath = (id: string, tab = 'details', item?: string) => `/s/${id}/${tab}${item ? `/${item}` : ''}`;
 
 export const go = (path: string) => navigation.navigate(path);

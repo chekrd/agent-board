@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { after, test } from 'node:test';
+import { artifactFile, storeArtifacts } from './artifacts.ts';
+import { SESSIONS_DIR } from './config.ts';
+import type { Session } from './db.ts';
+
+const id = `test-${randomUUID()}`;
+after(() => rm(join(SESSIONS_DIR, id), { recursive: true, force: true }));
+
+const session = (artifacts: Session['artifacts']) => ({ id, artifacts }) as Session;
+const call = (toolUseId: string, title: string, at: number, html = `<p>${toolUseId}</p>`) => ({ toolUseId, input: { title, html }, at });
+
+test('an artifact is saved once, and a later one with the same title replaces it for good', async () => {
+  const first = await storeArtifacts(session([]), [call('a1', 'Flow', 1), call('b1', 'States', 2)]);
+  assert.deepEqual(first?.map((a) => a.id), ['a1', 'b1']);
+  assert.equal(await readFile(artifactFile(id, 'a1'), 'utf8'), '<p>a1</p>');
+  assert.equal(await storeArtifacts(session(first!), [call('a1', 'Flow', 1), call('b1', 'States', 2)]), null);
+
+  const replaced = await storeArtifacts(session(first!), [call('a1', 'Flow', 1), call('b1', 'States', 2), call('a2', 'Flow', 3)]);
+  assert.deepEqual(replaced?.map((a) => a.id), ['b1', 'a2']);
+  await assert.rejects(readFile(artifactFile(id, 'a1')));
+  assert.equal(await storeArtifacts(session(replaced!), [call('a1', 'Flow', 1), call('a2', 'Flow', 3)]), null);
+});
+
+test('a call the MCP server would reject is not stored', async () => {
+  assert.equal(await storeArtifacts(session([]), [{ toolUseId: 'bad', input: { title: 'No html' }, at: 1 }]), null);
+  assert.throws(() => artifactFile(id, '../state'));
+});

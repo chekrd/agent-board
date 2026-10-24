@@ -5,6 +5,7 @@ import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
+import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
@@ -135,6 +136,8 @@ async function readTranscript(s: Session) {
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
   if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
   if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
+  const artifacts = await storeArtifacts(s, meta.artifacts);
+  if (artifacts) patch.artifacts = artifacts;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
   if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;

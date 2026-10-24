@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ASK_TOOL, ASK_TOOL_NAME, MCP_SERVER_NAME, OLD_MCP_SERVER_NAMES, ORIGIN } from '../server/config.ts';
+import { ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, MCP_SERVER_NAME, OLD_MCP_SERVER_NAMES, ORIGIN } from '../server/config.ts';
 
 const SETTINGS = join(homedir(), '.claude', 'settings.json');
 
@@ -17,6 +17,7 @@ const HOOK = {
 };
 
 const OLD_ASK_TOOL_NAMES = OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ASK_TOOL}`);
+const TOOLS = [ASK_TOOL_NAME, ARTIFACT_TOOL_NAME];
 
 const removeServer = (name: string) => {
   try {
@@ -31,8 +32,8 @@ const ours = (entry: { hooks?: { command?: string }[] }) => entry.hooks?.some((h
 function editSettings(connect: boolean) {
   const settings = JSON.parse(readFileSync(SETTINGS, 'utf8'));
   settings.permissions ??= {};
-  const allow: string[] = (settings.permissions.allow ?? []).filter((rule: string) => rule !== ASK_TOOL_NAME && !OLD_ASK_TOOL_NAMES.includes(rule));
-  settings.permissions.allow = connect ? [...allow, ASK_TOOL_NAME] : allow;
+  const allow: string[] = (settings.permissions.allow ?? []).filter((rule: string) => !TOOLS.includes(rule) && !OLD_ASK_TOOL_NAMES.includes(rule));
+  settings.permissions.allow = connect ? [...allow, ...TOOLS] : allow;
   settings.hooks ??= {};
   const pre = (settings.hooks.PreToolUse ?? []).filter((entry: any) => !ours(entry));
   settings.hooks.PreToolUse = connect ? [...pre, HOOK] : pre;
@@ -45,7 +46,7 @@ switch (process.argv[2]) {
     for (const name of [MCP_SERVER_NAME, ...OLD_MCP_SERVER_NAMES]) removeServer(name);
     claude('mcp', 'add', '--scope', 'user', '--transport', 'http', MCP_SERVER_NAME, `${ORIGIN}/mcp`);
     editSettings(true);
-    console.log(`allowed ${ASK_TOOL_NAME} and added the AskUserQuestion hook in ${SETTINGS}\nRunning Claude sessions get the tool after a restart or /mcp reconnect.`);
+    console.log(`allowed ${TOOLS.join(', ')} and added the AskUserQuestion hook in ${SETTINGS}\nRunning Claude sessions get the tools after a restart or /mcp reconnect.`);
     break;
   case 'disconnect':
     removeServer(MCP_SERVER_NAME);

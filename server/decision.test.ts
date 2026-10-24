@@ -6,7 +6,7 @@ import { openDecision } from './decision.ts';
 const session = (patch: Partial<Session>): Session => ({
   id: 's', repoId: 1, worktree: '/w', cwd: '/w', pid: 1, tty: null, title: null, firstPrompt: null, status: 'idle',
   question: null, rank: null, rankReason: null, diffstat: null, lastMessage: null, lastTurn: 't2', waitingFor: null,
-  dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, archived: false,
+  dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, artifacts: [], archived: false,
   createdAt: 0, updatedAt: 0, ...patch,
 });
 

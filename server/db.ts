@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -130,6 +130,12 @@ export interface Explanation {
   at: number;
 }
 
+export interface Artifact {
+  id: string;
+  title: string;
+  at: number;
+}
+
 export interface Session {
   id: string;
   repoId: number;
@@ -154,6 +160,7 @@ export interface Session {
   explanation: Explanation | null;
   activity: Activity | null;
   menu: Menu | null;
+  artifacts: Artifact[];
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -196,6 +203,7 @@ const toSession = (r: Row): Session => ({
   explanation: r.explanation ? JSON.parse(r.explanation) : null,
   activity: r.activity ? JSON.parse(r.activity) : null,
   menu: r.menu ? JSON.parse(r.menu) : null,
+  artifacts: r.artifacts ? JSON.parse(r.artifacts) : [],
   archived: !!r.archived,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -248,6 +256,7 @@ const columns: Record<string, string> = {
   explanation: 'explanation',
   activity: 'activity',
   menu: 'menu',
+  artifacts: 'artifacts',
   archived: 'archived',
   pid: 'pid',
   tty: 'tty',
@@ -266,7 +275,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'artifacts' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

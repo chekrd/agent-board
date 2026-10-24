@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
-import { ASK_TOOL, MCP_SERVER_NAME } from './config.ts';
+import { ARTIFACT_TOOL, ASK_TOOL, MCP_SERVER_NAME } from './config.ts';
 
 export const CATEGORIES = ['feature', 'bug', 'plan-problem', 'ci-failure', 'research', 'update', 'review-ready'] as const;
 
@@ -18,8 +18,21 @@ const inputSchema = {
 
 export const askInput = z.object(inputSchema);
 
-// The dashboard reads calls to this tool from the session transcript, so the tool
-// itself only has to exist and acknowledge.
+// A longer call would not fit the transcript lines the dashboard reads it from.
+const MAX_ARTIFACT = 100_000;
+
+const artifactSchema = {
+  title: z.string().max(120).describe('Short name shown in the list, e.g. "Request flow before and after the fix". Calling again with the same title replaces that artifact.'),
+  html: z.string().max(MAX_ARTIFACT).describe(
+    `A complete, self-contained HTML document of at most ${MAX_ARTIFACT} characters: inline SVG, CSS and JS; no local files or fetches. ` +
+    'It is shown in a sandboxed frame about 1000px wide; make it readable in both light and dark (prefers-color-scheme).',
+  ),
+};
+
+export const artifactInput = z.object(artifactSchema);
+
+// The dashboard reads calls to these tools from the session transcript, so the tools
+// themselves only have to exist and acknowledge.
 function server() {
   const mcp = new McpServer({ name: MCP_SERVER_NAME, version: '1.0.0' });
   mcp.registerTool(ASK_TOOL, {
@@ -35,6 +48,19 @@ function server() {
     inputSchema,
   }, async () => ({
     content: [{ type: 'text', text: 'Posted to the user\'s dashboard. End your turn now and wait; their answer will arrive as the next user message.' }],
+  }));
+  mcp.registerTool(ARTIFACT_TOOL, {
+    title: 'Create a visual explanation',
+    description:
+      'The user follows this session from the Agent Board, which shows artifacts on the task page next to your messages. ' +
+      'Call this when a picture would make something markedly easier to understand than prose: how data or control flows ' +
+      'through the code, a before/after of a change, a state machine, a timeline of events behind a bug, a dependency or ' +
+      'architecture map, a comparison of options, numbers worth charting. Draw the real mechanism with real names from the ' +
+      'code, label it, and keep it to one idea. Skip it for things a few sentences explain. Mention in your reply that you ' +
+      'made it; the user cannot see it in the terminal.',
+    inputSchema: artifactSchema,
+  }, async ({ title }) => ({
+    content: [{ type: 'text', text: `Artifact "${title}" is on the task page of the user's dashboard.` }],
   }));
   return mcp;
 }
