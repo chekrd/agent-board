@@ -10,10 +10,18 @@ const labels: Record<Attention, string> = {
   exited: 'Ended',
 };
 
+const hints: Record<Attention, string> = {
+  decide: 'Claude asked you something and waits for your decision',
+  focus: 'Claude is showing a prompt in its terminal that only the terminal can answer',
+  working: 'Claude is working on its turn; nothing for you to do yet',
+  idle: 'Claude finished its turn and waits for your next message',
+  exited: 'The Claude process has quit; Continue resumes the conversation',
+};
+
 export function AttentionChip({ session }: { session: Session }) {
   const attention = attentionOf(session);
   return (
-    <span className={styles.chip} data-attention={attention} title={attention === 'focus' ? `Claude is showing ${session.waitingFor ?? 'a prompt'} in its terminal` : undefined}>
+    <span className={styles.chip} data-attention={attention} title={attention === 'focus' ? `Claude is showing ${session.waitingFor ?? 'a prompt'} in its terminal; answer it there` : hints[attention]}>
       {labels[attention]}
     </span>
   );
@@ -22,7 +30,7 @@ export function AttentionChip({ session }: { session: Session }) {
 export function DiffStat({ stat }: { stat: Session['diffstat'] }) {
   if (!stat) return null;
   return (
-    <span className={styles.stat} title={`${stat.files} files changed`}>
+    <span className={styles.stat} title={`${stat.insertions} lines added and ${stat.deletions} removed in ${stat.files} files, against the base branch`}>
       <span className={styles.add}>+{stat.insertions}</span> <span className={styles.del}>−{stat.deletions}</span>
     </span>
   );
@@ -45,6 +53,7 @@ export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatu
   const label = !pr.id ? 'opening PR' : fixing ? 'fixing' : closedAs || (result ? prLabels[result] : 'checks pending');
   const state = !pr.id ? 'RUNNING' : result ?? 'RUNNING';
   const title = [
+    'Pull request and the state of its checks',
     pr.result ?? 'No result yet',
     failed && `Failed: ${failed}`,
     pr.watching ? 'pr-to-green is watching the checks' : 'Not watching right now',

@@ -36,14 +36,14 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
         {error && <p className={styles.error}>{error}</p>}
         {roots.length > 0 && (
           <div className={styles.roots}>
-            <span className={styles.hint}>Scanned folders:</span>
+            <span className={styles.hint} title="Folders searched for git repositories">Scanned folders:</span>
             {roots.map((root) => (
               <span key={root} className={styles.root}>
                 <code>{root}</code>
                 <button data-variant="ghost" title="Stop scanning this folder; repositories already found stay" onClick={() => api('DELETE', '/api/roots', { path: root })}>×</button>
               </span>
             ))}
-            <button data-variant="ghost" onClick={() => api('POST', '/api/rescan')}>Rescan</button>
+            <button data-variant="ghost" title="Search the scanned folders for repositories and worktrees again" onClick={() => api('POST', '/api/rescan')}>Rescan</button>
           </div>
         )}
         {repos.map((repo) => (
@@ -123,17 +123,17 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
         </form>
       )}
       <details className={styles.repoSettings}>
-        <summary>Settings</summary>
+        <summary title="Per-repository options for new worktrees">Settings</summary>
         <form action={save} className={styles.settings}>
-          <label>
+          <label title="The branch new worktrees start from and diffs compare against">
             Base branch
             <input name="baseBranch" defaultValue={repo.baseBranch ?? ''} placeholder={`${repo.base} (detected)`} />
           </label>
-          <label>
+          <label title="Where new worktrees are created">
             Worktree folder
             <input name="worktreeRoot" defaultValue={repo.worktreeRoot ?? ''} placeholder={repo.defaultWorktreeRoot} />
           </label>
-          <label>
+          <label title="Runs in each new worktree before Claude starts">
             Setup command after create
             <input name="setupCommand" defaultValue={repo.setupCommand ?? ''} placeholder="e.g. pnpm install" />
           </label>
@@ -158,16 +158,16 @@ function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove }: { wo
         {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
         <button onClick={() => onStart()} title="New Claude session in a Ghostty tab">New Claude</button>
         <button onClick={onShell} title="Shell in a Ghostty tab">Shell</button>
-        {onRemove && <button data-variant="danger" onClick={onRemove}>Remove</button>}
+        {onRemove && <button data-variant="danger" title="Remove this worktree, optionally with its branch" onClick={onRemove}>Remove</button>}
       </div>
       {w.conversations.length > 0 && (
         <details className={styles.conversations}>
-          <summary>{w.conversations.length} conversation{w.conversations.length > 1 ? 's' : ''}{latest && <> · latest: {label(latest)}</>}</summary>
+          <summary title="Claude conversations started in this worktree">{w.conversations.length} conversation{w.conversations.length > 1 ? 's' : ''}{latest && <> · latest: {label(latest)}</>}</summary>
           <ul>
             {w.conversations.map((c) => (
               <li key={c.id}>
                 <span className={styles.wtName} title={c.firstPrompt ?? ''}>{label(c)}</span>
-                <small>{ago(c.updatedAt)}</small>
+                <small title="Last activity">{ago(c.updatedAt)}</small>
                 <ConversationAction conversation={c} sessions={sessions} onStart={onStart} />
               </li>
             ))}

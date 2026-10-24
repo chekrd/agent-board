@@ -43,7 +43,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
       {repo && (
         <form action={submit} className={styles.form}>
           <h2>New task</h2>
-          <label>
+          <label title="The repository to branch from">
             Repository
             <select value={repo.id} onChange={(e) => setRepoId(Number(e.target.value))}>
               {repos.map((r) => (
@@ -51,25 +51,25 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
               ))}
             </select>
           </label>
-          <label>
+          <label title="Names the worktree folder, and the branch unless you set one">
             Name
             <input {...bind('name')} required autoFocus placeholder="fix-login-redirect" pattern="[A-Za-z0-9._\/\-]+" />
           </label>
           <div className={styles.row}>
-            <label>
+            <label title="The new branch; defaults to the name">
               Branch
               <input {...bind('branch')} placeholder={name || 'same as name'} />
             </label>
-            <label>
+            <label title="Where the worktree is created; defaults to the repository's worktree folder">
               Worktree path
               <input {...bind('path')} placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}/${repo.path.split('/').at(-1)}`} />
             </label>
           </div>
-          <label>
+          <label title="Your first message to Claude in the new session">
             Prompt for Claude
             <textarea {...bind('prompt')} rows={6} placeholder="What should Claude work on? Leave empty to start an idle session." />
           </label>
-          <label className={styles.check}>
+          <label className={styles.check} title="Off: only the worktree and a shell tab are created">
             <input type="checkbox" name="startClaude" checked={fields.startClaude} onChange={(e) => setFields({ ...fields, startClaude: e.currentTarget.checked })} /> Start a Claude session
           </label>
           <p className={styles.hint}>

@@ -182,7 +182,7 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
       <div className={styles.advice} data-state="running">
         <div className={styles.adviceHead}>
           <span className={styles.spinner} aria-hidden />
-          <span>Second opinion in progress · <Elapsed since={a.startedAt} /></span>
+          <span title="Another model reads the code and suggests what you would likely answer">Second opinion in progress · <Elapsed since={a.startedAt} /></span>
           <button type="submit" name="intent" value="stop" data-variant="ghost" disabled={pending} title="Stop the advisor">Stop</button>
         </div>
         <p className={styles.activity}>{a.activity ?? 'Working'}</p>
@@ -193,14 +193,14 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
     return (
       <div className={styles.advice} data-state="failed" title={a.error}>
         <span>{a.error === 'stopped' ? 'Second opinion stopped' : `Second opinion failed: ${a.error}`}</span>
-        <button type="submit" name="intent" value="retry" data-variant="ghost" disabled={pending}>Retry</button>
+        <button type="submit" name="intent" value="retry" data-variant="ghost" disabled={pending} title="Ask for a second opinion again">Retry</button>
       </div>
     );
   }
   return (
     <div className={styles.advice}>
       <div className={styles.adviceHead}>
-        <span>Second opinion</span>
+        <span title="Another model's suggestion of what you would likely answer; nothing is sent until you accept">Second opinion</span>
         <span className={styles.confidence} data-level={level(a.confidence)} title="How sure the advisor is that you would decide the same">
           {a.confidence}%
         </span>
@@ -209,8 +209,8 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
       {a.answer && <p className={styles.adviceAnswer}>{a.answer}</p>}
       {a.reasoning && <p className={styles.adviceReason}>{a.reasoning}</p>}
       <div className={styles.adviceActions}>
-        <button type="submit" name="intent" value="accept" data-variant="primary" disabled={pending}>Accept &amp; send</button>
-        <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)}>Edit</button>
+        <button type="submit" name="intent" value="accept" data-variant="primary" disabled={pending} title="Send the suggested answer to Claude">Accept &amp; send</button>
+        <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)} title="Copy the suggestion into the reply box to change it first">Edit</button>
       </div>
     </div>
   );

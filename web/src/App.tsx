@@ -46,7 +46,7 @@ function Board() {
           Docket
           {deciding > 0 && <span className={styles.count} title="Decisions waiting for you">{deciding}</span>}
         </h1>
-        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected' : 'Disconnected'} />
+        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Docket; the board updates live' : 'Disconnected from Docket; reconnecting'} />
         <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
         <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
       </header>
@@ -61,7 +61,7 @@ function Board() {
         )}
         {archived.length > 0 && (
           <details className={styles.archived}>
-            <summary>Archived ({archived.length})</summary>
+            <summary title="Sessions you archived; they stay out of the board until unarchived">Archived ({archived.length})</summary>
             <div className={styles.tiles}>
               {archived.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
             </div>

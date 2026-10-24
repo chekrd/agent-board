@@ -17,15 +17,15 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
     <article className={styles.tile} data-tile data-attention={attentionOf(session)}>
       <header className={styles.head}>
         <AttentionChip session={session} />
-        {q && <span className={styles.rank} title={session.rankReason ?? undefined}>{session.rank ? `#${session.rank}` : '…'}</span>}
+        {q && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
         {!!session.summary?.learnings?.length && (
-          <span className={styles.learned} title={session.summary.learnings.join('\n\n')}>Worth knowing</span>
+          <span className={styles.learned} title={`Claude found something notable:\n\n${session.summary.learnings.join('\n\n')}`}>Worth knowing</span>
         )}
-        <span className={styles.age}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
+        <span className={styles.age} title={q ? 'When Claude asked' : session.summary ? 'When the status was last updated' : 'When the session started'}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>
       <a className={styles.name} href={sessionPath(session.id)}>{sessionLabel(session, branch)}</a>
-      <span className={styles.where}>{repo?.name} · {branch}</span>
+      <span className={styles.where} title="Repository · branch">{repo?.name} · {branch}</span>
       {session.menu ? (
         <p className={styles.problem}>{session.menu.questions.map((m) => m.question).join(' · ')}</p>
       ) : decision ? (

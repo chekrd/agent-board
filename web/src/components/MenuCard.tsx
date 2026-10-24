@@ -26,9 +26,9 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
   return (
     <form className={detail.decision} action={submit}>
       <div className={detail.decisionMeta}>
-        <strong>Decision</strong>
-        <span>asked in the terminal</span>
-        <span className={detail.age}>asked {ago(menu.at)}</span>
+        <strong title="Claude asked you this and waits for the answer">Decision</strong>
+        <span title="Claude opened a choice menu in its terminal; answering here picks the options there for you">asked in the terminal</span>
+        <span className={detail.age} title="When Claude asked">asked {ago(menu.at)}</span>
       </div>
       {menu.questions.map((q, i) => {
         const a = answers[i];
@@ -38,7 +38,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             : { labels: a.labels[0] === label ? [] : [label], other: '' });
         return (
           <fieldset key={q.question} className={styles.question} disabled={pending}>
-            <legend>{q.header}{q.multiSelect && <span> · pick any</span>}</legend>
+            <legend>{q.header}{q.multiSelect && <span title="You can select more than one option"> · pick any</span>}</legend>
             <h3>{q.question}</h3>
             <div className={styles.options}>
               {q.options.map((o) => (

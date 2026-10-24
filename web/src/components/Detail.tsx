@@ -22,8 +22,8 @@ interface Props {
 export function Detail({ session, repos, tab }: Props) {
   const { repo, worktree, branch } = locate(repos, session);
   const tabs = [
-    { key: 'details', label: 'Overview' },
-    { key: 'diff', label: 'Diff' },
+    { key: 'details', label: 'Overview', hint: 'What Claude is doing and what it needs from you' },
+    { key: 'diff', label: 'Diff', hint: 'Every change in the worktree against the base branch' },
   ];
   const current = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
 
@@ -44,7 +44,7 @@ export function Detail({ session, repos, tab }: Props) {
           <h2>{sessionLabel(session, branch)}</h2>
           <div className={styles.meta}>
             <AttentionChip session={session} />
-            <span>{repo?.name} · {branch} · base {repo?.base}</span>
+            <span title="Repository · branch · the base branch the diff compares against">{repo?.name} · {branch} · base {repo?.base}</span>
             <PrChip pr={session.pr} status={session.status} />
             <DiffStat stat={session.diffstat} />
           </div>
@@ -56,7 +56,7 @@ export function Detail({ session, repos, tab }: Props) {
       </header>
       <nav className={styles.tabs}>
         {tabs.map((t) => (
-          <a key={t.key} href={sessionPath(session.id, t.key)} aria-current={t.key === current ? 'page' : undefined}>
+          <a key={t.key} href={sessionPath(session.id, t.key)} aria-current={t.key === current ? 'page' : undefined} title={t.hint}>
             {t.label}
           </a>
         ))}
@@ -77,7 +77,7 @@ function Overview({ session }: { session: Session }) {
       <Working session={session} large />
       {!!summary?.learnings?.length && (
         <section className={styles.know}>
-          <h4>Worth knowing</h4>
+          <h4 title="Something notable Claude found or learned; shown only when it is worth your attention">Worth knowing</h4>
           <ul>{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
         </section>
       )}
@@ -87,19 +87,19 @@ function Overview({ session }: { session: Session }) {
         <DecisionCard key={decision.key} session={session} decision={decision} />
       ) : session.status === 'waiting' ? (
         <section className={styles.blocked}>
-          <p>Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>
+          <p title="Some terminal prompts, such as permission requests, can only be answered in Ghostty">Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>
           <FocusButton session={session} primary />
         </section>
       ) : (
         session.status !== 'exited' && (
           <section>
-            <h4>Message Claude</h4>
+            <h4 title="Sends your text to Claude's terminal as your next message">Message Claude</h4>
             <AnswerForm session={session} />
           </section>
         )
       )}
       <section className={styles.status}>
-        <h4>Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>
+        <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>
         {summary ? (
           <>
             <p>{summary.text}</p>
@@ -111,21 +111,21 @@ function Overview({ session }: { session: Session }) {
       </section>
       {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
       <section>
-        <h4>Facts</h4>
+        <h4 title="Where this session lives">Facts</h4>
         <dl className={styles.facts}>
-          <dt>Task</dt>
+          <dt title="Your first message in this session">Task</dt>
           <dd>{session.firstPrompt ?? '—'}</dd>
-          <dt>Worktree</dt>
+          <dt title="The git worktree Claude works in">Worktree</dt>
           <dd><code>{session.worktree}</code></dd>
           {session.pr?.result && (
             <>
-              <dt>Pull request</dt>
+              <dt title="The last result reported for the pull request's checks">Pull request</dt>
               <dd><code>{session.pr.result}</code></dd>
             </>
           )}
-          <dt>Terminal</dt>
+          <dt title="The Ghostty tab's terminal device">Terminal</dt>
           <dd>{session.tty ? <code>{session.tty}</code> : '—'}</dd>
-          <dt>Session</dt>
+          <dt title="Claude Code's session id; claude --resume takes it">Session</dt>
           <dd><code>{session.id}</code></dd>
         </dl>
       </section>
@@ -143,7 +143,7 @@ function LatestReply({ text }: { text: string }) {
   }, []);
   return (
     <section className={styles.reply}>
-      <h4>Claude's latest reply</h4>
+      <h4 title="The last message Claude wrote in the terminal, unchanged">Claude's latest reply</h4>
       <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined}>
         <Markdown source={text} />
       </div>
@@ -165,15 +165,15 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
   return (
     <section className={styles.decision}>
       <div className={styles.decisionMeta}>
-        <strong>Decision</strong>
-        {q && <span>{q.category}</span>}
-        {session.rank && <span>#{session.rank}</span>}
-        {session.rankReason && <em>{session.rankReason}</em>}
-        {q && <span className={styles.age}>asked {ago(q.askedAt)}</span>}
+        <strong title={q ? 'Claude asked you this and waits for the answer' : 'Claude ended its turn with a choice for you; a model read it from its last message'}>Decision</strong>
+        {q && <span title="The kind of question, as Claude classified it">{q.category}</span>}
+        {session.rank && <span title="Priority among the open decisions, ranked by a model">#{session.rank}</span>}
+        {session.rankReason && <em title="Why it got this priority">{session.rankReason}</em>}
+        {q && <span className={styles.age} title="When Claude asked">asked {ago(q.askedAt)}</span>}
       </div>
       <h3>{decision.problem}</h3>
       {decision.brief ? <p className={styles.brief}>{decision.brief}</p> : decision.details && <Markdown source={decision.details} />}
-      <button type="button" className={styles.elaborate} data-variant="ghost" aria-expanded={open} onClick={toggle}>
+      <button type="button" className={styles.elaborate} data-variant="ghost" aria-expanded={open} onClick={toggle} title={open ? undefined : 'A model reads the code and explains the background and each choice'}>
         {open ? 'Less' : 'Elaborate'}
       </button>
       {open && (
@@ -189,7 +189,7 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
           )}
           {decision.brief && decision.details && (
             <details className={styles.original}>
-              <summary>Claude's own write-up</summary>
+              <summary title="The question exactly as Claude wrote it">Claude's own write-up</summary>
               <Markdown source={decision.details} />
             </details>
           )}
