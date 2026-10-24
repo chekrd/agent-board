@@ -162,8 +162,8 @@ function Overview({ session }: { session: Session }) {
               <dd><code>{session.pr.result}</code></dd>
             </>
           )}
-          <dt title="The Ghostty tab's terminal device">Terminal</dt>
-          <dd title="The Ghostty tab's terminal device">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
+          <dt title="The terminal device Claude runs on">Terminal</dt>
+          <dd title="The terminal device Claude runs on">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
           <dt title="Claude Code's session id; claude --resume takes it">Session</dt>
           <dd title="Claude Code's session id; claude --resume takes it"><code>{session.id}</code></dd>
         </dl>

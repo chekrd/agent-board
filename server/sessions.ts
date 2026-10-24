@@ -14,6 +14,7 @@ import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
 import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
+import * as terminal from './terminal.ts';
 import { menuKeystrokes, type MenuAnswer } from './menu.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank, trackDecisions } from './priority.ts';
@@ -24,6 +25,7 @@ import { checkUploads } from './uploads.ts';
 const run = promisify(execFile);
 
 const STARTUP_GRACE_MS = 60_000;
+const STARTUP_PROMPT_MS = 8000;
 const IGNORE_RETRY_MS = 30_000;
 
 // A launch script keeps the prompt out of the user's shell, whose quoting rules may not be POSIX.
@@ -33,7 +35,7 @@ async function launch(id: string, cwd: string, args: string[], setup?: string | 
   const script = join(dir, 'start.sh');
   const lines = ['#!/bin/sh', `cd ${quote(cwd)} || exit`, setup ?? '', `exec ${[CLAUDE, ...args].map(quote).join(' ')}`].filter(Boolean);
   await writeFile(script, `${lines.join('\n')}\n`);
-  await ghostty.newTab(cwd, `/bin/sh ${quote(script)}`);
+  await terminal.start(id, cwd, `/bin/sh ${quote(script)}`);
 }
 
 export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null }) {
@@ -177,9 +179,20 @@ async function syncLive() {
       changed = true;
     }
   }
+  let starting: Set<string> | undefined;
   for (const s of sessions.all()) {
     if (s.status === 'exited' || live.has(s.id)) {
       if (s.status !== 'exited') changed = (await readTranscript(s)) || changed;
+      continue;
+    }
+    // Claude registers itself only once past prompts such as trusting a new folder, which a
+    // hidden terminal would keep out of sight.
+    starting ??= s.pid === null ? await terminal.tmuxSessions() : undefined;
+    if (s.pid === null && starting?.has(s.id)) {
+      if (s.status !== 'waiting' && Date.now() - s.updatedAt > STARTUP_PROMPT_MS) {
+        sessions.update(s.id, { status: 'waiting', waitingFor: 'its start-up prompt' });
+        changed = true;
+      }
       continue;
     }
     if (s.pid === null && Date.now() - s.updatedAt < STARTUP_GRACE_MS) continue;
@@ -205,7 +218,7 @@ function liveTty(s: Session) {
 export async function focus(id: string) {
   const s = must(id);
   if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: id });
-  else await ghostty.focus(liveTty(s));
+  else await terminal.show(s.tty, s.id, s.cwd);
 }
 
 async function isCommand(s: Session, text: string) {
@@ -223,12 +236,12 @@ export async function answer(id: string, reply: { choice?: string; text?: string
   if (!reply.choice && !text && !files.length) throw new Error('empty answer');
   // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
   if (commands && !reply.choice && !files.length && (await isCommand(s, text))) {
-    await ghostty.send(tty, text);
+    await terminal.send(tty, text);
     return;
   }
   const parts = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', reply.text?.trim() ?? '']
     .filter(Boolean);
-  await ghostty.send(tty, parts.join(' — '), files);
+  await terminal.send(tty, parts.join(' — '), files);
   clearQuestion(id);
   notify();
 }
@@ -244,7 +257,7 @@ export async function rename(id: string, title: string) {
     if (await stat(file).catch(() => null)) await appendFile(file, `${JSON.stringify({ type: 'custom-title', customTitle: name, sessionId: s.id })}\n`);
   } else {
     if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
-    await ghostty.send(liveTty(s), `/rename ${name}`);
+    await terminal.send(liveTty(s), `/rename ${name}`);
   }
   sessions.update(id, { title: name });
   notify();
@@ -255,7 +268,7 @@ export async function answerMenu(id: string, body: { toolUseId: string; answers:
   const tty = liveTty(s);
   const menu = s.menu;
   if (!menu || menu.toolUseId !== body.toolUseId) throw new Error('this question is no longer open');
-  await ghostty.keys(tty, menuKeystrokes(menu, body.answers));
+  await terminal.keys(tty, menuKeystrokes(menu, body.answers));
 }
 
 // Posted by the PreToolUse hook that `pnpm claude:connect` installs, just before the dialog opens.

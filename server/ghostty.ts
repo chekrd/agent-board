@@ -25,24 +25,9 @@ export async function focus(tty: string) {
   await onTerminal(tty, 'focus t\nactivate');
 }
 
-// `input text` arrives as a bracketed paste, so a multi-line message stays one prompt;
-// Enter goes separately once the TUI has taken in the paste.
-// Control characters are dropped so the text cannot end the paste and type keys itself.
-// Claude Code turns a paste of nothing but image paths into image attachments, so images go
-// in a paste of their own before the text; other files stay paths in the text for Claude to read.
-export async function send(tty: string, text: string, files: string[] = []) {
-  const pause = () => new Promise((r) => setTimeout(r, 200));
-  const images = files.filter((f) => /\.(png|jpe?g|gif|webp)$/i.test(f));
-  if (images.length) {
-    await onTerminal(tty, 'input text (item 2 of argv) to t', images.join(' '));
-    await pause();
-  }
-  const clean = [...files.filter((f) => !images.includes(f)), text.replaceAll('\r\n', '\n').replace(/[^\P{Cc}\n\t]/gu, '')]
-    .filter(Boolean)
-    .join(' ');
-  if (clean) await onTerminal(tty, 'input text (item 2 of argv) to t', images.length ? ` ${clean}` : clean);
-  await pause();
-  await onTerminal(tty, 'send key "enter" to t');
+// `input text` arrives as a bracketed paste.
+export async function paste(tty: string, text: string) {
+  await onTerminal(tty, 'input text (item 2 of argv) to t', text);
 }
 
 export type Keystroke = { key: string } | { text: string };
@@ -50,7 +35,7 @@ export type Keystroke = { key: string } | { text: string };
 // Named keys rather than characters: `send key` goes through the keyboard layout, so a digit
 // would arrive as ě or š on a Czech one.
 export async function keys(tty: string, strokes: Keystroke[]) {
-  const args = strokes.map((k) => ('key' in k ? `k:${k.key}` : `t:${k.text.replace(/[^\P{Cc}\n\t]/gu, '')}`));
+  const args = strokes.map((k) => ('key' in k ? `k:${k.key}` : `t:${k.text}`));
   await onTerminal(tty, `repeat with i from 2 to count of argv
   set s to item i of argv
   if s starts with "k:" then

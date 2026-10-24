@@ -20,7 +20,7 @@ export function SessionMenu({ session, worktree }: { session: Session; worktree:
     <>
       <button popoverTarget={id} data-variant="ghost" aria-label="Session actions" title="More actions">⋯</button>
       <div id={id} popover="auto" className={styles.menu}>
-        <button onClick={act('focus')} title={exited ? 'Continue this conversation in a new Ghostty tab' : 'Switch to its Ghostty tab'}>{exited ? 'Continue' : 'Terminal'}</button>
+        <button onClick={act('focus')} title={exited ? 'Continue this conversation' : 'Show its terminal in Ghostty'}>{exited ? 'Continue' : 'Terminal'}</button>
         <button onClick={act('finder')} title={session.worktree}>Open in Finder</button>
         <button onClick={act('vscode')} title={session.worktree}>Open in VS Code</button>
         {!exited && <button onClick={act('quit')} title="Stop the Claude process; the conversation can be continued later">Quit Claude</button>}
@@ -42,7 +42,7 @@ interface Loss {
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 function deleteMessage(path: string, loss: Loss | Error) {
-  const tail = "Claude quits and the worktree's Ghostty tabs close.";
+  const tail = "Claude quits and the worktree's terminals close.";
   if (loss instanceof Error) return `Delete the worktree?\n\n${path}\n\nCould not check what would be lost (${loss.message}); uncommitted changes and unpushed commits may be lost.\n\n${tail}`;
   const what = loss.deletesBranch ? `the worktree and its local branch ${loss.branch}` : 'the worktree';
   const lost = [

@@ -156,7 +156,7 @@ function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove }: { wo
           {w.branch ?? `detached ${w.head.slice(0, 8)}`} <small>{w.path}</small>
         </span>
         {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
-        <button onClick={() => onStart()} title="New Claude session in a Ghostty tab">New Claude</button>
+        <button onClick={() => onStart()} title="New Claude session">New Claude</button>
         <button onClick={onShell} title="Shell in a Ghostty tab">Shell</button>
         {onRemove && <button data-variant="danger" onClick={onRemove}>Remove</button>}
       </div>
@@ -188,7 +188,7 @@ function ConversationAction({ conversation: c, sessions, onStart, primary = fals
     return (
       <button
         data-variant={variant}
-        title={`Switch to its Ghostty tab${hint}`}
+        title={`Show its terminal${hint}`}
         onClick={() => { closeDialog(); go(sessionPath(c.id)); sessionAction(c.id, 'focus').catch(reportError); }}
       >
         Terminal
@@ -196,7 +196,7 @@ function ConversationAction({ conversation: c, sessions, onStart, primary = fals
     );
   }
   if (c.livePid) {
-    return <button data-variant={variant} disabled title={`Running (pid ${c.livePid}) outside a tracked Ghostty tab${hint}`}>Running</button>;
+    return <button data-variant={variant} disabled title={`Running (pid ${c.livePid}) outside a hidden session or a Ghostty tab${hint}`}>Running</button>;
   }
   return (
     <button data-variant={variant} title={`Continue in a new Ghostty tab${hint}`} onClick={() => onStart(c.id)}>

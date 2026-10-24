@@ -114,10 +114,10 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
           </label>
           <p className={styles.hint}>
             {existing ? (
-              picked?.worktree ? <>Opens a Ghostty tab in <code>{picked.worktree}</code>, where it is checked out.</>
-                : <>Switches <code>{main?.path ?? repo.path}</code> to {picked ? <code>{picked.name}</code> : 'the branch'} and opens a Ghostty tab there.</>
+              picked?.worktree ? <>Starts Claude in <code>{picked.worktree}</code>, where it is checked out.</>
+                : <>Switches <code>{main?.path ?? repo.path}</code> to {picked ? <code>{picked.name}</code> : 'the branch'} and starts Claude there.</>
             ) : (
-              <>Branches from <code>{repo.base}</code> and opens a Ghostty tab.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
+              <>Branches from <code>{repo.base}</code> and starts Claude there.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
             )}
           </p>
           {error && <p className={styles.error}>{error}</p>}
