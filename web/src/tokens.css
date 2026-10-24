@@ -19,6 +19,8 @@
     --accent: light-dark(#c2410c, #ff8a3d);
     --accent-soft: light-dark(#fff1e7, #2f1f14);
     --accent-text: light-dark(#ffffff, #1a0d03);
+    --info: light-dark(#1d4ed8, #6ea8ff);
+    --info-soft: light-dark(#eef4ff, #121b2e);
     --ok: light-dark(#15803d, #4ade80);
     --warn: light-dark(#a16207, #facc15);
     --add: light-dark(#15803d, #4ade80);

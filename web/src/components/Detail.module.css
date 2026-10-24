@@ -54,16 +54,19 @@
   }
 
   .know {
-    padding: 16px 18px;
-    border: 1px solid var(--border);
+    padding: 18px;
+    border: 1px solid var(--info);
     border-radius: var(--radius);
-    background: var(--surface);
+    background: var(--info-soft);
+    box-shadow: 0 0 0 1px var(--info);
     font-size: 14px;
     line-height: 1.5;
-    ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+    h4 { color: var(--info); }
+    ul { margin: 12px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    li::marker { color: var(--info); }
   }
 
-  .headline { font-weight: 500; }
+  .headline { font-size: 16px; font-weight: 600; line-height: 1.4; }
 
   .pending { color: var(--muted); }
 
@@ -75,6 +78,7 @@
     border: 1px solid var(--accent);
     border-radius: var(--radius);
     background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent);
     h3 { font-size: 18px; line-height: 1.3; }
   }
 
