@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
 import { listCommands } from './commands.ts';
-import { alive, conversationMeta, liveConversations, type LiveProcess } from './conversations.ts';
+import { alive, conversationMeta, liveConversations, parseMenu, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
@@ -127,7 +127,7 @@ async function readTranscript(s: Session) {
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
   if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
-  if (meta.menu?.toolUseId !== s.menu?.toolUseId) patch.menu = meta.menu;
+  if (s.menu && meta.answeredMenus.includes(s.menu.toolUseId)) patch.menu = null;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
   if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
@@ -172,7 +172,7 @@ async function syncLive() {
     }
     const status = statusOf(p);
     if (s.pid !== p.pid || s.status !== status || s.waitingFor !== p.waitingFor) {
-      sessions.update(id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor });
+      sessions.update(id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
       if (s.status === 'working' && status !== 'working') void refreshDiffstat(id);
       changed = true;
     }
@@ -185,7 +185,7 @@ async function syncLive() {
     if (s.pid === null && Date.now() - s.updatedAt < STARTUP_GRACE_MS) continue;
     // The process lives on in another conversation after /clear or /resume; this one is done.
     const replaced = s.pid !== null && livePids.has(s.pid);
-    sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, ...(replaced && { archived: true }) });
+    sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, ...(replaced && { archived: true }) });
     await readTranscript(s);
     void refreshDiffstat(s.id);
     changed = true;
@@ -273,6 +273,14 @@ export async function answerMenu(id: string, body: { toolUseId: string; answers:
   });
   if (menu.questions.length > 1 || menu.questions[0].multiSelect) strokes.push({ key: 'enter' });
   await ghostty.keys(tty, strokes);
+}
+
+// Posted by the PreToolUse hook that `pnpm claude:connect` installs, just before the dialog opens.
+export function menuOpened(hook: { session_id?: string; tool_use_id?: string; tool_input?: unknown }) {
+  const menu = parseMenu(String(hook.tool_use_id ?? ''), hook.tool_input);
+  if (!menu || !hook.session_id || !sessions.get(hook.session_id)) return;
+  sessions.update(hook.session_id, { menu });
+  notify();
 }
 
 export async function acceptAdvice(id: string) {

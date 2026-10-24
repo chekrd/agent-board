@@ -28,7 +28,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
       <div className={detail.decisionMeta}>
         <strong>Decision</strong>
         <span>asked in the terminal</span>
-        <span className={detail.age}>asked {ago(menu.at)} ago</span>
+        <span className={detail.age}>asked {ago(menu.at)}</span>
       </div>
       {menu.questions.map((q, i) => {
         const a = answers[i];

@@ -145,6 +145,11 @@ app.post('/api/sessions/:id/:action', async (c) => {
   return c.body(null, 204);
 });
 
+app.post('/api/hooks/ask-user-question', async (c) => {
+  S.menuOpened(await c.req.json());
+  return c.body(null, 204);
+});
+
 app.get('/api/commands', async (c) => c.json(await listCommands(c.req.query('worktree') ?? '')));
 
 app.get('/api/diff', async (c) => {

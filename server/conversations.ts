@@ -34,7 +34,7 @@ interface Meta {
   interactive: boolean;
   lastMessage: string | null;
   activity: Activity | null;
-  menu: Menu | null;
+  answeredMenus: string[];
   ask: Ask | null;
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
@@ -158,24 +158,23 @@ export function describeTool(tool: Record<string, any>) {
   return detail ? `${name} · ${detail}` : name;
 }
 
-// Claude Code's own AskUserQuestion stays open in the terminal until its tool_result is written.
-function openMenu(entries: Record<string, any>[]): Menu | null {
-  let menu: Menu | null = null;
-  for (const entry of entries) {
-    const call = blocks(entry).findLast((b) => b.type === 'tool_use' && b.name === 'AskUserQuestion');
-    if (call && Array.isArray(call.input?.questions)) {
-      menu = { toolUseId: call.id, questions: call.input.questions.map((q: any) => ({
-        question: String(q.question ?? ''),
-        header: String(q.header ?? ''),
-        multiSelect: !!q.multiSelect,
-        options: Array.isArray(q.options) ? q.options.map((o: any) => ({ label: String(o.label ?? ''), description: o.description })) : [],
-      })), at: Date.parse(entry.timestamp) || Date.now() };
-    }
-    const content = entry.type === 'user' ? entry.message?.content : null;
-    if (menu && Array.isArray(content) && content.some((b) => b.type === 'tool_result' && b.tool_use_id === menu!.toolUseId)) menu = null;
-  }
-  return menu;
+export function parseMenu(toolUseId: string, input: any): Menu | null {
+  if (!toolUseId || !Array.isArray(input?.questions)) return null;
+  return {
+    toolUseId,
+    questions: input.questions.map((q: any) => ({
+      question: String(q.question ?? ''),
+      header: String(q.header ?? ''),
+      multiSelect: !!q.multiSelect,
+      options: Array.isArray(q.options) ? q.options.map((o: any) => ({ label: String(o.label ?? ''), description: o.description })) : [],
+    })),
+    at: Date.now(),
+  };
 }
+
+// Claude Code writes an AskUserQuestion call to the transcript only once it is answered or cancelled.
+const answeredMenus = (entries: Record<string, any>[]) =>
+  entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && b.name === 'AskUserQuestion').map((b) => String(b.id)));
 
 // The current turn started at the developer's last prompt; its step is Claude's latest block.
 function activity(entries: Record<string, any>[]): Activity | null {
@@ -258,7 +257,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
     activity: activity(tail),
-    menu: openMenu(tail),
+    answeredMenus: answeredMenus(tail),
     ask: latestAsk(tail),
     pr: await prFlow(tail),
     turns: turns(tail),

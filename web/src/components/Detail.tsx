@@ -169,7 +169,7 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
         {q && <span>{q.category}</span>}
         {session.rank && <span>#{session.rank}</span>}
         {session.rankReason && <em>{session.rankReason}</em>}
-        {q && <span className={styles.age}>asked {ago(q.askedAt)} ago</span>}
+        {q && <span className={styles.age}>asked {ago(q.askedAt)}</span>}
       </div>
       <h3>{decision.problem}</h3>
       {decision.brief ? <p className={styles.brief}>{decision.brief}</p> : decision.details && <Markdown source={decision.details} />}
