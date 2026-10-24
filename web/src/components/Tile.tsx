@@ -1,5 +1,6 @@
+import type { MouseEvent } from 'react';
 import { sessionAction } from '../api.ts';
-import { sessionPath } from '../router.ts';
+import { go, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { ago, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
 import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
@@ -13,8 +14,15 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
   const q = session.question;
   const headline = session.summary?.text ?? (session.status === 'exited' ? null : session.lastMessage);
 
+  // The whole tile opens the task, but not through a link stretched over it: that would sit
+  // above every label and hide their hover explanations.
+  const open = (e: MouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('a, button, [popover]') || getSelection()?.toString()) return;
+    go(sessionPath(session.id));
+  };
+
   return (
-    <article className={styles.tile} data-tile data-attention={attentionOf(session)}>
+    <article className={styles.tile} data-tile data-attention={attentionOf(session)} onClick={open}>
       <header className={styles.head}>
         <AttentionChip session={session} />
         {q && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
@@ -24,7 +32,7 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
         <span className={styles.age} title={q ? 'When Claude asked' : session.summary ? 'When the status was last updated' : 'When the session started'}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>
-      <a className={styles.name} href={sessionPath(session.id)} title="The task's name; opens the task">{sessionLabel(session, branch)}</a>
+      <a className={styles.name} href={sessionPath(session.id)} title="The task's name">{sessionLabel(session, branch)}</a>
       <span className={styles.where}><span title="Repository">{repo?.name}</span> · <span title="Branch">{branch}</span></span>
       {session.menu ? (
         <p className={styles.problem} title="What Claude asks you in its terminal">{session.menu.questions.map((m) => m.question).join(' · ')}</p>

@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
 import { listCommands } from './commands.ts';
-import { alive, conversationMeta, liveConversations, parseMenu, type LiveProcess } from './conversations.ts';
+import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
@@ -230,6 +230,23 @@ export async function answer(id: string, reply: { choice?: string; text?: string
     .filter(Boolean);
   await ghostty.send(tty, parts.join(' — '), files);
   clearQuestion(id);
+  notify();
+}
+
+// A running Claude keeps its name in memory and writes it back to the transcript, so a live
+// session is renamed with its own /rename (it runs even mid-turn); an ended one in the file.
+export async function rename(id: string, title: string) {
+  const s = must(id);
+  const name = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!name) throw new Error('the name is empty');
+  if (s.status === 'exited') {
+    const file = await transcriptFile(s.cwd, s.id);
+    if (await stat(file).catch(() => null)) await appendFile(file, `${JSON.stringify({ type: 'custom-title', customTitle: name, sessionId: s.id })}\n`);
+  } else {
+    if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
+    await ghostty.send(liveTty(s), `/rename ${name}`);
+  }
+  sessions.update(id, { title: name });
   notify();
 }
 

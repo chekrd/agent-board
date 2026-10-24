@@ -41,7 +41,7 @@ export function Detail({ session, repos, tab }: Props) {
       <header className={styles.header}>
         <a className={styles.back} href="/" title="All tasks (Esc)">←</a>
         <div className={styles.heading}>
-          <h2 title="The task's name">{sessionLabel(session, branch)}</h2>
+          <TaskName session={session} name={sessionLabel(session, branch)} />
           <div className={styles.meta}>
             <AttentionChip session={session} />
             <PrChip pr={session.pr} status={session.status} />
@@ -64,6 +64,47 @@ export function Detail({ session, repos, tab }: Props) {
         {current === 'diff' && <DiffView worktree={session.worktree} />}
       </div>
     </div>
+  );
+}
+
+function TaskName({ session, name }: { session: Session; name: string }) {
+  const [editing, setEditing] = useState(false);
+  const cancelled = useRef(false);
+  if (!editing) {
+    return (
+      <h2>
+        <button type="button" className={styles.name} title="The task's name, kept the same as the Claude session's name; click to rename" onClick={() => setEditing(true)}>
+          {name}
+        </button>
+      </h2>
+    );
+  }
+  const save = (value: string) => {
+    setEditing(false);
+    if (cancelled.current || !value.trim() || value.trim() === name) return;
+    sessionAction(session.id, 'rename', { title: value }).catch(reportError);
+  };
+  return (
+    <input
+      className={styles.nameInput}
+      defaultValue={name}
+      aria-label="Task name"
+      title="Enter renames the task and its Claude session; Esc cancels"
+      autoFocus
+      onFocus={(e) => {
+        cancelled.current = false;
+        e.currentTarget.select();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelled.current = true;
+          e.currentTarget.blur();
+        }
+      }}
+      onBlur={(e) => save(e.currentTarget.value)}
+    />
   );
 }
 
