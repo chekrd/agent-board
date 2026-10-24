@@ -17,6 +17,7 @@ import { askInput } from './mcp.ts';
 import { scheduleRerank } from './priority.ts';
 import { summarizeStale } from './summary.ts';
 import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './workspace.ts';
+import { checkUploads } from './uploads.ts';
 
 const run = promisify(execFile);
 
@@ -213,20 +214,21 @@ async function isCommand(s: Session, text: string) {
   return !!name && (await listCommands(s.worktree)).some((c) => c.name === name);
 }
 
-export async function answer(id: string, reply: { choice?: string; text?: string }, commands = true) {
+export async function answer(id: string, reply: { choice?: string; text?: string; files?: string[] }, commands = true) {
   const s = must(id);
   const tty = liveTty(s);
   if (s.status === 'waiting') throw new Error(`Claude is showing ${s.waitingFor ?? 'a prompt'} in its terminal; answer that there first`);
   const text = reply.text?.trim() ?? '';
-  if (!reply.choice && !text) throw new Error('empty answer');
+  const files = await checkUploads(reply.files);
+  if (!reply.choice && !text && !files.length) throw new Error('empty answer');
   // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
-  if (commands && !reply.choice && (await isCommand(s, text))) {
+  if (commands && !reply.choice && !files.length && (await isCommand(s, text))) {
     await ghostty.send(tty, text);
     return;
   }
   const parts = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', reply.text?.trim() ?? '']
     .filter(Boolean);
-  await ghostty.send(tty, parts.join(' — '));
+  await ghostty.send(tty, parts.join(' — '), files);
   clearQuestion(id);
   notify();
 }

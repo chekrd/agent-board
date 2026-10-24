@@ -15,6 +15,7 @@ import { elaborate } from './explain.ts';
 import { addWorktree, fullDiff, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
+import { saveUpload } from './uploads.ts';
 import { notify, onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
 
 const run = promisify(execFile);
@@ -143,6 +144,11 @@ app.post('/api/sessions/:id/:action', async (c) => {
     default: return c.text('unknown action', 404);
   }
   return c.body(null, 204);
+});
+
+app.post('/api/uploads', async (c) => {
+  const path = await saveUpload(decodeURIComponent(c.req.header('x-filename') ?? 'file'), await c.req.arrayBuffer());
+  return c.json({ path });
 });
 
 app.post('/api/hooks/ask-user-question', async (c) => {

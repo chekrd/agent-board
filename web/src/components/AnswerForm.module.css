@@ -15,8 +15,48 @@
     gap: 6px;
     align-items: flex-start;
     input, textarea { flex: 1; min-width: 0; }
-    textarea { resize: vertical; }
+    textarea { field-sizing: content; min-height: calc(2lh + 12px); max-height: 60vh; resize: none; }
   }
+
+  .attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 240px;
+      padding: 3px 3px 3px 4px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      font-size: 12px;
+      &[data-state="uploading"] { opacity: 0.6; }
+      &[data-state="failed"] { border-color: var(--del); color: var(--del); }
+    }
+    img { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; }
+    button { padding: 0 6px; }
+  }
+
+  .ext {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .attachmentName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .commands {
     position: absolute;

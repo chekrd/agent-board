@@ -28,10 +28,20 @@ export async function focus(tty: string) {
 // `input text` arrives as a bracketed paste, so a multi-line message stays one prompt;
 // Enter goes separately once the TUI has taken in the paste.
 // Control characters are dropped so the text cannot end the paste and type keys itself.
-export async function send(tty: string, text: string) {
-  const clean = text.replaceAll('\r\n', '\n').replace(/[^\P{Cc}\n\t]/gu, '');
-  await onTerminal(tty, 'input text (item 2 of argv) to t', clean);
-  await new Promise((r) => setTimeout(r, 200));
+// Claude Code turns a paste of nothing but image paths into image attachments, so images go
+// in a paste of their own before the text; other files stay paths in the text for Claude to read.
+export async function send(tty: string, text: string, files: string[] = []) {
+  const pause = () => new Promise((r) => setTimeout(r, 200));
+  const images = files.filter((f) => /\.(png|jpe?g|gif|webp)$/i.test(f));
+  if (images.length) {
+    await onTerminal(tty, 'input text (item 2 of argv) to t', images.join(' '));
+    await pause();
+  }
+  const clean = [...files.filter((f) => !images.includes(f)), text.replaceAll('\r\n', '\n').replace(/[^\P{Cc}\n\t]/gu, '')]
+    .filter(Boolean)
+    .join(' ');
+  if (clean) await onTerminal(tty, 'input text (item 2 of argv) to t', images.length ? ` ${clean}` : clean);
+  await pause();
   await onTerminal(tty, 'send key "enter" to t');
 }
 

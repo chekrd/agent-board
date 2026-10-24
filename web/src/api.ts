@@ -13,4 +13,15 @@ export async function api<T = void>(method: string, path: string, body?: unknown
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
+export async function upload(file: File) {
+  const res = await fetch('/api/uploads', {
+    method: 'POST',
+    headers: { 'content-type': file.type || 'application/octet-stream', 'x-filename': encodeURIComponent(file.name || 'pasted') },
+    body: file,
+  });
+  const out = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(out.error ?? res.statusText);
+  return out.path as string;
+}
+
 export const sessionAction = (id: string, action: string, body?: unknown) => api('POST', `/api/sessions/${id}/${action}`, body ?? {});

@@ -1,11 +1,20 @@
-import { useActionState, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { api, sessionAction } from '../api.ts';
+import { useActionState, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { api, sessionAction, upload } from '../api.ts';
 import type { Advice, Command, QuestionOption, Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
 import { Elapsed } from './Elapsed.tsx';
 
 // Outside the component: Detail remounts the form when a decision opens or clears.
 const drafts = new Map<string, string>();
+const attachments = new Map<string, Attachment[]>();
+
+interface Attachment {
+  id: string;
+  name: string;
+  preview: string | null;
+  path: string | null;
+  error: string | null;
+}
 
 export function AnswerForm({ session, options = [] }: { session: Session; options?: QuestionOption[] }) {
   const q = session.question;
@@ -17,8 +26,9 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
       else if (intent === 'retry') await sessionAction(session.id, 'retry-advice');
       else if (intent === 'stop') await sessionAction(session.id, 'stop-advice');
       else {
-        await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined });
+        await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined, files: form.getAll('file') });
         setDraft('');
+        clearFiles();
       }
       return null;
     } catch (err) {
@@ -31,6 +41,48 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
     drafts.set(session.id, value);
     setDraftState(value);
   };
+  const [files, setFilesState] = useState(() => attachments.get(session.id) ?? []);
+  const setFiles = (update: (prev: Attachment[]) => Attachment[]) =>
+    setFilesState((prev) => {
+      const next = update(prev);
+      attachments.set(session.id, next);
+      return next;
+    });
+  const clearFiles = () =>
+    setFiles((prev) => {
+      for (const f of prev) if (f.preview) URL.revokeObjectURL(f.preview);
+      return [];
+    });
+  const uploading = files.some((f) => !f.path && !f.error);
+  const ready = files.filter((f) => f.path);
+
+  const attach = (list: File[]) => {
+    for (const file of list) {
+      const id = crypto.randomUUID();
+      const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+      setFiles((prev) => [...prev, { id, name: file.name || 'pasted', preview, path: null, error: null }]);
+      upload(file).then(
+        (path) => setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, path } : f))),
+        (err: Error) => setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, error: err.message } : f))),
+      );
+    }
+    reply.current?.focus();
+  };
+
+  const detach = (a: Attachment) => {
+    if (a.preview) URL.revokeObjectURL(a.preview);
+    setFiles((prev) => prev.filter((f) => f.id !== a.id));
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+  };
+  const onDrop = (e: DragEvent) => {
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    attach([...e.dataTransfer.files]);
+  };
+
   const [picked, setPicked] = useState(0);
   const [closed, setClosed] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -66,7 +118,7 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
       // Implicit submission would click the form's first submit button (an option or Accept).
       if (e.shiftKey) return;
       e.preventDefault();
-      if (draft.trim()) e.currentTarget.form?.requestSubmit();
+      if ((draft.trim() || ready.length) && !uploading) e.currentTarget.form?.requestSubmit();
     }
   };
 
@@ -81,11 +133,16 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
   const field = {
     ref: reply,
     name: 'text',
-    placeholder: options.length ? 'Or write your own answer, / for commands…' : 'Reply, or / for commands…',
+    placeholder: options.length ? 'Or write your own answer, / for commands, paste or drop files…' : 'Reply, / for commands, paste or drop files…',
     disabled: pending,
     value: draft,
     onKeyDown,
     onFocus: () => setFocused(true),
+    onPaste: (e: { clipboardData: DataTransfer; preventDefault: () => void }) => {
+      if (!e.clipboardData.files.length) return;
+      e.preventDefault();
+      attach([...e.clipboardData.files]);
+    },
     onChange: (e: { currentTarget: { value: string } }) => onInput(e.currentTarget.value),
   };
 
@@ -110,7 +167,19 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
           ))}
         </div>
       )}
-      <div className={styles.reply}>
+      {files.length > 0 && (
+        <ul className={styles.attachments}>
+          {files.map((f) => (
+            <li key={f.id} data-state={f.error ? 'failed' : f.path ? 'ready' : 'uploading'} title={f.error ?? (f.path ? `Sent to Claude as ${f.path}` : 'Uploading…')}>
+              {f.preview ? <img src={f.preview} alt="" /> : <span className={styles.ext}>{f.name.split('.').at(-1)?.slice(0, 4) || 'file'}</span>}
+              <span className={styles.attachmentName}>{f.name}</span>
+              {f.path && <input type="hidden" name="file" value={f.path} />}
+              <button type="button" data-variant="ghost" aria-label={`Remove ${f.name}`} title="Remove this attachment" onClick={() => detach(f)}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={styles.reply} onDragOver={onDragOver} onDrop={onDrop}>
         {matches.length > 0 && (
           <ul className={styles.commands} role="listbox">
             {matches.map((c, i) => (
