@@ -99,8 +99,8 @@ function Overview({ session }: { session: Session }) {
         )
       )}
       {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
-      <details className={styles.context}>
-        <summary>Facts</summary>
+      <section>
+        <h4>Facts</h4>
         <dl className={styles.facts}>
           <dt>Task</dt>
           <dd>{session.firstPrompt ?? '—'}</dd>
@@ -117,7 +117,7 @@ function Overview({ session }: { session: Session }) {
           <dt>Session</dt>
           <dd><code>{session.id}</code></dd>
         </dl>
-      </details>
+      </section>
     </div>
   );
 }
