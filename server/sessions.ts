@@ -126,6 +126,7 @@ async function readTranscript(s: Session) {
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
+  if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
   if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;

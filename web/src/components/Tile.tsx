@@ -5,6 +5,7 @@ import { ago, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
 import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import styles from './Tile.module.css';
+import { Working } from './Working.tsx';
 
 export function Tile({ session, repos }: { session: Session; repos: RepoView[] }) {
   const { repo, worktree, branch } = locate(repos, session);
@@ -29,6 +30,7 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
       ) : (
         headline && <p className={styles.headline}>{headline}</p>
       )}
+      <Working session={session} />
       <footer className={styles.foot}>
         <PrChip pr={session.pr} status={session.status} />
         <DiffStat stat={session.diffstat} />

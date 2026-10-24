@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sessionAction } from '../api.ts';
 import { go, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
@@ -10,6 +10,7 @@ import { Markdown } from './Markdown.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
 import { FocusButton } from './Tile.tsx';
+import { Working } from './Working.tsx';
 
 interface Props {
   session: Session;
@@ -72,6 +73,7 @@ function Overview({ session }: { session: Session }) {
   const summary = session.summary;
   return (
     <div className={styles.overview}>
+      <Working session={session} large />
       <section className={styles.know}>
         <h4>What you should know {summary && <span>· updated {ago(summary.at)}</span>}</h4>
         {summary ? (
@@ -123,14 +125,20 @@ function Overview({ session }: { session: Session }) {
 }
 
 function LatestReply({ text }: { text: string }) {
+  const body = useRef<HTMLDivElement>(null);
+  const [folded, setFolded] = useState(false);
   const [full, setFull] = useState(false);
+  useLayoutEffect(() => {
+    const el = body.current!;
+    setFolded(el.scrollHeight > el.clientHeight);
+  }, []);
   return (
     <section className={styles.reply}>
       <h4>Claude's latest reply</h4>
-      <div className={styles.replyBody} data-full={full || undefined}>
+      <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined}>
         <Markdown source={text} />
       </div>
-      <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)}>{full ? 'Show less' : 'Show all'}</button>
+      {folded && <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)}>{full ? 'Show less' : 'Show all'}</button>}
     </section>
   );
 }

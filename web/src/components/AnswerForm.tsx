@@ -2,6 +2,7 @@ import { useActionState, useEffect, useRef, useState, type KeyboardEvent } from 
 import { api, sessionAction } from '../api.ts';
 import type { Advice, Command, QuestionOption, Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
+import { Elapsed } from './Elapsed.tsx';
 
 // Outside the component: Detail remounts the form when a decision opens or clears.
 const drafts = new Map<string, string>();
@@ -213,14 +214,4 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
       </div>
     </div>
   );
-}
-
-function Elapsed({ since }: { since: number }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const seconds = Math.max(0, Math.floor((now - since) / 1000));
-  return <>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</>;
 }

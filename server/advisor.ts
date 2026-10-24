@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { ASK_TOOL_NAME, ORIGIN, SCRATCH_DIR } from './config.ts';
 import { sessions, type Advice, type Session } from './db.ts';
+import { describeTool } from './conversations.ts';
 import { addScratchCopy, removeScratchCopy } from './git.ts';
 import { headless } from './headless.ts';
 import { clip } from './priority.ts';
@@ -101,14 +102,11 @@ export async function handleAdvisorMcp(request: Request, token: string) {
 }
 
 function describe(tool: Record<string, any>, run: Run) {
-  const input = tool.input ?? {};
-  const name = String(tool.name).replace(/^mcp__(.+?)__/, '$1: ');
-  let detail = String(input.description ?? input.file_path?.split('/').at(-1) ?? input.pattern ?? input.url ?? input.skill ?? input.command ?? '');
+  let text = describeTool(tool);
   for (const dir of [run.scratch, run.session.worktree]) {
-    if (dir) detail = detail.replaceAll(`"${dir}"`, '.').replaceAll(dir, '.');
+    if (dir) text = text.replaceAll(`"${dir}"`, '.').replaceAll(dir, '.');
   }
-  detail = detail.replace(/^cd \.\s*(&&|;)\s*/, '');
-  return clip(detail ? `${name} · ${detail}` : name, 140);
+  return clip(text.replace(/· cd \.\s*(&&|;)\s*/, '· '), 140);
 }
 
 function prompt(s: Session) {

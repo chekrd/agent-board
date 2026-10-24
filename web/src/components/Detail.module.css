@@ -142,8 +142,8 @@
   .replyBody {
     max-height: 16lh;
     overflow: hidden;
-    mask-image: linear-gradient(to bottom, black calc(100% - 3lh), transparent);
-    &[data-full] { max-height: none; mask-image: none; }
+    &[data-folded] { mask-image: linear-gradient(to bottom, black calc(100% - 3lh), transparent); }
+    &[data-full] { max-height: none; }
   }
 
   .more { padding: 4px 0 0; }

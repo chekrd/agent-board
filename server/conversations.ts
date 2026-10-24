@@ -10,6 +10,8 @@ const run = promisify(execFile);
 const CLAUDE_DIR = join(homedir(), '.claude');
 const HEAD_BYTES = 128 << 10;
 const TAIL_BYTES = 512 << 10;
+const MAX_TAIL_BYTES = 8 << 20;
+const MAX_LINE = 256 << 10;
 
 export interface Conversation {
   id: string;
@@ -31,9 +33,15 @@ interface Meta {
   firstPrompt: string | null;
   interactive: boolean;
   lastMessage: string | null;
+  activity: Activity | null;
   ask: Ask | null;
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
+}
+
+export interface Activity {
+  step: string;
+  since: number;
 }
 
 export interface Turn {
@@ -56,21 +64,32 @@ async function projectDir(cwd: string) {
   return join(projects, match ?? name);
 }
 
-async function readSlice(file: string, from: 'head' | 'tail') {
+async function readSlice(file: string, from: 'head' | 'tail', bytes: number) {
   const fh = await open(file, 'r');
   try {
     const { size } = await fh.stat();
-    const length = Math.min(from === 'head' ? HEAD_BYTES : TAIL_BYTES, size);
+    const length = Math.min(bytes, size);
     const buf = Buffer.alloc(length);
     await fh.read(buf, 0, length, from === 'head' ? 0 : size - length);
-    return buf.toString('utf8');
+    return { text: buf.toString('utf8'), whole: length === size };
   } finally {
     await fh.close();
   }
 }
 
+// Screenshots and other tool output are stored inline and can fill any fixed window, so the tail
+// grows until it reaches the developer's last prompt, where the current turn starts.
+async function readTail(file: string) {
+  for (let bytes = TAIL_BYTES; ; bytes *= 4) {
+    const { text, whole } = await readSlice(file, 'tail', bytes);
+    const entries = jsonLines(text);
+    if (whole || bytes >= MAX_TAIL_BYTES || entries.some((e) => promptText(e))) return entries;
+  }
+}
+
 const jsonLines = (text: string) =>
   text.split('\n').flatMap((line) => {
+    if (line.length > MAX_LINE) return [];
     try {
       return [JSON.parse(line) as Record<string, any>];
     } catch {
@@ -116,6 +135,22 @@ function turns(entries: Record<string, any>[]): Turn[] {
 function lastMessage(entries: Record<string, any>[]) {
   const text = entries.map((e) => blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).findLast(Boolean);
   return text ? text.trim().slice(0, 4000) : null;
+}
+
+export function describeTool(tool: Record<string, any>) {
+  const input = tool.input ?? {};
+  const name = String(tool.name).replace(/^mcp__(.+?)__/, '$1: ');
+  const detail = String(input.description ?? input.file_path?.split('/').at(-1) ?? input.pattern ?? input.url ?? input.skill ?? input.command ?? '');
+  return detail ? `${name} · ${detail}` : name;
+}
+
+// The current turn started at the developer's last prompt; its step is Claude's latest block.
+function activity(entries: Record<string, any>[]): Activity | null {
+  const start = entries.findLast((e) => promptText(e));
+  const block = entries.map((e) => blocks(e).at(-1)).findLast(Boolean);
+  if (!start || !block) return null;
+  const step = block.type === 'tool_use' ? describeTool(block) : block.type === 'thinking' ? 'Thinking' : 'Writing';
+  return { step: step.split('\n')[0].slice(0, 140), since: Date.parse(start.timestamp) || Date.now() };
 }
 
 const ENV_PREFIX = String.raw`^\s*(?:\w+=\S*\s+)*`;
@@ -180,8 +215,8 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     metaCache.set(file, cached);
     return cached;
   }
-  const head = jsonLines(await readSlice(file, 'head'));
-  const tail = jsonLines(await readSlice(file, 'tail'));
+  const head = jsonLines((await readSlice(file, 'head', HEAD_BYTES)).text);
+  const tail = await readTail(file);
   const titled = [...head, ...tail].findLast((e) => e.type === 'custom-title' || e.type === 'ai-title');
   const meta = {
     mtime,
@@ -189,6 +224,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     firstPrompt: head.map(promptText).find(Boolean) ?? null,
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
+    activity: activity(tail),
     ask: latestAsk(tail),
     pr: await prFlow(tail),
     turns: turns(tail),
