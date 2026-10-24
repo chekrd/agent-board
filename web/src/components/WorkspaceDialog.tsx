@@ -36,7 +36,7 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
         {error && <p className={styles.error}>{error}</p>}
         {roots.length > 0 && (
           <div className={styles.roots}>
-            <span className={styles.hint} title="Folders searched for git repositories">Scanned folders:</span>
+            <span className={styles.hint}>Scanned folders:</span>
             {roots.map((root) => (
               <span key={root} className={styles.root}>
                 <code>{root}</code>
@@ -123,13 +123,13 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
         </form>
       )}
       <details className={styles.repoSettings}>
-        <summary title="Per-repository options for new worktrees">Settings</summary>
+        <summary>Settings</summary>
         <form action={save} className={styles.settings}>
           <label title="The branch new worktrees start from and diffs compare against">
             Base branch
             <input name="baseBranch" defaultValue={repo.baseBranch ?? ''} placeholder={`${repo.base} (detected)`} />
           </label>
-          <label title="Where new worktrees are created">
+          <label>
             Worktree folder
             <input name="worktreeRoot" defaultValue={repo.worktreeRoot ?? ''} placeholder={repo.defaultWorktreeRoot} />
           </label>
@@ -158,16 +158,16 @@ function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove }: { wo
         {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
         <button onClick={() => onStart()} title="New Claude session in a Ghostty tab">New Claude</button>
         <button onClick={onShell} title="Shell in a Ghostty tab">Shell</button>
-        {onRemove && <button data-variant="danger" title="Remove this worktree, optionally with its branch" onClick={onRemove}>Remove</button>}
+        {onRemove && <button data-variant="danger" onClick={onRemove}>Remove</button>}
       </div>
       {w.conversations.length > 0 && (
         <details className={styles.conversations}>
-          <summary title="Claude conversations started in this worktree">{w.conversations.length} conversation{w.conversations.length > 1 ? 's' : ''}{latest && <> · latest: {label(latest)}</>}</summary>
+          <summary>{w.conversations.length} conversation{w.conversations.length > 1 ? 's' : ''}{latest && <> · latest: {label(latest)}</>}</summary>
           <ul>
             {w.conversations.map((c) => (
               <li key={c.id}>
                 <span className={styles.wtName} title={c.firstPrompt ?? ''}>{label(c)}</span>
-                <small title="Last activity">{ago(c.updatedAt)}</small>
+                <small>{ago(c.updatedAt)}</small>
                 <ConversationAction conversation={c} sessions={sessions} onStart={onStart} />
               </li>
             ))}
@@ -191,7 +191,7 @@ function ConversationAction({ conversation: c, sessions, onStart, primary = fals
         title={`Switch to its Ghostty tab${hint}`}
         onClick={() => { closeDialog(); go(sessionPath(c.id)); sessionAction(c.id, 'focus').catch(reportError); }}
       >
-        Focus
+        Terminal
       </button>
     );
   }

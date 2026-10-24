@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import styles from './App.module.css';
 import { Detail } from './components/Detail.tsx';
 import { NewTaskDialog } from './components/NewTaskDialog.tsx';
@@ -13,6 +14,11 @@ export function App() {
   const { roots, repos, sessions, connected } = useStore();
   const route = useRoute();
   const selected = sessions.find((s) => s.id === route.sessionId);
+  const deciding = sessions.filter((s) => !s.archived && attentionOf(s) === 'decide').length;
+
+  useEffect(() => {
+    document.title = deciding ? `(${deciding}) Docket` : 'Docket';
+  }, [deciding]);
 
   return (
     <div className={styles.app}>
@@ -37,18 +43,14 @@ export function App() {
 function Board() {
   const { repos, sessions, connected } = useStore();
   const { active, archived } = orderTiles(sessions);
-  const deciding = active.filter((s) => attentionOf(s) === 'decide').length;
 
   return (
     <>
       <header className={styles.header}>
-        <h1>
-          <span title="Every Claude session, the ones that need you first">Docket</span>
-          {deciding > 0 && <span className={styles.count} title="Decisions waiting for you">{deciding}</span>}
-        </h1>
+        <h1>Docket</h1>
         <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Docket; the board updates live' : 'Disconnected from Docket; reconnecting'} />
-        <button commandfor="workspace" command="show-modal" data-variant="ghost" title="Manage repositories and worktrees">Repos</button>
-        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length} title="Create a worktree and start Claude in it">New task</button>
+        <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
+        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
       </header>
       <main className={styles.board}>
         <div className={styles.tiles}>
@@ -61,7 +63,7 @@ function Board() {
         )}
         {archived.length > 0 && (
           <details className={styles.archived}>
-            <summary title="Sessions you archived; they stay out of the board until unarchived">Archived ({archived.length})</summary>
+            <summary>Archived ({archived.length})</summary>
             <div className={styles.tiles}>
               {archived.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
             </div>

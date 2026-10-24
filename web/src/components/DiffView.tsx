@@ -104,14 +104,14 @@ export function DiffView({ worktree }: { worktree: string }) {
       <div className={styles.toolbar}>
         {diff && (
           <span>
-            <span title="Files changed">{diff.stat.files} files</span> · <span className={styles.add} title="Lines added">+{diff.stat.insertions}</span>{' '}
-            <span className={styles.del} title="Lines removed">−{diff.stat.deletions}</span> against{' '}
-            <code title="The base branch the diff compares against">{diff.base}</code> @{' '}
+            <span>{diff.stat.files} files</span> · <span className={styles.add}>+{diff.stat.insertions}</span>{' '}
+            <span className={styles.del}>−{diff.stat.deletions}</span> against{' '}
+            <code>{diff.base}</code> @{' '}
             <code title="The commit where this branch left the base branch">{diff.mergeBase.slice(0, 8)}</code>
           </span>
         )}
         <span className={styles.hint} title="The diff merges everything in the worktree, whether committed or not">committed + staged + unstaged + untracked</span>
-        <button onClick={load} disabled={loading} title="Read the worktree's changes again">{loading ? 'Loading…' : 'Refresh'}</button>
+        <button onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
       </div>
       {error && <p className={styles.error}>{error}</p>}
       <div className={styles.content} style={{ '--tree-width': `${treeWidth}px` } as CSSProperties}>

@@ -28,7 +28,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
       <div className={detail.decisionMeta}>
         <strong title="Claude asked you this and waits for the answer">Decision</strong>
         <span title="Claude opened a choice menu in its terminal; answering here picks the options there for you">asked in the terminal</span>
-        <span className={detail.age} title="When Claude asked">asked {ago(menu.at)}</span>
+        <span className={detail.age}>asked {ago(menu.at)}</span>
       </div>
       {menu.questions.map((q, i) => {
         const a = answers[i];
@@ -38,11 +38,11 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             : { labels: a.labels[0] === label ? [] : [label], other: '' });
         return (
           <fieldset key={q.question} className={styles.question} disabled={pending}>
-            <legend title="The question's topic">{q.header}{q.multiSelect && <span title="You can select more than one option"> · pick any</span>}</legend>
-            <h3 title="Claude's question">{q.question}</h3>
+            <legend>{q.header}{q.multiSelect && <span> · pick any</span>}</legend>
+            <h3>{q.question}</h3>
             <div className={styles.options}>
               {q.options.map((o) => (
-                <button key={o.label} type="button" aria-pressed={a.labels.includes(o.label)} title={o.description || 'Select this option'} onClick={() => toggle(o.label)}>
+                <button key={o.label} type="button" aria-pressed={a.labels.includes(o.label)} title={o.description} onClick={() => toggle(o.label)}>
                   {o.label}
                   {o.description && <small>{o.description}</small>}
                 </button>
@@ -51,7 +51,7 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
             {!q.multiSelect && (
               <input
                 placeholder="Or write your own answer…"
-                title="Answer in your own words instead of an option"
+               
                 value={a.other}
                 onChange={(e) => set(i, { other: e.currentTarget.value, ...(e.currentTarget.value && { labels: [] }) })}
               />

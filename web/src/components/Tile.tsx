@@ -32,16 +32,16 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
         <span className={styles.age} title={q ? 'When Claude asked' : session.summary ? 'When the status was last updated' : 'When the session started'}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>
-      <a className={styles.name} href={sessionPath(session.id)} title="The task's name">{sessionLabel(session, branch)}</a>
-      <span className={styles.where}><span title="Repository">{repo?.name}</span> · <span title="Branch">{branch}</span></span>
+      <a className={styles.name} href={sessionPath(session.id)}>{sessionLabel(session, branch)}</a>
+      <span className={styles.where}>{repo?.name} · {branch}</span>
       {session.menu ? (
-        <p className={styles.problem} title="What Claude asks you in its terminal">{session.menu.questions.map((m) => m.question).join(' · ')}</p>
+        <p className={styles.problem}>{session.menu.questions.map((m) => m.question).join(' · ')}</p>
       ) : decision ? (
-        <p className={styles.problem} title="What Claude needs you to decide">{decision.problem}</p>
+        <p className={styles.problem}>{decision.problem}</p>
       ) : session.status === 'waiting' ? (
-        <p className={styles.problem} title="Answer it in the terminal">Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>
+        <p className={styles.problem}>Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>
       ) : (
-        headline && <p className={styles.headline} title={session.summary ? 'Where the task stands' : "Claude's last message"}>{headline}</p>
+        headline && <p className={styles.headline}>{headline}</p>
       )}
       <Working session={session} />
       <footer className={styles.foot}>
@@ -60,7 +60,7 @@ export function FocusButton({ session, primary = false }: { session: Session; pr
       title={exited ? 'Continue this conversation in a new Ghostty tab' : 'Switch to its Ghostty tab'}
       onClick={() => sessionAction(session.id, 'focus').catch(reportError)}
     >
-      {exited ? 'Continue' : 'Focus'}
+      {exited ? 'Continue' : 'Terminal'}
     </button>
   );
 }

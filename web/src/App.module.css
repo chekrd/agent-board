@@ -11,13 +11,6 @@
     h1 { font-size: 15px; flex: 1; display: flex; align-items: center; gap: 8px; }
   }
 
-  .count {
-    background: var(--accent);
-    color: var(--accent-text);
-    border-radius: 999px;
-    padding: 0 7px;
-    font-size: 12px;
-  }
 
   .connection {
     width: 8px;

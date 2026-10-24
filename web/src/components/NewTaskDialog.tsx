@@ -43,7 +43,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
       {repo && (
         <form action={submit} className={styles.form}>
           <h2>New task</h2>
-          <label title="The repository to branch from">
+          <label>
             Repository
             <select value={repo.id} onChange={(e) => setRepoId(Number(e.target.value))}>
               {repos.map((r) => (
@@ -65,7 +65,7 @@ export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
               <input {...bind('path')} placeholder={`${repo.defaultWorktreeRoot}/${name || '<name>'}/${repo.path.split('/').at(-1)}`} />
             </label>
           </div>
-          <label title="Your first message to Claude in the new session">
+          <label>
             Prompt for Claude
             <textarea {...bind('prompt')} rows={6} placeholder="What should Claude work on? Leave empty to start an idle session." />
           </label>

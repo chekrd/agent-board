@@ -61,8 +61,8 @@ function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null
               onClick={() => onSelect(f.name)}
             >
               <span className={styles.name}>{f.name.split('/').at(-1)}</span>
-              {add > 0 && <span className={styles.add} title="Lines added">+{add}</span>}
-              {del > 0 && <span className={styles.del} title="Lines removed">−{del}</span>}
+              {add > 0 && <span className={styles.add}>+{add}</span>}
+              {del > 0 && <span className={styles.del}>−{del}</span>}
               <span className={styles.status} data-type={f.type} title={typeHints[letter(f)]}>{letter(f)}</span>
             </a>
           </li>

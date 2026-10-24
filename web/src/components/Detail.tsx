@@ -22,8 +22,8 @@ interface Props {
 export function Detail({ session, repos, tab }: Props) {
   const { worktree, branch } = locate(repos, session);
   const tabs = [
-    { key: 'details', label: 'Overview', hint: 'What Claude is doing and what it needs from you' },
-    { key: 'diff', label: 'Diff', hint: 'Every change in the worktree against the base branch' },
+    { key: 'details', label: 'Overview' },
+    { key: 'diff', label: 'Diff' },
   ];
   const current = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
 
@@ -54,7 +54,7 @@ export function Detail({ session, repos, tab }: Props) {
       </header>
       <nav className={styles.tabs}>
         {tabs.map((t) => (
-          <a key={t.key} href={sessionPath(session.id, t.key)} aria-current={t.key === current ? 'page' : undefined} title={t.hint}>
+          <a key={t.key} href={sessionPath(session.id, t.key)} aria-current={t.key === current ? 'page' : undefined}>
             {t.label}
           </a>
         ))}
@@ -73,7 +73,7 @@ function TaskName({ session, name }: { session: Session; name: string }) {
   if (!editing) {
     return (
       <h2>
-        <button type="button" className={styles.name} title="The task's name, kept the same as the Claude session's name; click to rename" onClick={() => setEditing(true)}>
+        <button type="button" className={styles.name} title="Click to rename; the Claude session gets the same name" onClick={() => setEditing(true)}>
           {name}
         </button>
       </h2>
@@ -89,7 +89,7 @@ function TaskName({ session, name }: { session: Session; name: string }) {
       className={styles.nameInput}
       defaultValue={name}
       aria-label="Task name"
-      title="Enter renames the task and its Claude session; Esc cancels"
+      title="Enter saves, Esc cancels"
       autoFocus
       onFocus={(e) => {
         cancelled.current = false;
@@ -117,7 +117,7 @@ function Overview({ session }: { session: Session }) {
       {!!summary?.learnings?.length && (
         <section className={styles.know}>
           <h4 title="Something notable Claude found or learned; shown only when it is worth your attention">Worth knowing</h4>
-          <ul title="Something notable Claude found or learned">{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
+          <ul>{summary.learnings.map((k) => <li key={k}>{k}</li>)}</ul>
         </section>
       )}
       {session.menu ? (
@@ -126,40 +126,40 @@ function Overview({ session }: { session: Session }) {
         <DecisionCard key={decision.key} session={session} decision={decision} />
       ) : session.status === 'waiting' ? (
         <section className={styles.blocked}>
-          <p title="Some terminal prompts, such as permission requests, can only be answered in Ghostty">Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>
+          <p>Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>
           <FocusButton session={session} primary />
         </section>
       ) : (
         session.status !== 'exited' && (
           <section>
-            <h4 title="Sends your text to Claude's terminal as your next message">Message Claude</h4>
+            <h4>Message Claude</h4>
             <AnswerForm session={session} />
           </section>
         )
       )}
       <section className={styles.status}>
-        <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span title="When the status was last rewritten">· updated {ago(summary.at)}</span>}</h4>
+        <h4 title="A short summary of the session, rewritten by a model after each of Claude's messages">Status {summary && <span>· updated {ago(summary.at)}</span>}</h4>
         {summary ? (
           <>
-            <p title="Where the task stands, in one sentence">{summary.text}</p>
-            {!!summary.progress?.length && <ul title="What has been done so far">{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
+            <p>{summary.text}</p>
+            {!!summary.progress?.length && <ul>{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
           </>
         ) : (
-          <p className={styles.pending} title="A model writes the status after Claude's first reply">No summary yet; it is written once Claude replies.</p>
+          <p className={styles.pending}>No summary yet; it is written once Claude replies.</p>
         )}
       </section>
       {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
       <section>
-        <h4 title="Where this session lives">Facts</h4>
+        <h4>Facts</h4>
         <dl className={styles.facts}>
-          <dt title="Your first message in this session">Task</dt>
-          <dd title="Your first message in this session">{session.firstPrompt ?? '—'}</dd>
-          <dt title="The git worktree Claude works in">Worktree</dt>
-          <dd title="The git worktree Claude works in"><code>{session.worktree}</code></dd>
+          <dt>Task</dt>
+          <dd>{session.firstPrompt ?? '—'}</dd>
+          <dt>Worktree</dt>
+          <dd><code>{session.worktree}</code></dd>
           {session.pr?.result && (
             <>
-              <dt title="The last result reported for the pull request's checks">Pull request</dt>
-              <dd title="The last result reported for the pull request's checks"><code>{session.pr.result}</code></dd>
+              <dt>Pull request</dt>
+              <dd><code>{session.pr.result}</code></dd>
             </>
           )}
           <dt title="The Ghostty tab's terminal device">Terminal</dt>
@@ -182,11 +182,11 @@ function LatestReply({ text }: { text: string }) {
   }, []);
   return (
     <section className={styles.reply}>
-      <h4 title="The last message Claude wrote in the terminal, unchanged">Claude's latest reply</h4>
-      <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined} title="The last message Claude wrote in the terminal, unchanged">
+      <h4>Claude's latest reply</h4>
+      <div ref={body} className={styles.replyBody} data-folded={(folded && !full) || undefined} data-full={full || undefined}>
         <Markdown source={text} />
       </div>
-      {folded && <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)} title={full ? 'Fold the reply' : 'Show the whole reply'}>{full ? 'Show less' : 'Show all'}</button>}
+      {folded && <button type="button" className={styles.more} data-variant="ghost" onClick={() => setFull(!full)}>{full ? 'Show less' : 'Show all'}</button>}
     </section>
   );
 }
@@ -207,14 +207,14 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
         <strong title={q ? 'Claude asked you this and waits for the answer' : 'Claude ended its turn with a choice for you; a model read it from its last message'}>Decision</strong>
         {q && <span title="The kind of question, as Claude classified it">{q.category}</span>}
         {session.rank && <span title="Priority among the open decisions, ranked by a model">#{session.rank}</span>}
-        {session.rankReason && <em title="Why it got this priority">{session.rankReason}</em>}
-        {q && <span className={styles.age} title="When Claude asked">asked {ago(q.askedAt)}</span>}
+        {session.rankReason && <em>{session.rankReason}</em>}
+        {q && <span className={styles.age}>asked {ago(q.askedAt)}</span>}
       </div>
-      <h3 title="What Claude needs you to decide">{decision.problem}</h3>
+      <h3>{decision.problem}</h3>
       {decision.brief ? (
-        <p className={styles.brief} title="A short explanation of the decision, written by a model">{decision.brief}</p>
+        <p className={styles.brief}>{decision.brief}</p>
       ) : (
-        decision.details && <div title="The question as Claude wrote it"><Markdown source={decision.details} /></div>
+        decision.details && <Markdown source={decision.details} />
       )}
       <button type="button" className={styles.elaborate} data-variant="ghost" aria-expanded={open} onClick={toggle} title={open ? undefined : 'A model reads the code and explains the background and each choice'}>
         {open ? 'Less' : 'Elaborate'}
@@ -222,17 +222,17 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
       {open && (
         <div className={styles.elaboration}>
           {!explanation || explanation.state === 'thinking' ? (
-            <p className={styles.thinking} title="A model is reading the code to explain the decision"><span className={styles.spinner} aria-hidden /> Reading the code to explain this…</p>
+            <p className={styles.thinking}><span className={styles.spinner} aria-hidden /> Reading the code to explain this…</p>
           ) : explanation.state === 'failed' ? (
             <p className={styles.failed}>
               Could not explain: {explanation.error} <button type="button" data-variant="ghost" onClick={request}>Retry</button>
             </p>
           ) : (
-            <div title="Written by a model that read the code"><Markdown source={explanation.text} /></div>
+            <Markdown source={explanation.text} />
           )}
           {decision.brief && decision.details && (
             <details className={styles.original}>
-              <summary title="The question exactly as Claude wrote it">Claude's own write-up</summary>
+              <summary>Claude's own write-up</summary>
               <Markdown source={decision.details} />
             </details>
           )}
