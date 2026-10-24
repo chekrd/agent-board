@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function Detail({ session, repos, tab }: Props) {
-  const { repo, worktree, branch } = locate(repos, session);
+  const { worktree, branch } = locate(repos, session);
   const tabs = [
     { key: 'details', label: 'Overview', hint: 'What Claude is doing and what it needs from you' },
     { key: 'diff', label: 'Diff', hint: 'Every change in the worktree against the base branch' },
@@ -44,8 +44,6 @@ export function Detail({ session, repos, tab }: Props) {
           <h2 title="The task's name">{sessionLabel(session, branch)}</h2>
           <div className={styles.meta}>
             <AttentionChip session={session} />
-            <span title="Repository">{repo?.name}</span>
-            <span title="Branch">{branch}</span>
             <PrChip pr={session.pr} status={session.status} />
           </div>
         </div>
