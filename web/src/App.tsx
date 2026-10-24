@@ -17,7 +17,7 @@ export function App() {
   const deciding = sessions.filter((s) => !s.archived && attentionOf(s) === 'decide').length;
 
   useEffect(() => {
-    document.title = deciding ? `(${deciding}) Docket` : 'Docket';
+    document.title = deciding ? `(${deciding}) Agent Board` : 'Agent Board';
   }, [deciding]);
 
   return (
@@ -47,8 +47,8 @@ function Board() {
   return (
     <>
       <header className={styles.header}>
-        <h1>Docket</h1>
-        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Docket; the board updates live' : 'Disconnected from Docket; reconnecting'} />
+        <h1>Agent Board</h1>
+        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Agent Board; the board updates live' : 'Disconnected from Agent Board; reconnecting'} />
         <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
         <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
       </header>

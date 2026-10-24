@@ -3,7 +3,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ASK_TOOL, ASK_TOOL_NAME } from './config.ts';
+import { ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
 
 const run = promisify(execFile);
@@ -122,8 +122,7 @@ function promptText(entry: Record<string, any>, max = 500): string | null {
 const blocks = (entry: Record<string, any>): Record<string, any>[] =>
   entry.type === 'assistant' && !entry.isSidechain && Array.isArray(entry.message?.content) ? entry.message.content : [];
 
-// Sessions started before the rename to Docket still call the tool under its old server name.
-const ASK_TOOL_NAMES = new Set([ASK_TOOL_NAME, `mcp__agent-ide__${ASK_TOOL}`]);
+const ASK_TOOL_NAMES = new Set([ASK_TOOL_NAME, ...OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ASK_TOOL}`)]);
 
 // An ask_human call stays open until the user sends a prompt after it.
 function latestAsk(entries: Record<string, any>[]): Ask | null {

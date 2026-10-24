@@ -16,7 +16,7 @@ const MAX_PARALLEL = 2;
 const TIMEOUT_MS = 20 * 60_000;
 const ACTIVITY_EVERY_MS = 1000;
 
-const MCP_NAME = 'docket-advisor';
+const MCP_NAME = 'agent-board-advisor';
 const SCRATCH_TOOL = 'scratch_copy';
 
 const schema = (labels: string[]) => ({

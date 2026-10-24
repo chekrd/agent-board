@@ -92,7 +92,7 @@ export interface FullDiff {
 // With `paths`, every unchanged line is context, so those files read in full.
 export async function fullDiff(worktree: string, base: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
-  const dir = await mkdtemp(join(tmpdir(), 'docket-index-'));
+  const dir = await mkdtemp(join(tmpdir(), 'agent-board-index-'));
   const index = join(dir, 'index');
   try {
     let realIndex = (await git(worktree, ['rev-parse', '--git-path', 'index'])).trim();
