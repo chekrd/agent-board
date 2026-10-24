@@ -12,7 +12,7 @@ import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
 import { elaborate } from './explain.ts';
-import { addWorktree, fullDiff, repoRoot } from './git.ts';
+import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
 import { saveUpload } from './uploads.ts';
@@ -85,23 +85,38 @@ app.delete('/api/repos/:id', async (c) => {
   return c.body(null, 204);
 });
 
+app.get('/api/repos/:id/branches', async (c) => {
+  const repo = repoView(Number(c.req.param('id')));
+  if (!repo) throw new Error('unknown repo');
+  const checkedOut = new Map(repo.worktrees.flatMap((w) => (w.branch ? [[w.branch, w.path]] : [])));
+  return c.json((await listBranches(repo.path)).map((name) => ({ name, worktree: checkedOut.get(name) ?? null })));
+});
+
 app.post('/api/worktrees', async (c) => {
-  const body = await c.req.json<{ repoId: number; name: string; branch?: string; path?: string; prompt?: string; startClaude?: boolean }>();
+  const body = await c.req.json<{ repoId: number; name: string; branch?: string; path?: string; prompt?: string; startClaude?: boolean; existingBranch?: boolean }>();
   const repo = repoView(body.repoId);
   if (!repo) throw new Error('unknown repo');
   const name = body.name.trim();
-  if (!name) throw new Error('name is required');
-  const wanted = body.path?.trim().replace(/^~(?=\/|$)/, homedir()) || undefined;
-  if (wanted && !isAbsolute(wanted)) throw new Error('the worktree path must be absolute');
-  const path = await addWorktree(repo.path, {
-    branch: body.branch?.trim() || name, task: name, base: repo.base, root: repo.defaultWorktreeRoot, path: wanted,
-  });
+  const branch = body.branch?.trim();
+  let path: string;
+  if (body.existingBranch) {
+    if (!branch) throw new Error('pick a branch');
+    path = await S.checkoutExistingBranch(repo, branch);
+  } else {
+    if (!name) throw new Error('name is required');
+    const wanted = body.path?.trim().replace(/^~(?=\/|$)/, homedir()) || undefined;
+    if (wanted && !isAbsolute(wanted)) throw new Error('the worktree path must be absolute');
+    path = await addWorktree(repo.path, {
+      branch: branch || name, task: name, base: repo.base, root: repo.defaultWorktreeRoot, path: wanted,
+    });
+  }
   await refreshWorkspace();
+  const setup = body.existingBranch ? null : repo.setupCommand;
   if (body.startClaude === false) {
-    if (repo.setupCommand) await S.openShell(path, repo.setupCommand);
+    if (setup) await S.openShell(path, setup);
     return c.json({ path, sessionId: null });
   }
-  const sessionId = await S.startClaude({ repoId: repo.id, worktree: path, prompt: body.prompt, title: name, setup: repo.setupCommand });
+  const sessionId = await S.startClaude({ repoId: repo.id, worktree: path, prompt: body.prompt, title: name || branch, setup });
   return c.json({ path, sessionId });
 });
 

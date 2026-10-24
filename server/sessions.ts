@@ -10,7 +10,7 @@ import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, 
 import { SESSIONS_DIR } from './config.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
-import { fullDiff, isClean, pullRequestUrl, removeWorktree, repoRoot } from './git.ts';
+import { fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch } from './git.ts';
 import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import { askInput } from './mcp.ts';
@@ -377,6 +377,20 @@ export async function removeWorktreeAndSessions(repo: RepoView, path: string, op
     await removeWorktree(repo.path, path, { force: opts.force, deleteBranch: opts.deleteBranch && !keepBranch });
     stopWorktree(path);
   });
+}
+
+// Works where the branch is already checked out, else switches the main checkout to it.
+export async function checkoutExistingBranch(repo: RepoView, branch: string) {
+  const checkedOut = repo.worktrees.find((w) => w.branch === branch);
+  if (checkedOut) return checkedOut.path;
+  if (!(await listBranches(repo.path)).includes(branch)) throw new Error(`no branch named ${branch}`);
+  const main = repo.worktrees.find((w) => w.isMain);
+  if (!main) throw new Error('the main checkout is missing');
+  const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === main.path || p.cwd.startsWith(`${main.path}/`));
+  if (claudes.length) throw new Error(`Claude is running in ${main.path} on ${main.branch ?? 'a detached HEAD'}; switching it to ${branch} would change its files`);
+  if (!(await isClean(main.path, { untracked: false }))) throw new Error(`${main.path} has uncommitted changes; commit or stash them first`);
+  await switchBranch(main.path, branch);
+  return main.path;
 }
 
 const longLived = (repo: RepoView, branch: string) =>

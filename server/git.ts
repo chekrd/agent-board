@@ -68,7 +68,21 @@ export async function addWorktree(repo: string, opts: { branch: string; task: st
   return gitWt(repo, ['add', opts.branch, '--task', opts.task, '--base', opts.base, '--root', opts.root, ...(opts.path ? ['--path', opts.path] : [])]);
 }
 
-export const isClean = async (worktree: string) => !(await git(worktree, ['status', '--porcelain'])).trim();
+export async function listBranches(repo: string) {
+  const out = await git(repo, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
+  const names = out.split('\n').filter(Boolean).flatMap((ref) => {
+    if (ref.startsWith('refs/heads/')) return [ref.slice('refs/heads/'.length)];
+    const name = ref.split('/').slice(3).join('/');
+    return name && name !== 'HEAD' ? [name] : [];
+  });
+  return [...new Set(names)];
+}
+
+// A remote-only branch gets a local tracking branch, as `git switch` does by default.
+export const switchBranch = (worktree: string, branch: string) => git(worktree, ['switch', '--quiet', branch]);
+
+export const isClean = async (worktree: string, { untracked = true } = {}) =>
+  !(await git(worktree, ['status', '--porcelain', ...(untracked ? [] : ['--untracked-files=no'])])).trim();
 
 export async function removeWorktree(repo: string, path: string, opts: { force: boolean; deleteBranch: boolean }) {
   await gitWt(repo, ['rm', path, ...(opts.force ? ['--force'] : []), ...(opts.deleteBranch ? ['--delete-branch'] : [])]);

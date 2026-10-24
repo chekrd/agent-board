@@ -14,6 +14,8 @@
 
   .row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 
+  .modes { display: flex; gap: 16px; }
+
   .check { flex-direction: row !important; align-items: center; color: var(--text) !important; }
 
   .hint { color: var(--muted); font-size: 12px; }
