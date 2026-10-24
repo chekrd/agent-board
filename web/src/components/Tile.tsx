@@ -3,7 +3,7 @@ import { sessionAction } from '../api.ts';
 import { go, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { ago, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
-import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
+import { AttentionChip, PrChip } from './Status.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import styles from './Tile.module.css';
 import { Working } from './Working.tsx';
@@ -45,7 +45,6 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
       <Working session={session} />
       <footer className={styles.foot}>
         <PrChip pr={session.pr} status={session.status} />
-        <DiffStat stat={session.diffstat} />
       </footer>
     </article>
   );

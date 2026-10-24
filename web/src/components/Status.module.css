@@ -45,10 +45,6 @@
     &:hover { border-color: var(--muted); }
   }
 
-  .stat { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
-  .add { color: var(--add); }
-  .del { color: var(--del); }
-
   @keyframes pulse {
     50% { opacity: 0.3; }
   }
