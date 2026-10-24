@@ -8,11 +8,7 @@ const group = (s: Session) => attentionRank[attentionOf(s)];
 function compare(a: Session, b: Session) {
   const g = group(a) - group(b);
   if (g) return g;
-  if (a.question && b.question) {
-    return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.question.askedAt - b.question.askedAt;
-  }
-  if (a.question || b.question) return a.question ? -1 : 1;
-  return a.createdAt - b.createdAt;
+  return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.createdAt - b.createdAt;
 }
 
 export function orderTiles(sessions: Session[]) {

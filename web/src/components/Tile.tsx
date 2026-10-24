@@ -25,7 +25,7 @@ export function Tile({ session, repos }: { session: Session; repos: RepoView[] }
     <article className={styles.tile} data-tile data-attention={attentionOf(session)} onClick={open}>
       <header className={styles.head}>
         <AttentionChip session={session} />
-        {q && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
+        {(session.menu || decision) && <span className={styles.rank} title={`Priority among the open decisions, ranked by a model${session.rankReason ? `: ${session.rankReason}` : ''}`}>{session.rank ? `#${session.rank}` : '…'}</span>}
         {!!session.summary?.learnings?.length && (
           <span className={styles.learned} title="Claude found something notable; open the task to read it">Worth knowing</span>
         )}
@@ -57,7 +57,7 @@ export function FocusButton({ session, primary = false }: { session: Session; pr
   return (
     <button
       data-variant={primary ? 'primary' : 'ghost'}
-      title={exited ? 'Continue this conversation in a new Ghostty tab' : 'Switch to its Ghostty tab'}
+      title={exited ? 'Continue this conversation' : 'Show its terminal in Ghostty'}
       onClick={() => sessionAction(session.id, 'focus').catch(reportError)}
     >
       {exited ? 'Continue' : 'Terminal'}

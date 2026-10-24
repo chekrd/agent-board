@@ -1,6 +1,7 @@
 import { useActionState, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { api, sessionAction, upload } from '../api.ts';
-import type { Advice, Command, QuestionOption, Session } from '../types.ts';
+import type { Advice, Command, Menu, QuestionOption, Session } from '../types.ts';
+import { adviceFor } from '../util.ts';
 import styles from './AnswerForm.module.css';
 import { Elapsed } from './Elapsed.tsx';
 
@@ -18,13 +19,11 @@ interface Attachment {
 
 export function AnswerForm({ session, options = [] }: { session: Session; options?: QuestionOption[] }) {
   const q = session.question;
+  const advice = adviceFor(session);
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
     try {
       const intent = form.get('intent');
       if (intent === 'dismiss') await sessionAction(session.id, 'dismiss');
-      else if (intent === 'accept') await sessionAction(session.id, 'accept-advice');
-      else if (intent === 'retry') await sessionAction(session.id, 'retry-advice');
-      else if (intent === 'stop') await sessionAction(session.id, 'stop-advice');
       else {
         await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined, files: form.getAll('file') });
         setDraft('');
@@ -148,7 +147,7 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
 
   return (
     <form className={styles.form} action={submit}>
-      {q && session.advice && <SecondOpinion advice={session.advice} pending={pending} onEdit={edit} />}
+      {advice && <SecondOpinion session={session} advice={advice} onEdit={edit} />}
       {options.length > 0 && (
         <div className={styles.options}>
           {options.map((o) => (
@@ -245,7 +244,21 @@ function rank(commands: Command[], query: string) {
 
 const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low');
 
-function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending: boolean; onEdit: (a: Advice) => void }) {
+// Its buttons act on their own: it sits inside the reply form, which forms cannot nest.
+export function SecondOpinion({ session, advice: a, menu, onEdit }: { session: Session; advice: Advice; menu?: Menu; onEdit: (a: Advice) => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const act = async (action: string) => {
+    setPending(true);
+    setError(null);
+    try {
+      await sessionAction(session.id, action);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
   if (a.state === 'thinking') {
     return (
       <div className={styles.advice} data-state="running">
@@ -253,7 +266,7 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
           <span className={styles.spinner} aria-hidden />
           <span title="Another model reads the code and suggests what you would likely answer">Second opinion in progress</span>
           <span><Elapsed since={a.startedAt} /></span>
-          <button type="submit" name="intent" value="stop" data-variant="ghost" disabled={pending}>Stop</button>
+          <button type="button" data-variant="ghost" disabled={pending} onClick={() => act('stop-advice')}>Stop</button>
         </div>
         <p className={styles.activity}>{a.activity ?? 'Working'}</p>
       </div>
@@ -263,7 +276,7 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
     return (
       <div className={styles.advice} data-state="failed" title={a.error}>
         <span>{a.error === 'stopped' ? 'Second opinion stopped' : `Second opinion failed: ${a.error}`}</span>
-        <button type="submit" name="intent" value="retry" data-variant="ghost" disabled={pending}>Retry</button>
+        <button type="button" data-variant="ghost" disabled={pending} onClick={() => act('retry-advice')}>Retry</button>
       </div>
     );
   }
@@ -275,13 +288,22 @@ function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending
           {a.confidence}%
         </span>
       </div>
-      {a.choice && <strong className={styles.adviceChoice}>{a.choice}</strong>}
+      {menu && a.answers ? (
+        <ul className={styles.adviceAnswers}>
+          {menu.questions.map((q, i) => (
+            <li key={q.question}><span>{q.header || q.question}</span> <strong>{a.answers![i]?.other || a.answers![i]?.labels.join(', ')}</strong></li>
+          ))}
+        </ul>
+      ) : (
+        a.choice && <strong className={styles.adviceChoice}>{a.choice}</strong>
+      )}
       {a.answer && <p className={styles.adviceAnswer}>{a.answer}</p>}
       {a.reasoning && <p className={styles.adviceReason}>{a.reasoning}</p>}
       <div className={styles.adviceActions}>
-        <button type="submit" name="intent" value="accept" data-variant="primary" disabled={pending}>Accept &amp; send</button>
-        <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)} title="Copy the suggestion into the reply box to change it first">Edit</button>
+        <button type="button" data-variant="primary" disabled={pending} onClick={() => act('accept-advice')}>Accept &amp; send</button>
+        <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)} title={menu ? 'Pick the suggested answers below to change them first' : 'Copy the suggestion into the reply box to change it first'}>Edit</button>
       </div>
+      {error && <p className={styles.error}>{error}</p>}
     </div>
   );
 }

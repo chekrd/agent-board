@@ -121,7 +121,7 @@ function Overview({ session }: { session: Session }) {
         </section>
       )}
       {session.menu ? (
-        <MenuCard key={session.menu.toolUseId} sessionId={session.id} menu={session.menu} />
+        <MenuCard key={session.menu.toolUseId} session={session} menu={session.menu} />
       ) : decision ? (
         <DecisionCard key={decision.key} session={session} decision={decision} />
       ) : session.status === 'waiting' ? (

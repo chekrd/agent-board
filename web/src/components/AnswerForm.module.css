@@ -118,6 +118,13 @@
 
   .adviceChoice { font-size: 13px; }
 
+  .adviceAnswers {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    span { color: var(--muted); }
+  }
+
   .adviceAnswer { white-space: pre-line; }
 
   .adviceReason { color: var(--muted); font-style: italic; }

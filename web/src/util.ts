@@ -1,3 +1,4 @@
+import { turnDecision } from '../../server/decision.ts';
 import type { QuestionOption, RepoView, Session } from './types.ts';
 
 export function locate(repos: RepoView[], session: Session) {
@@ -32,10 +33,14 @@ export function decisionOf(s: Session): DecisionView | null {
     const d = summary?.question === q.toolUseId ? summary.decision : null;
     return { key: `q:${q.toolUseId}`, problem: d?.problem || q.title, brief: d?.brief ?? '', context: q.details, options: q.options };
   }
-  const d = summary?.question === null && s.status === 'idle' ? summary.decision : null;
-  // Summaries written before options had descriptions stored bare labels.
-  const options = d?.options.map((o) => (typeof o === 'string' ? { label: o } : o)) ?? [];
-  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, context: d.context ?? '', options } : null;
+  const d = turnDecision(s);
+  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, context: d.context ?? '', options: d.options } : null;
+}
+
+// The advice shown with the decision or menu the session waits on now, never one left from an earlier one.
+export function adviceFor(s: Session) {
+  const key = s.menu ? `m:${s.menu.toolUseId}` : decisionOf(s)?.key;
+  return s.advice && s.advice.key === key ? s.advice : null;
 }
 
 export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';

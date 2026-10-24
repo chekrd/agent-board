@@ -8,6 +8,7 @@ import { adviseOpen, stopAdvice } from './advisor.ts';
 import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
+import { openDecision } from './decision.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
@@ -15,7 +16,7 @@ import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import { menuKeystrokes, type MenuAnswer } from './menu.ts';
 import { askInput } from './mcp.ts';
-import { scheduleRerank } from './priority.ts';
+import { scheduleRerank, trackDecisions } from './priority.ts';
 import { summarizeStale } from './summary.ts';
 import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './workspace.ts';
 import { checkUploads } from './uploads.ts';
@@ -128,6 +129,8 @@ async function readTranscript(s: Session) {
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
+  const lastTurn = meta.turns.at(-1)?.id ?? null;
+  if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
   if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
   if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
@@ -140,11 +143,6 @@ async function readTranscript(s: Session) {
       : null;
     // The MCP server rejected this call, so Claude never saw it as a question either.
     if (ask && !input?.success) patch.dismissedAsk = ask.toolUseId;
-    patch.rank = null;
-    patch.rankReason = null;
-    patch.advice = null;
-    stopAdvice(s.id);
-    scheduleRerank();
   }
   sessions.update(s.id, patch);
   return Object.keys(patch).length > 0;
@@ -192,6 +190,7 @@ async function syncLive() {
     void refreshDiffstat(s.id);
     changed = true;
   }
+  trackDecisions();
   if (changed) notify();
   adviseOpen();
   void summarizeStale();
@@ -268,9 +267,12 @@ export function menuOpened(hook: { session_id?: string; tool_use_id?: string; to
 }
 
 export async function acceptAdvice(id: string) {
-  const a = must(id).advice;
-  if (a?.state !== 'done') throw new Error('no advice to accept');
-  await answer(id, { choice: a.choice ?? undefined, text: a.answer }, false);
+  const s = must(id);
+  const a = s.advice;
+  const decision = openDecision(s);
+  if (a?.state !== 'done' || a.key !== decision?.key) throw new Error('no advice to accept');
+  if (decision.menu) await answerMenu(id, { toolUseId: decision.menu.toolUseId, answers: a.answers ?? [] });
+  else await answer(id, { choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
 export async function openIn(id: string, app: 'finder' | 'vscode') {
@@ -388,9 +390,9 @@ export async function deleteWorktree(id: string) {
 function clearQuestion(id: string) {
   const s = sessions.get(id);
   if (!s?.question) return;
-  sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId, rank: null, rankReason: null, advice: null });
-  stopAdvice(id);
-  scheduleRerank();
+  sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId });
+  trackDecisions();
+  adviseOpen();
 }
 
 export function dismiss(id: string) {

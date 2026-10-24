@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { DATA_DIR, DB_PATH, SESSIONS_DIR } from './config.ts';
 import type { Activity, Menu } from './conversations.ts';
 import type { DiffStat } from './git.ts';
+import type { MenuAnswer } from './menu.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
 
@@ -52,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -83,7 +84,7 @@ export interface Question {
 }
 
 export interface Advice {
-  toolUseId: string;
+  key: string;
   state: 'thinking' | 'done' | 'failed';
   startedAt: number;
   activity: string | null;
@@ -91,6 +92,7 @@ export interface Advice {
   answer: string;
   confidence: number;
   reasoning: string;
+  answers?: MenuAnswer[];
   error?: string;
   at: number;
 }
@@ -143,6 +145,7 @@ export interface Session {
   rankReason: string | null;
   diffstat: DiffStat | null;
   lastMessage: string | null;
+  lastTurn: string | null;
   waitingFor: string | null;
   dismissedAsk: string | null;
   advice: Advice | null;
@@ -166,6 +169,9 @@ const toRepo = (r: Row): Repo => ({
   worktreeRoot: r.worktree_root,
 });
 
+// Advice stored before menus and end-of-turn decisions got one was keyed by the ask_human call.
+const toAdvice = (a: Row): Advice => (a.key ? a : { ...a, key: `q:${a.toolUseId}` }) as Advice;
+
 const toSession = (r: Row): Session => ({
   id: r.id,
   repoId: r.repo_id,
@@ -181,9 +187,10 @@ const toSession = (r: Row): Session => ({
   rankReason: r.rank_reason,
   diffstat: r.diffstat ? JSON.parse(r.diffstat) : null,
   lastMessage: r.last_message,
+  lastTurn: r.last_turn,
   waitingFor: r.waiting_for,
   dismissedAsk: r.dismissed_ask,
-  advice: r.advice ? JSON.parse(r.advice) : null,
+  advice: r.advice ? toAdvice(JSON.parse(r.advice)) : null,
   pr: r.pr ? JSON.parse(r.pr) : null,
   summary: r.summary ? JSON.parse(r.summary) : null,
   explanation: r.explanation ? JSON.parse(r.explanation) : null,
@@ -232,6 +239,7 @@ const columns: Record<string, string> = {
   rankReason: 'rank_reason',
   diffstat: 'diffstat',
   lastMessage: 'last_message',
+  lastTurn: 'last_turn',
   waitingFor: 'waiting_for',
   dismissedAsk: 'dismissed_ask',
   advice: 'advice',
@@ -258,7 +266,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

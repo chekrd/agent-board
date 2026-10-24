@@ -1,11 +1,14 @@
 import { useActionState, useState } from 'react';
 import { sessionAction } from '../api.ts';
-import type { Menu, MenuAnswer } from '../types.ts';
-import { ago } from '../util.ts';
+import type { Menu, MenuAnswer, Session } from '../types.ts';
+import { adviceFor, ago } from '../util.ts';
+import { SecondOpinion } from './AnswerForm.tsx';
 import detail from './Detail.module.css';
 import styles from './MenuCard.module.css';
 
-export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu }) {
+export function MenuCard({ session, menu }: { session: Session; menu: Menu }) {
+  const sessionId = session.id;
+  const advice = adviceFor(session);
   const [answers, setAnswers] = useState<MenuAnswer[]>(() => menu.questions.map(() => ({ labels: [], other: '' })));
   const [error, submit, pending] = useActionState(async () => {
     try {
@@ -25,6 +28,14 @@ export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu })
         <span title="Claude opened a choice menu in its terminal; answering here picks the options there for you">asked in the terminal</span>
         <span className={detail.age}>asked {ago(menu.at)}</span>
       </div>
+      {advice && (
+        <SecondOpinion
+          session={session}
+          advice={advice}
+          menu={menu}
+          onEdit={(a) => a.answers?.length === menu.questions.length && setAnswers(a.answers.map((x) => ({ labels: [...x.labels], other: x.other })))}
+        />
+      )}
       {menu.questions.map((q, i) => {
         const a = answers[i];
         const toggle = (label: string) =>
