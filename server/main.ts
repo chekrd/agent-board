@@ -11,6 +11,7 @@ import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
+import { elaborate } from './explain.ts';
 import { addWorktree, fullDiff, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
@@ -132,6 +133,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'accept-advice': await S.acceptAdvice(id); break;
     case 'retry-advice': retryAdvice(id); break;
     case 'stop-advice': stopAdvice(id); break;
+    case 'elaborate': elaborate(id); break;
     case 'focus': await S.focus(id); break;
     case 'quit': S.quit(id); break;
     case 'forget': await S.forget(id); break;

@@ -1,16 +1,22 @@
 import type { PrFlow, Session, SessionStatus } from '../types.ts';
+import { attentionOf, type Attention } from '../util.ts';
 import styles from './Status.module.css';
 
-const labels: Record<SessionStatus, string> = {
-  working: 'working',
-  idle: 'your turn',
-  waiting: 'waiting for you',
-  exited: 'ended',
+const labels: Record<Attention, string> = {
+  decide: 'Decide',
+  focus: 'Needs focus',
+  working: 'In progress',
+  idle: 'Your turn',
+  exited: 'Ended',
 };
 
-export function StatusChip({ session }: { session: Session }) {
-  const label = session.status === 'waiting' && session.waitingFor ? session.waitingFor : labels[session.status];
-  return <span className={styles.chip} data-status={session.status}>{label}</span>;
+export function AttentionChip({ session }: { session: Session }) {
+  const attention = attentionOf(session);
+  return (
+    <span className={styles.chip} data-attention={attention} title={attention === 'focus' ? `Claude is showing ${session.waitingFor ?? 'a prompt'} in its terminal` : undefined}>
+      {labels[attention]}
+    </span>
+  );
 }
 
 export function DiffStat({ stat }: { stat: Session['diffstat'] }) {

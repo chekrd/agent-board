@@ -4,8 +4,12 @@
     align-items: center;
     gap: 5px;
     font-size: 11px;
+    font-weight: 600;
     color: var(--muted);
     white-space: nowrap;
+    border-radius: 10px;
+    padding: 1px 8px;
+    background: var(--surface-2);
 
     &::before {
       content: "";
@@ -14,9 +18,11 @@
       border-radius: 50%;
       background: var(--muted);
     }
-    &[data-status="working"]::before { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
-    &[data-status="waiting"]::before { background: var(--accent); }
-    &[data-status="exited"]::before { background: transparent; border: 1px solid var(--muted); }
+    &[data-attention="decide"] { background: var(--accent); color: var(--accent-text); &::before { background: var(--accent-text); } }
+    &[data-attention="focus"] { color: var(--warn); &::before { background: var(--warn); } }
+    &[data-attention="idle"] { color: var(--text); &::before { background: var(--text); } }
+    &[data-attention="working"]::before { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    &[data-attention="exited"] { background: none; &::before { background: transparent; border: 1px solid var(--muted); } }
   }
 
   .pr {

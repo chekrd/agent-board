@@ -7,55 +7,67 @@ import { WorkspaceDialog } from './components/WorkspaceDialog.tsx';
 import { orderTiles } from './order.ts';
 import { useRoute } from './router.ts';
 import { useStore } from './store.ts';
+import { attentionOf } from './util.ts';
 
 export function App() {
   const { roots, repos, sessions, connected } = useStore();
   const route = useRoute();
-  const { active, archived } = orderTiles(sessions);
   const selected = sessions.find((s) => s.id === route.sessionId);
-  const asking = active.filter((s) => s.question).length;
 
   return (
     <div className={styles.app}>
-      <aside className={styles.sidebar}>
-        <header className={styles.header}>
-          <h1>
-            Agent IDE
-            {asking > 0 && <span className={styles.count}>{asking}</span>}
-          </h1>
-          <span className={styles.connection} data-connected={connected} title={connected ? 'Connected' : 'Disconnected'} />
-          <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
-          <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
-        </header>
-        <div className={styles.tiles}>
-          {active.map((s) => (
-            <Tile key={s.id} session={s} repos={repos} selected={s.id === route.sessionId} />
-          ))}
-          {!active.length && (
-            <p className={styles.empty}>
-              {repos.length ? 'No sessions yet. Start one with New task.' : 'Add a repository or a folder of repositories under Repos to begin.'}
-            </p>
-          )}
-          {archived.length > 0 && (
-            <details className={styles.archived}>
-              <summary>Archived ({archived.length})</summary>
-              {archived.map((s) => (
-                <Tile key={s.id} session={s} repos={repos} selected={s.id === route.sessionId} />
-              ))}
-            </details>
-          )}
-        </div>
-      </aside>
-      <main className={styles.main}>
-        {selected ? (
+      {route.sessionId ? (
+        selected ? (
           <Detail key={selected.id} session={selected} repos={repos} tab={route.tab} />
         ) : (
-          <div className={styles.placeholder}>Select a session</div>
-        )}
-      </main>
+          <div className={styles.placeholder}>
+            {connected ? <>This task is gone. <a href="/">All tasks</a></> : 'Connecting…'}
+          </div>
+        )
+      ) : (
+        <Board />
+      )}
       <NewTaskDialog repos={repos} />
       <WorkspaceDialog roots={roots} repos={repos} sessions={sessions} />
       <Toasts />
     </div>
+  );
+}
+
+function Board() {
+  const { repos, sessions, connected } = useStore();
+  const { active, archived } = orderTiles(sessions);
+  const deciding = active.filter((s) => attentionOf(s) === 'decide').length;
+
+  return (
+    <>
+      <header className={styles.header}>
+        <h1>
+          Agent IDE
+          {deciding > 0 && <span className={styles.count} title="Decisions waiting for you">{deciding}</span>}
+        </h1>
+        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected' : 'Disconnected'} />
+        <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
+        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
+      </header>
+      <main className={styles.board}>
+        <div className={styles.tiles}>
+          {active.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
+        </div>
+        {!active.length && (
+          <p className={styles.empty}>
+            {repos.length ? 'No sessions yet. Start one with New task.' : 'Add a repository or a folder of repositories under Repos to begin.'}
+          </p>
+        )}
+        {archived.length > 0 && (
+          <details className={styles.archived}>
+            <summary>Archived ({archived.length})</summary>
+            <div className={styles.tiles}>
+              {archived.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
+            </div>
+          </details>
+        )}
+      </main>
+    </>
   );
 }

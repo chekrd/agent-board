@@ -1,8 +1,9 @@
-import type { Session, SessionStatus } from './types.ts';
+import type { Session } from './types.ts';
+import { attentionOf, type Attention } from './util.ts';
 
-const statusRank: Record<SessionStatus, number> = { waiting: 1, working: 2, idle: 3, exited: 4 };
+const attentionRank: Record<Attention, number> = { decide: 0, focus: 1, idle: 2, working: 3, exited: 4 };
 
-const group = (s: Session) => (s.question ? 0 : statusRank[s.status]);
+const group = (s: Session) => attentionRank[attentionOf(s)];
 
 function compare(a: Session, b: Session) {
   const g = group(a) - group(b);
@@ -10,6 +11,7 @@ function compare(a: Session, b: Session) {
   if (a.question && b.question) {
     return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.question.askedAt - b.question.askedAt;
   }
+  if (a.question || b.question) return a.question ? -1 : 1;
   return a.createdAt - b.createdAt;
 }
 

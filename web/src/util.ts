@@ -1,4 +1,4 @@
-import type { RepoView, Session } from './types.ts';
+import type { QuestionOption, RepoView, Session } from './types.ts';
 
 export function locate(repos: RepoView[], session: Session) {
   const repo = repos.find((r) => r.id === session.repoId);
@@ -16,3 +16,27 @@ export function ago(ms: number) {
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
+
+export interface DecisionView {
+  key: string;
+  problem: string;
+  brief: string;
+  details: string | null;
+  options: QuestionOption[];
+}
+
+export function decisionOf(s: Session): DecisionView | null {
+  const q = s.question;
+  const summary = s.summary;
+  if (q) {
+    const d = summary?.question === q.toolUseId ? summary.decision : null;
+    return { key: `q:${q.toolUseId}`, problem: d?.problem || q.title, brief: d?.brief ?? '', details: q.details, options: q.options };
+  }
+  const d = summary?.question === null && s.status === 'idle' ? summary.decision : null;
+  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, details: null, options: d.options.map((label) => ({ label })) } : null;
+}
+
+export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';
+
+export const attentionOf = (s: Session): Attention =>
+  decisionOf(s) ? 'decide' : s.status === 'waiting' ? 'focus' : s.status;

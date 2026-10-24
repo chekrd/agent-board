@@ -1,12 +1,12 @@
 import { useActionState, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { api, sessionAction } from '../api.ts';
-import type { Advice, Command, Session } from '../types.ts';
+import type { Advice, Command, QuestionOption, Session } from '../types.ts';
 import styles from './AnswerForm.module.css';
 
-// Outside the component: Detail remounts the form when a question opens or clears.
+// Outside the component: Detail remounts the form when a decision opens or clears.
 const drafts = new Map<string, string>();
 
-export function AnswerForm({ session, compact = false }: { session: Session; compact?: boolean }) {
+export function AnswerForm({ session, options = [] }: { session: Session; options?: QuestionOption[] }) {
   const q = session.question;
   const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
     try {
@@ -24,7 +24,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
       return (err as Error).message;
     }
   }, null);
-  const reply = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const reply = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraftState] = useState(() => drafts.get(session.id) ?? '');
   const setDraft = (value: string) => {
     drafts.set(session.id, value);
@@ -49,7 +49,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
     setClosed(true);
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
     const current = matches[picked % matches.length];
     const exact = matches.some((c) => `/${c.name}` === draft);
@@ -63,7 +63,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
       complete(current);
     } else if (e.key === 'Enter') {
       // Implicit submission would click the form's first submit button (an option or Accept).
-      if (e.shiftKey && e.currentTarget instanceof HTMLTextAreaElement) return;
+      if (e.shiftKey) return;
       e.preventDefault();
       if (draft.trim()) e.currentTarget.form?.requestSubmit();
     }
@@ -80,7 +80,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
   const field = {
     ref: reply,
     name: 'text',
-    placeholder: 'Reply, or / for commands…',
+    placeholder: options.length ? 'Or write your own answer, / for commands…' : 'Reply, or / for commands…',
     disabled: pending,
     value: draft,
     onKeyDown,
@@ -89,11 +89,11 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
   };
 
   return (
-    <form className={styles.form} action={submit} data-compact={compact || undefined}>
-      {q && session.advice && <SecondOpinion advice={session.advice} compact={compact} pending={pending} onEdit={edit} />}
-      {q && q.options.length > 0 && (
+    <form className={styles.form} action={submit}>
+      {q && session.advice && <SecondOpinion advice={session.advice} pending={pending} onEdit={edit} />}
+      {options.length > 0 && (
         <div className={styles.options}>
-          {q.options.map((o) => (
+          {options.map((o) => (
             <button
               key={o.label}
               type="submit"
@@ -104,7 +104,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
               title={o.description}
             >
               {o.label}
-              {!compact && o.description && <small>{o.description}</small>}
+              {o.description && <small>{o.description}</small>}
             </button>
           ))}
         </div>
@@ -128,7 +128,7 @@ export function AnswerForm({ session, compact = false }: { session: Session; com
             ))}
           </ul>
         )}
-        {compact ? <input {...field} autoComplete="off" /> : <textarea {...field} rows={3} />}
+        <textarea {...field} rows={2} />
         {q && (
           <button type="submit" name="intent" value="dismiss" data-variant="ghost" disabled={pending} title="Clear without answering">
             Dismiss
@@ -175,7 +175,7 @@ function rank(commands: Command[], query: string) {
 
 const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low');
 
-function SecondOpinion({ advice: a, compact, pending, onEdit }: { advice: Advice; compact: boolean; pending: boolean; onEdit: (a: Advice) => void }) {
+function SecondOpinion({ advice: a, pending, onEdit }: { advice: Advice; pending: boolean; onEdit: (a: Advice) => void }) {
   if (a.state === 'thinking') {
     return (
       <div className={styles.advice} data-state="running">
@@ -205,8 +205,8 @@ function SecondOpinion({ advice: a, compact, pending, onEdit }: { advice: Advice
         </span>
       </div>
       {a.choice && <strong className={styles.adviceChoice}>{a.choice}</strong>}
-      {a.answer && <p className={styles.adviceAnswer} data-compact={compact || undefined}>{a.answer}</p>}
-      {a.reasoning && <p className={styles.adviceReason} data-compact={compact || undefined} title={compact ? a.reasoning : undefined}>{a.reasoning}</p>}
+      {a.answer && <p className={styles.adviceAnswer}>{a.answer}</p>}
+      {a.reasoning && <p className={styles.adviceReason}>{a.reasoning}</p>}
       <div className={styles.adviceActions}>
         <button type="submit" name="intent" value="accept" data-variant="primary" disabled={pending}>Accept &amp; send</button>
         <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)}>Edit</button>

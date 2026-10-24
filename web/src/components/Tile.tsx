@@ -1,58 +1,38 @@
 import { sessionAction } from '../api.ts';
 import { sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
-import { ago, locate, sessionLabel } from '../util.ts';
-import { AnswerForm } from './AnswerForm.tsx';
-import { DiffStat, PrChip, StatusChip } from './Status.tsx';
+import { ago, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
+import { AttentionChip, DiffStat, PrChip } from './Status.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import styles from './Tile.module.css';
 
-export function Tile({ session, repos, selected }: { session: Session; repos: RepoView[]; selected: boolean }) {
+export function Tile({ session, repos }: { session: Session; repos: RepoView[] }) {
   const { repo, worktree, branch } = locate(repos, session);
+  const decision = decisionOf(session);
   const q = session.question;
+  const headline = session.summary?.text ?? (session.status === 'exited' ? null : session.lastMessage);
 
   return (
-    <article
-      className={styles.tile}
-      data-tile
-      data-asking={q ? true : undefined}
-      data-selected={selected || undefined}
-      data-status={session.status}
-    >
+    <article className={styles.tile} data-tile data-attention={attentionOf(session)}>
       <header className={styles.head}>
-        <a className={styles.name} href={sessionPath(session.id)}>
-          {sessionLabel(session, branch)}
-        </a>
-        <FocusButton session={session} />
+        <AttentionChip session={session} />
+        {q && <span className={styles.rank} title={session.rankReason ?? undefined}>{session.rank ? `#${session.rank}` : '…'}</span>}
+        <span className={styles.age}>{ago(q?.askedAt ?? session.summary?.at ?? session.createdAt)}</span>
         <SessionMenu session={session} worktree={worktree} />
       </header>
-      <div className={styles.meta}>
-        <span className={styles.where}>{repo?.name} · {branch}</span>
+      <a className={styles.name} href={sessionPath(session.id)}>{sessionLabel(session, branch)}</a>
+      <span className={styles.where}>{repo?.name} · {branch}</span>
+      {decision ? (
+        <p className={styles.problem}>{decision.problem}</p>
+      ) : session.status === 'waiting' ? (
+        <p className={styles.problem}>Claude is showing {session.waitingFor ?? 'a prompt'} in its terminal</p>
+      ) : (
+        headline && <p className={styles.headline}>{headline}</p>
+      )}
+      <footer className={styles.foot}>
         <PrChip pr={session.pr} status={session.status} />
         <DiffStat stat={session.diffstat} />
-        {!q && <StatusChip session={session} />}
-      </div>
-      {session.summary ? (
-        <p className={styles.excerpt} data-summary title={session.summary.text}>{session.summary.text}</p>
-      ) : (
-        !q && session.status === 'idle' && session.lastMessage && <p className={styles.excerpt}>{session.lastMessage}</p>
-      )}
-      {q && (
-        <section className={styles.question}>
-          <div className={styles.rank}>
-            <span className={styles.badge}>{session.rank ? `#${session.rank}` : '…'}</span>
-            <span className={styles.category}>{q.category}</span>
-            <span className={styles.age}>{ago(q.askedAt)}</span>
-          </div>
-          <h3 className={styles.title}>{q.title}</h3>
-          {session.rankReason && <p className={styles.reason}>{session.rankReason}</p>}
-          <AnswerForm session={session} compact />
-          <nav className={styles.links}>
-            <a href={sessionPath(session.id, 'details')}>Details</a>
-            <a href={sessionPath(session.id, 'diff')}>Diff</a>
-          </nav>
-        </section>
-      )}
+      </footer>
     </article>
   );
 }
