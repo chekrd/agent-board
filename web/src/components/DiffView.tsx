@@ -1,4 +1,4 @@
-import { parsePatchFiles, registerCustomTheme } from '@pierre/diffs';
+import { parsePatchFiles, registerCustomTheme, type FileDiffMetadata } from '@pierre/diffs';
 import type { ThemeRegistration } from 'shiki';
 import { FileDiff } from '@pierre/diffs/react';
 import { useEffect, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
@@ -40,14 +40,28 @@ export function DiffView({ worktree }: { worktree: string }) {
   const [treeWidth, setTreeWidth] = useState(storedTreeWidth);
   const [loading, startLoading] = useTransition();
   const [selected, setSelected] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const [whole, setWhole] = useState<FileDiffMetadata | null>(null);
   const diffsRef = useRef<HTMLDivElement>(null);
+  const returnTo = useRef<string | null>(null);
+  const seekTo = useRef<string | null>(null);
+
+  const loadWhole = async (file: FileDiffMetadata) => {
+    const paths = [file.name, ...(file.prevName ? [file.prevName] : [])].map((p) => `&path=${encodeURIComponent(p)}`).join('');
+    const next = await api<FullDiff>('GET', `/api/diff/file?worktree=${encodeURIComponent(worktree)}${paths}`);
+    return parsePatchFiles(next.patch).flatMap((p) => p.files).find((f) => f.name === file.name) ?? null;
+  };
 
   const load = () =>
     startLoading(async () => {
       try {
         const next = await api<FullDiff>('GET', `/api/diff?worktree=${encodeURIComponent(worktree)}`);
+        const file = focused ? parsePatchFiles(next.patch).flatMap((p) => p.files).find((f) => f.name === focused) : undefined;
+        const nextWhole = file ? await loadWhole(file) : null;
         startLoading(() => {
           setDiff(next);
+          setWhole(nextWhole);
+          if (!file) setFocused(null);
           setError(null);
         });
       } catch (err) {
@@ -56,6 +70,52 @@ export function DiffView({ worktree }: { worktree: string }) {
     });
 
   useEffect(load, [worktree]);
+
+  const focus = (name: string) => {
+    const file = files.find((f) => f.name === name);
+    if (!file) return;
+    setFocused(name);
+    setSelected(name);
+    seekTo.current = name;
+    diffsRef.current?.scrollTo({ top: 0 });
+    startLoading(async () => {
+      try {
+        const next = await loadWhole(file);
+        startLoading(() => setWhole(next));
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  };
+
+  const showAll = () => {
+    returnTo.current = focused;
+    setFocused(null);
+    setWhole(null);
+  };
+
+  // The diff renders into a shadow root after highlighting, so wait for its first changed line.
+  useEffect(() => {
+    if (!whole || whole.name !== seekTo.current) return;
+    let frame = 0;
+    const started = performance.now();
+    const seek = () => {
+      const line = diffsRef.current?.querySelector('diffs-container')?.shadowRoot?.querySelector('[data-line-type^="change-"]');
+      if (!line && performance.now() - started < 2000) frame = requestAnimationFrame(seek);
+      else {
+        line?.scrollIntoView({ block: 'center' });
+        seekTo.current = null;
+      }
+    };
+    seek();
+    return () => cancelAnimationFrame(frame);
+  }, [whole]);
+
+  useEffect(() => {
+    if (focused || !returnTo.current) return;
+    document.getElementById(fileAnchor(returnTo.current))?.scrollIntoView();
+    returnTo.current = null;
+  }, [focused]);
 
   const resizeTo = (w: number) => {
     const next = clampWidth(w);
@@ -87,22 +147,29 @@ export function DiffView({ worktree }: { worktree: string }) {
   };
 
   const files = diff ? parsePatchFiles(diff.patch).flatMap((p) => p.files) : [];
+  const shown = focused ? [whole?.name === focused ? whole : files.find((f) => f.name === focused)].filter((f) => !!f) : files;
 
   useEffect(() => {
     const root = diffsRef.current;
-    if (!root) return;
+    if (!root || focused) return;
     const observer = new IntersectionObserver((entries) => {
       const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
       if (top) setSelected((top.target as HTMLElement).dataset.file ?? null);
     }, { root, rootMargin: '0px 0px -85% 0px' });
     for (const section of root.querySelectorAll('section')) observer.observe(section);
     return () => observer.disconnect();
-  }, [diff]);
+  }, [diff, focused]);
 
   return (
     <div className={styles.view} data-theme="dark">
       <div className={styles.toolbar}>
-        {diff && (
+        {focused && (
+          <>
+            <button onClick={showAll}>← All files</button>
+            <code className={styles.path}>{focused}</code>
+          </>
+        )}
+        {diff && !focused && (
           <span>
             <span>{diff.stat.files} files</span> · <span className={styles.add}>+{diff.stat.insertions}</span>{' '}
             <span className={styles.del}>−{diff.stat.deletions}</span> against{' '}
@@ -110,14 +177,14 @@ export function DiffView({ worktree }: { worktree: string }) {
             <code title="The commit where this branch left the base branch">{diff.mergeBase.slice(0, 8)}</code>
           </span>
         )}
-        <span className={styles.hint} title="The diff merges everything in the worktree, whether committed or not">committed + staged + unstaged + untracked</span>
+        <span className={styles.hint} title="The diff merges everything in the worktree, whether committed or not">{focused ? 'whole file' : 'committed + staged + unstaged + untracked'}</span>
         <button onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
       </div>
       {error && <p className={styles.error}>{error}</p>}
       <div className={styles.content} style={{ '--tree-width': `${treeWidth}px` } as CSSProperties}>
         {files.length > 0 && (
           <>
-            <FileTree files={files} selected={selected} onSelect={setSelected} />
+            <FileTree files={files} selected={focused ?? selected} onSelect={focus} />
             <div
               className={styles.resizer}
               role="separator"
@@ -136,7 +203,7 @@ export function DiffView({ worktree }: { worktree: string }) {
         )}
         <div className={styles.diffs} ref={diffsRef}>
           {diff && !files.length && <p className={styles.empty}>No changes against {diff.base}.</p>}
-          {files.map((f) => (
+          {shown.map((f) => (
             <section key={f.name} id={fileAnchor(f.name)} data-file={f.name} className={styles.file}>
               <FileDiff fileDiff={f} options={{ diffStyle: 'split', theme: THEME, themeType: 'dark', overflow: 'scroll', lineDiffType: 'word' }} />
             </section>

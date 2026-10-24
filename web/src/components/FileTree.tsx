@@ -58,7 +58,10 @@ function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null
               href={`#${fileAnchor(f.name)}`}
               aria-current={selected === f.name || undefined}
               title={f.prevName ? `${f.prevName} → ${f.name}` : f.name}
-              onClick={() => onSelect(f.name)}
+              onClick={(e) => {
+                e.preventDefault();
+                onSelect(f.name);
+              }}
             >
               <span className={styles.name}>{f.name.split('/').at(-1)}</span>
               {add > 0 && <span className={styles.add}>+{add}</span>}

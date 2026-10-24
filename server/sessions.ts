@@ -411,7 +411,7 @@ export async function refreshDiffstat(id: string) {
   if (!s || !repo || diffInFlight.has(s.worktree)) return;
   diffInFlight.add(s.worktree);
   try {
-    const { stat } = await fullDiff(s.worktree, repo.base, true);
+    const { stat } = await fullDiff(s.worktree, repo.base, { statOnly: true });
     for (const other of sessions.all().filter((o) => o.worktree === s.worktree)) sessions.update(other.id, { diffstat: stat });
     notify();
   } catch (err) {

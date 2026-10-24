@@ -11,6 +11,7 @@
   }
 
   .hint { margin-right: auto; color: var(--muted); }
+  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .add { color: var(--add); }
   .del { color: var(--del); }
   .error { color: var(--del); padding: 12px 16px; }

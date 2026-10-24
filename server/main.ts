@@ -159,11 +159,22 @@ app.post('/api/hooks/ask-user-question', async (c) => {
 
 app.get('/api/commands', async (c) => c.json(await listCommands(c.req.query('worktree') ?? '')));
 
-app.get('/api/diff', async (c) => {
-  const worktree = c.req.query('worktree') ?? '';
+const repoOfWorktree = (worktree: string) => {
   const repo = workspace().find((r) => r.worktrees.some((w) => w.path === worktree));
   if (!repo) throw new Error('unknown worktree');
-  const diff = await fullDiff(worktree, repo.base);
+  return repo;
+};
+
+app.get('/api/diff/file', async (c) => {
+  const worktree = c.req.query('worktree') ?? '';
+  const paths = c.req.queries('path') ?? [];
+  if (!paths.length || paths.some((p) => isAbsolute(p) || p.split('/').includes('..'))) throw new Error('bad path');
+  return c.json(await fullDiff(worktree, repoOfWorktree(worktree).base, { paths }));
+});
+
+app.get('/api/diff', async (c) => {
+  const worktree = c.req.query('worktree') ?? '';
+  const diff = await fullDiff(worktree, repoOfWorktree(worktree).base);
   for (const s of sessions.all().filter((s) => s.worktree === worktree)) sessions.update(s.id, { diffstat: diff.stat });
   notify();
   return c.json(diff);

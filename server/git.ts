@@ -89,7 +89,8 @@ export interface FullDiff {
 
 // Everything on disk (committed, staged, unstaged, untracked minus ignored) against
 // the merge-base, staged into a throwaway index so the real one is never touched.
-export async function fullDiff(worktree: string, base: string, statOnly = false): Promise<FullDiff> {
+// With `paths`, every unchanged line is context, so those files read in full.
+export async function fullDiff(worktree: string, base: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
   const dir = await mkdtemp(join(tmpdir(), 'docket-index-'));
   const index = join(dir, 'index');
@@ -97,12 +98,12 @@ export async function fullDiff(worktree: string, base: string, statOnly = false)
     let realIndex = (await git(worktree, ['rev-parse', '--git-path', 'index'])).trim();
     if (!isAbsolute(realIndex)) realIndex = join(worktree, realIndex);
     await copyFile(realIndex, index).catch(() => {});
-    const env = { GIT_INDEX_FILE: index };
+    const env = { GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: '1' };
     await git(worktree, ['add', '-A'], env);
-    const diffArgs = ['diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', mergeBase];
+    const diffArgs = ['diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', ...(opts.paths ? ['--unified=1000000'] : []), mergeBase, '--', ...(opts.paths ?? [])];
     const [numstat, patch] = await Promise.all([
       git(worktree, [...diffArgs, '--numstat'], env),
-      statOnly ? '' : git(worktree, diffArgs, env),
+      opts.statOnly ? '' : git(worktree, diffArgs, env),
     ]);
     const stat = { files: 0, insertions: 0, deletions: 0 };
     for (const line of numstat.split('\n').filter(Boolean)) {
