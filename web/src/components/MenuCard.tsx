@@ -1,14 +1,9 @@
 import { useActionState, useState } from 'react';
 import { sessionAction } from '../api.ts';
-import type { Menu } from '../types.ts';
+import type { Menu, MenuAnswer } from '../types.ts';
 import { ago } from '../util.ts';
 import detail from './Detail.module.css';
 import styles from './MenuCard.module.css';
-
-export interface MenuAnswer {
-  labels: string[];
-  other: string;
-}
 
 export function MenuCard({ sessionId, menu }: { sessionId: string; menu: Menu }) {
   const [answers, setAnswers] = useState<MenuAnswer[]>(() => menu.questions.map(() => ({ labels: [], other: '' })));

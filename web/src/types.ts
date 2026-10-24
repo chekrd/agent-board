@@ -3,3 +3,4 @@ export type { FullDiff } from '../../server/git.ts';
 export type { Conversation, Menu, MenuQuestion } from '../../server/conversations.ts';
 export type { RepoView, WorktreeView } from '../../server/workspace.ts';
 export type { Command } from '../../server/commands.ts';
+export type { MenuAnswer } from '../../server/menu.ts';

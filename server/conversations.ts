@@ -253,7 +253,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
   const meta = {
     mtime,
     title: entries.findLast((e) => e.type === 'custom-title')?.customTitle ?? entries.findLast((e) => e.type === 'ai-title')?.aiTitle ?? null,
-    firstPrompt: head.map(promptText).find(Boolean) ?? null,
+    firstPrompt: head.map((e) => promptText(e)).find(Boolean) ?? null,
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
     activity: activity(tail),
@@ -340,8 +340,9 @@ export async function listConversations(cwd: string, live: Map<string, LiveProce
 
 export const transcriptFile = async (cwd: string, id: string) => join(await projectDir(cwd), `${id}.jsonl`);
 
-export async function conversationMeta(cwd: string, id: string) {
-  const file = await transcriptFile(cwd, id);
+export async function fileMeta(file: string) {
   const s = await stat(file).catch(() => null);
   return s ? readMeta(file, s.mtimeMs) : null;
 }
+
+export const conversationMeta = async (cwd: string, id: string) => fileMeta(await transcriptFile(cwd, id));

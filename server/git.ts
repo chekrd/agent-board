@@ -86,8 +86,8 @@ export const isClean = async (worktree: string, { untracked = true } = {}) =>
 
 // Commits only this branch reaches: deleting it would leave them on no branch or remote.
 export async function unsharedCommits(worktree: string, branch: string | null) {
-  const exclude = branch ? [`--exclude=refs/heads/${branch}`] : [];
-  return Number((await git(worktree, ['rev-list', '--count', 'HEAD', '--not', ...exclude, '--branches', '--remotes'])).trim()) || 0;
+  const exclude = branch ? [`--exclude=${branch}`] : [];
+  return Number((await git(worktree, ['rev-list', '--count', 'HEAD', '--not', ...exclude, '--branches', '--remotes', '--tags'])).trim()) || 0;
 }
 
 export const changedFiles = async (worktree: string) =>
@@ -123,10 +123,12 @@ export async function fullDiff(worktree: string, base: string, opts: { statOnly?
     await copyFile(realIndex, index).catch(() => {});
     const env = { GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: '1' };
     await git(worktree, ['add', '-A'], env);
-    const diffArgs = ['diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', ...(opts.paths ? ['--unified=1000000'] : []), mergeBase, '--', ...(opts.paths ?? [])];
+    const diff = (format: string[]) => git(worktree, [
+      'diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', ...format, mergeBase, '--', ...(opts.paths ?? []),
+    ], env);
     const [numstat, patch] = await Promise.all([
-      git(worktree, [...diffArgs, '--numstat'], env),
-      opts.statOnly ? '' : git(worktree, diffArgs, env),
+      diff(['--numstat']),
+      opts.statOnly ? '' : diff(opts.paths ? ['--unified=1000000'] : []),
     ]);
     const stat = { files: 0, insertions: 0, deletions: 0 };
     for (const line of numstat.split('\n').filter(Boolean)) {
@@ -145,7 +147,11 @@ const remotes = new Map<string, Promise<string>>();
 
 export async function pullRequestUrl(worktree: string, id: number) {
   if (!remotes.has(worktree)) remotes.set(worktree, git(worktree, ['remote', 'get-url', 'origin']).then((s) => s.trim(), () => ''));
-  const remote = (await remotes.get(worktree)!)
+  return pullRequestUrlOf(await remotes.get(worktree)!, id);
+}
+
+export function pullRequestUrlOf(remoteUrl: string, id: number) {
+  const remote = remoteUrl
     .replace(/^git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/(.+)$/, 'https://dev.azure.com/$1/$2/_git/$3')
     .replace(/^git@([^:]+):(.+)$/, 'https://$1/$2')
     .replace(/^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/, 'https://$1/$2')

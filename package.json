@@ -53,8 +53,9 @@
     "service:uninstall": "node scripts/service.ts uninstall",
     "service:restart": "node scripts/service.ts restart",
     "open": "open -na 'Brave Browser' --args --app=http://127.0.0.1:7420",
-    "check": "tsc && oxlint server web/src scripts",
+    "check": "tsc && oxlint server web/src scripts && node --test 'server/**/*.test.ts'",
     "claude:connect": "node scripts/claude.ts connect",
-    "claude:disconnect": "node scripts/claude.ts disconnect"
+    "claude:disconnect": "node scripts/claude.ts disconnect",
+    "test": "node --test 'server/**/*.test.ts'"
   }
 }
