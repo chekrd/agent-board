@@ -6,6 +6,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { ASK_TOOL_NAME, ORIGIN, SCRATCH_DIR } from './config.ts';
 import { sessions, type Advice, type Session } from './db.ts';
 import { describeTool } from './conversations.ts';
+import { quote } from './env.ts';
 import { addScratchCopy, removeScratchCopy } from './git.ts';
 import { headless } from './headless.ts';
 import { clip, scheduleRerank } from './priority.ts';
@@ -18,6 +19,12 @@ const ACTIVITY_EVERY_MS = 1000;
 
 const MCP_NAME = 'agent-board-advisor';
 const SCRATCH_TOOL = 'scratch_copy';
+
+const guard = {
+  hooks: {
+    PreToolUse: [{ matcher: 'mcp__.*', hooks: [{ type: 'command', command: `${quote(process.execPath)} ${quote(join(import.meta.dirname, 'mcpGuard.ts'))}` }] }],
+  },
+};
 
 const schema = (labels: string[]) => ({
   type: 'object',
@@ -170,6 +177,7 @@ async function advise(s: Session) {
       args: [
         '--model', MODEL,
         '--mcp-config', JSON.stringify(mcpConfig),
+        '--settings', JSON.stringify(guard),
         '--add-dir', SCRATCH_DIR,
         '--allowedTools', `mcp__${MCP_NAME}__${SCRATCH_TOOL}`,
         '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, `NotebookEdit(/${s.worktree}/**)`, 'Bash(git push:*)',
