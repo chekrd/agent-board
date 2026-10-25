@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { lstatSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
-import { userInfo } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, isAbsolute, join, sep } from 'node:path';
 import { after, test } from 'node:test';
 import { artifactFile, storeArtifacts } from './artifacts.ts';
 import { SESSIONS_DIR } from './config.ts';
 import type { Session } from './db.ts';
 
-// The account's home from the system, not from HOME: the live board keeps its sessions there.
-if (SESSIONS_DIR.startsWith(userInfo().homedir + sep)) {
-  throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}, in your own home folder: run the tests with pnpm test, which gives them a fresh HOME`);
+// Only under a HOME that scripts/isolate.ts made: a real folder named by mkdtemp, with TMPDIR inside it. Comparing
+// paths with the account's home would let it through under another name, such as /System/Volumes/Data/Users/<name>,
+// and an empty HOME leaves every state path relative to the working folder.
+const home = process.env.HOME ?? '';
+const isolated = isAbsolute(home) && /^agent-board-home-[A-Za-z0-9]{6}$/.test(basename(home)) && process.env.TMPDIR === join(home, 'tmp') &&
+  !!lstatSync(home, { throwIfNoEntry: false })?.isDirectory() && SESSIONS_DIR.startsWith(home + sep);
+if (!isolated) {
+  throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}: HOME (${JSON.stringify(home)}) is not a folder scripts/isolate.ts made; run the tests with pnpm test`);
 }
 
 const id = `test-${randomUUID()}`;
