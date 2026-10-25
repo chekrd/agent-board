@@ -5,7 +5,7 @@ const attentionRank: Record<Attention, number> = { decide: 0, focus: 1, idle: 2,
 
 const group = (s: Session) => attentionRank[attentionOf(s)];
 
-function compare(a: Session, b: Session) {
+export function compare(a: Session, b: Session) {
   const g = group(a) - group(b);
   if (g) return g;
   return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.createdAt - b.createdAt;

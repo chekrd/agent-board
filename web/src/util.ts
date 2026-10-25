@@ -26,15 +26,17 @@ export interface DecisionView {
   options: QuestionOption[];
 }
 
+// The question or end-of-turn choice the session waits on; a menu is not one.
 export function decisionOf(s: Session): DecisionView | null {
-  const q = s.question;
-  const summary = s.summary;
-  if (q) {
-    const d = summary?.question === q.toolUseId ? summary.decision : null;
-    return { key: `q:${q.toolUseId}`, problem: d?.problem || q.title, brief: d?.brief ?? '', context: q.details, options: q.options };
+  const key = decisionKey(s);
+  if (key?.startsWith('q:')) {
+    const q = s.question!;
+    const d = s.summary?.question === q.toolUseId ? s.summary.decision : null;
+    return { key, problem: d?.problem || q.title, brief: d?.brief ?? '', context: q.details, options: q.options };
   }
-  const d = turnDecision(s);
-  return d ? { key: `s:${summary!.basis}`, problem: d.problem, brief: d.brief, context: d.context ?? '', options: d.options } : null;
+  if (!key?.startsWith('s:')) return null;
+  const d = turnDecision(s)!;
+  return { key, problem: d.problem, brief: d.brief, context: d.context ?? '', options: d.options };
 }
 
 // The advice shown with the decision or menu the session waits on now, never one left from an earlier one.
@@ -44,5 +46,26 @@ export function adviceFor(s: Session) {
 
 export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';
 
-export const attentionOf = (s: Session): Attention =>
-  s.menu || decisionOf(s) ? 'decide' : s.status === 'waiting' ? 'focus' : s.status;
+export const MENU_GRACE_MS = 10_000;
+
+// A menu the board answered stays open until Claude Code has taken the keys, with Claude reported as waiting.
+const answeredMenuAt = (s: Session) => (s.menu && s.answered?.key === `m:${s.menu.toolUseId}` ? s.answered.at : null);
+
+// The menu is still open 10 s after the board answered it, so the keys did not take and only the terminal can help.
+export function menuStuck(s: Session, now = Date.now()) {
+  const at = answeredMenuAt(s);
+  return at !== null && s.status !== 'working' && s.status !== 'exited' && now >= at + MENU_GRACE_MS;
+}
+
+export function attentionOf(s: Session, now = Date.now()): Attention {
+  if (s.status === 'exited') return 'exited';
+  if (decisionKey(s)) return 'decide';
+  if (answeredMenuAt(s) !== null) return menuStuck(s, now) ? 'focus' : 'working';
+  return s.status === 'waiting' ? 'focus' : s.status;
+}
+
+// When the session's attention changes with no new snapshot, or null if it cannot.
+export function attentionChangesAt(s: Session) {
+  const at = answeredMenuAt(s);
+  return at === null ? null : at + MENU_GRACE_MS;
+}
