@@ -114,16 +114,21 @@ function check() {
   if (!armedFor) return;
   const free = state.link === 'live' && !sends.items().some(active) && !isEditable(document.activeElement) &&
     !document.querySelector('dialog[open]') && !menuOpen();
-  if (free) {
+  if (free) return reloadNow();
+  if (Date.now() - armedAt >= RELOAD_CAP_MS) offer(true);
+  checking = setTimeout(check, 250);
+}
+
+// The gate's reload and the top bar's Reload both note the build they reload for.
+export function reloadNow() {
+  if (armedFor) {
     try {
       sessionStorage.setItem(RELOADED_FOR, `${entry} ${armedFor}`);
     } catch {
       // Without storage nothing stops a mismatch from reloading on every connect.
     }
-    return location.reload();
   }
-  if (Date.now() - armedAt >= RELOAD_CAP_MS) offer(true);
-  checking = setTimeout(check, 250);
+  location.reload();
 }
 
 async function connect() {

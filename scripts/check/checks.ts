@@ -1283,7 +1283,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.17 the reload pill: a new build announced while the New task prompt has focus offers "New version · Reload" after 15 s with the link live; the page\'s own build clears it, another arms it again, and the pill reloads',
+    name: 'P4.17 the reload pill: a new build announced while the New task prompt has focus offers "New version · Reload" after 15 s with the link live; the page\'s own build clears it, another arms it again, and the pill itself reloads while the prompt keeps focus, noting the build it reloaded for',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.click('#new-task-inline textarea');
@@ -1304,7 +1304,12 @@ export const checks: Check[] = [
       await mock.post('/mock/ui-entry', { src: own });
       await page.until('the pill to go', () => !document.querySelector('[data-new-version]'));
       await offered('/assets/index-next2.js');
-      await page.click('[data-new-version]');
+      // Clicked from the page, so the prompt keeps focus: the gate stays shut, and only the pill can reload.
+      const typing = await page.eval(() => {
+        setTimeout(() => document.querySelector<HTMLButtonElement>('[data-new-version]')!.click());
+        return document.activeElement === document.querySelector('#new-task-inline textarea');
+      });
+      assert.equal(typing, true, 'the prompt lost focus before the pill was clicked');
       await until('the page to reload', async () => {
         try {
           return await page.eval(() => (window as unknown as Probe).e2eMarker === undefined && document.readyState === 'complete');
@@ -1313,6 +1318,10 @@ export const checks: Check[] = [
         }
       });
       await page.until('the prompt kept through the reload', () => document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value === 'Fix the login redirect');
+      assert.equal(await page.eval(() => {
+        const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
+        return sessionStorage.getItem('agent-board:reloaded-for') === `${entry} ${new URL('/assets/index-next2.js', location.href).href}`;
+      }), true, 'the pill did not note the build it reloaded for');
     },
   },
   {

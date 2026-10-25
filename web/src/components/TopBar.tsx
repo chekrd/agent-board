@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueue } from '../queue.ts';
 import type { Route } from '../router.ts';
-import { useStore, type Link } from '../store.ts';
+import { reloadNow, useStore, type Link } from '../store.ts';
 import type { Session } from '../types.ts';
 import { Icon } from './Icon.tsx';
 import { Meter } from './Meter.tsx';
@@ -37,7 +37,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
         <span className={styles.wordmark} data-wordmark>Agent Board</span>
         <ConnectionPill link={link} />
         {newVersion && link === 'live' && (
-          <button type="button" className={styles.reload} data-new-version onClick={() => location.reload()}>
+          <button type="button" className={styles.reload} data-new-version onClick={reloadNow}>
             New version · Reload
           </button>
         )}
