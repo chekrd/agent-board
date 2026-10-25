@@ -353,11 +353,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-gate a new build reloads the board when nothing is focused; a focused draft holds it until a click outside, the New task dialog until it closes; the page\'s own entry never reloads it',
+    name: 'P3.reload-gate a new build reloads the board when nothing is focused; a focused draft holds it until a click outside, the New task dialog until it closes; the page\'s own entry never reloads it, nor a build it already reloaded for',
     async run({ page, mock, shot }) {
       const mark = () => page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
       const marked = () => page.eval(() => (window as unknown as { probe?: number }).probe === 1);
-      const newBuild = () => mock.post('/mock/ui-entry', { src: '/assets/index-next.js' });
+      const newBuild = (n: number) => mock.post('/mock/ui-entry', { src: `/assets/index-next${n}.js` });
       // The old document goes away under a call, so a failed call means "not yet".
       const reloaded = (what: string) => until(`the page to reload ${what}`, async () => {
         try {
@@ -370,7 +370,7 @@ export const checks: Check[] = [
       await page.goto(`${mock.url}/`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       await mark();
-      await newBuild();
+      await newBuild(1);
       await reloaded('with nothing focused');
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
 
@@ -385,7 +385,7 @@ export const checks: Check[] = [
       await page.click('textarea');
       await page.type('Ship it after lunch');
       await mark();
-      await newBuild();
+      await newBuild(2);
       await sleep(3000);
       const typing = await page.eval(() => [
         (window as unknown as { probe?: number }).probe, document.activeElement?.tagName, document.querySelector('textarea')?.value,
@@ -404,12 +404,20 @@ export const checks: Check[] = [
       });
       assert.equal(blurred, true, 'only the open dialog holds the reload');
       await mark();
-      await newBuild();
+      await newBuild(3);
       await sleep(3000);
       assert.equal(await marked(), true, 'reloaded under the New task dialog');
       await shot('dialog-holds-reload');
       await page.click('dialog#new-task button', 'Cancel');
       await reloaded('once the dialog closed');
+
+      // The mock serves the same entry whatever it announces, so each reload above came back to it, as when the
+      // server reads some other script as the entry.
+      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      await mark();
+      await newBuild(3);
+      await sleep(3000);
+      assert.equal(await marked(), true, 'reloaded again for a build that brought it back to its own entry');
     },
   },
   {

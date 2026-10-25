@@ -19,11 +19,13 @@ interface State {
   link: Link;
   // link === 'live', for today's connection dot.
   connected: boolean;
-  // A new build has waited 15 s for a moment when reloading loses nothing.
+  // The top bar offers to reload into a new build: in 15 s no moment came when reloading would lose nothing, or
+  // reloading for that build already brought this tab back to the build it runs.
   newVersion: boolean;
 }
 
 const RELOAD_CAP_MS = 15_000;
+const RELOADED_FOR = 'agent-board:reloaded-for';
 
 let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', connected: false, newVersion: false };
 const subscribers = new Set<() => void>();
@@ -46,7 +48,6 @@ function set(next: State) {
   else notify();
 }
 
-
 let wake: ReturnType<typeof setTimeout> | undefined;
 
 // A menu answered from the board turns from working to Needs focus by the clock alone, with no snapshot to say so;
@@ -66,23 +67,44 @@ function wakeAtNextChange() {
   }, next - now);
 }
 
-
 // The build this page runs, named by its entry script: import.meta.url names whichever chunk this module lands in,
 // and a split that moved it would reload the page in a loop.
 const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
 let reloading = false;
 
+function reloadedFor() {
+  try {
+    return sessionStorage.getItem(RELOADED_FOR);
+  } catch {
+    return null;
+  }
+}
+
 // A new build reloads the page once nothing would be lost: the server can be reached, no send is held, under way or
 // waiting, no field is focused (a draft or a rename), and no dialog or menu is open. Held sends keep their own
-// timers meanwhile, and after 15 s the top bar offers the reload instead.
-function reloadWhenFree() {
+// timers meanwhile, and after 15 s the top bar offers the reload instead. A reload for this build that already
+// brought the tab back to the entry it runs would do so on every connect (the server reads some other script as
+// the entry), so the top bar offers it at once.
+function reloadWhenFree(build: string) {
   if (reloading) return;
   reloading = true;
+  const attempt = `${entry} ${build}`;
+  if (reloadedFor() === attempt) {
+    set({ ...state, newVersion: true });
+    return;
+  }
   const since = Date.now();
   const check = () => {
     const free = state.link === 'live' && !sends.items().some(active) && !isEditable(document.activeElement) &&
       !document.querySelector('dialog[open]') && !menuOpen();
-    if (free) return location.reload();
+    if (free) {
+      try {
+        sessionStorage.setItem(RELOADED_FOR, attempt);
+      } catch {
+        // Without storage nothing stops a mismatch from reloading on every connect.
+      }
+      return location.reload();
+    }
     if (!state.newVersion && Date.now() - since >= RELOAD_CAP_MS) set({ ...state, newVersion: true });
     setTimeout(check, 250);
   };
@@ -101,7 +123,8 @@ async function connect() {
         sends.reconnected();
         set({ ...state, ...next, link: 'live', connected: true });
         wakeAtNextChange();
-        if (uiEntry && !import.meta.env.DEV && entry && new URL(uiEntry, location.href).href !== entry) reloadWhenFree();
+        const build = uiEntry ? new URL(uiEntry, location.href).href : null;
+        if (build && !import.meta.env.DEV && entry && build !== entry) reloadWhenFree(build);
       }
     } catch {
       // reconnect below
