@@ -24,8 +24,8 @@ export const sends = createOutbox({
   },
 });
 
-// The page is going away or being frozen: what is held or waiting goes out now. Not on visibilitychange, since
-// whoever comes back within 5 s can still take it back.
+// The page is going away or being frozen: whatever has not been posted yet goes now. Not on visibilitychange,
+// since whoever comes back within 5 s can still take it back.
 function flush() {
   let budget = KEEPALIVE_BYTES;
   sends.flush((o) => {

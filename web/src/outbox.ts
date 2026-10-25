@@ -112,8 +112,10 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
   let busyOf: { items: readonly Item<R>[]; ids: ReadonlySet<string> } | null = null;
   let seq = 0;
   const timers = new Map<string, unknown>();
-  // One post at a time per session, in press order, as the server types them one at a time anyway.
+  // One post at a time per session, in press order, as the server types them one at a time anyway. An item waiting
+  // for its turn is `sending` but not yet `posting`.
   const chains = new Map<string, Promise<void>>();
+  const posting = new Set<string>();
   const waiters: (() => void)[] = [];
 
   const find = (id: string) => items.find((i) => i.id === id);
@@ -165,11 +167,13 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
       const end = (fn: () => void) => {
         if (over) return;
         over = true;
+        posting.delete(id);
         clear(id);
         fn();
         done();
       };
       schedule(id, NO_ANSWER_MS, () => end(() => patch(id, { state: 'failed', error: NO_ANSWER, code: 'no-answer' })));
+      posting.add(id);
       let posted: Promise<unknown>;
       try {
         posted = o.post({ sessionId: item.sessionId, action: item.action, body: item.body });
@@ -286,9 +290,10 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
       for (const i of items) if (i.sessionId === sessionId && i.state === 'held') send(i.id);
     },
 
-    // The page is going away: hands every held and waiting item to `send` once, a session's notes folded in.
+    // The page is going away: hands every item not posted yet to `send` once, a session's notes folded in. That
+    // includes one queued behind its session's post under way, whose turn would never come.
     flush(send: (out: Folded) => void) {
-      const due = items.filter((i) => i.state === 'held' || i.state === 'waiting');
+      const due = items.filter((i) => i.state === 'held' || i.state === 'waiting' || (i.state === 'sending' && !posting.has(i.id)));
       if (!due.length) return;
       for (const out of fold(due)) send(out);
       const at = now();

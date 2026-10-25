@@ -263,6 +263,24 @@ test('flush hands every held and waiting item over exactly once, and none of the
   assert.equal(posts.length, 1);
 });
 
+test('flush takes a send still queued behind its session\'s post under way, once, and that send never posts after', async (t) => {
+  const { box, posts, tick, states } = outbox(t);
+  box.hold(cart, answer('q:q1', { choice: 'Keep' }), '');
+  tick(1000);
+  const queued = box.hold(cart, note('And log it'), '');
+  tick(5000);
+  assert.deepEqual([posts.length, states()], [1, ['sending', 'sending']], 'the answer is still being typed');
+  const flushed: Folded[] = [];
+  box.flush((out) => flushed.push(out));
+  box.flush((out) => flushed.push(out));
+  assert.deepEqual(flushed.map((f) => [f.ids, f.body]), [[[queued], { key: null, text: 'And log it' }]]);
+  assert.deepEqual(states(), ['sending', 'sent']);
+  posts[0].ok();
+  await settle();
+  tick(60_000);
+  assert.equal(posts.length, 1);
+});
+
 test('flush folds a session\'s notes into its decision answer, or into its first note, in press order; a menu answer and a note stay two posts', (t) => {
   const { box } = outbox(t);
   box.hold(group, answer('s:t1', { choice: 'Ship' }), '');
