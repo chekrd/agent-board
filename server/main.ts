@@ -219,18 +219,19 @@ app.get('/api/diff', async (c) => {
 const index = join(WEB_DIST, 'index.html');
 const ui = watchEntry(() => readEntry(index), notify);
 
-const message = (uiEntry: string | null) => JSON.stringify({ ...snapshot(), uiEntry });
+const message = () => JSON.stringify({ ...snapshot(), uiEntry: ui.settled() });
 
 app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;
   let closed = false;
   return {
-    // Read now: the page may come from a build the polls have not taken yet.
+    // The page may run a build the polls have not taken yet: a read now that finds another entry empties settled(),
+    // so it is told none rather than the older one. The read itself is never named, as the build may still be writing.
     async onOpen(_evt, ws) {
-      const uiEntry = await ui.fresh();
+      await ui.fresh();
       if (closed) return;
-      off = onChange(() => ws.send(message(ui.settled())));
-      ws.send(message(uiEntry));
+      off = onChange(() => ws.send(message()));
+      ws.send(message());
     },
     onClose() {
       closed = true;
