@@ -174,6 +174,12 @@ async function openFromWall(page: Page, mock: Mock, id: string) {
   await page.until(`the sheet of ${id}`, sheetOpen);
 }
 
+// A task waiting in the queue, whose tile goes to its card instead.
+async function openSheetOf(page: Page, mock: Mock, id: string) {
+  await page.goto(`${mock.url}/s/${id}/overview`);
+  await page.until(`the sheet of ${id}`, sheetOpen);
+}
+
 // The labels of the open ⋯ menu.
 const menuItems = () => {
   const menu = document.querySelector(':popover-open');
@@ -247,11 +253,64 @@ const reloadState = (until: 'pill' | 'reconnecting' | null) => {
   return (until === 'pill' && !state.pill) || (until === 'reconnecting' && state.link !== 'reconnecting') ? null : state;
 };
 
+// The queue's card: whose it is, its kind and key, its name for screen readers, the text of its header and of the
+// whole card, and what its primary says and whether the guard holds it.
+const card = () => {
+  const c = document.querySelector<HTMLElement>('[data-card]');
+  if (!c) return null;
+  const primary = c.querySelector<HTMLElement>('[data-primary]');
+  return {
+    session: c.dataset.session ?? null,
+    kind: c.dataset.kind ?? null,
+    key: c.dataset.key ?? null,
+    label: c.getAttribute('aria-label'),
+    header: c.querySelector('header')?.innerText ?? '',
+    text: c.innerText,
+    primary: primary?.firstElementChild?.textContent ?? null,
+    disabled: primary?.matches(':disabled') ?? null,
+    guarded: primary?.hasAttribute('data-guarded') ?? null,
+  };
+};
+
+// `id` is the card and no deal is moving it.
+const frontIs = (id: string) => document.querySelector<HTMLElement>('[data-card]')?.dataset.session === id && !document.documentElement.dataset.deal;
+
+// No card is being dealt, and every animation that ends has ended.
+const still = () => !document.documentElement.dataset.deal &&
+  document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity);
+
+// The element shows whole: inside the window and inside every box around it that clips.
+const whole = (selector: string) => {
+  const el = document.querySelector(selector);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (!r.width || r.top < -1 || r.left < -1 || r.bottom > innerHeight + 1 || r.right > innerWidth + 1) return false;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(p);
+    if (overflowX === 'visible' && overflowY === 'visible') continue;
+    const b = p.getBoundingClientRect();
+    if (r.top < b.top - 1 || r.bottom > b.bottom + 1 || r.left < b.left - 1 || r.right > b.right + 1) return false;
+  }
+  return true;
+};
+
+// The peeks behind the card, each with its place, session and text.
+const peeks = () => [...document.querySelectorAll<HTMLElement>('[data-peek]')].map((p) => ({ peek: p.dataset.peek, session: p.dataset.session, text: p.innerText.trim() }));
+
+const segmentsNow = () => [...document.querySelectorAll<HTMLElement>('[data-segment]')].map((s) => ({
+  session: s.dataset.session, current: s.hasAttribute('data-current'), new: s.hasAttribute('data-new'), width: Math.round(s.getBoundingClientRect().width),
+}));
+
+async function openQueue(page: Page, mock: Mock, front = 's-cart') {
+  await page.goto(`${mock.url}/`);
+  await page.until(`the card of ${front}`, frontIs, front);
+}
+
 export const checks: Check[] = [
   {
     name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option answers once and the tile turns working',
     async run({ page, mock, shot }) {
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       const board = await page.eval(() => ({
         tiles: [...document.querySelectorAll('[data-tile]')].filter((t) => !t.closest('details')).length,
@@ -262,7 +321,7 @@ export const checks: Check[] = [
       assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: '(3) Agent Board' });
       await shot('board');
 
-      await page.click('[data-tile] a', 'Merge guest cart on login');
+      await page.goto(`${mock.url}/s/s-cart/overview`);
       await page.until('the sheet with its 3 options', () => location.pathname === '/s/s-cart/overview' && document.querySelectorAll('button[name="choice"]').length === 3);
       await shot('task-ask');
       await page.click('button[name="choice"]', 'Keep the account cart');
@@ -272,6 +331,8 @@ export const checks: Check[] = [
       assert.deepEqual([a.sessionId, a.body.key, a.body.choice, a.status], ['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]);
 
       await page.click('#task-sheet button[aria-label^="Back to"]');
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]'));
+      await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'working');
       assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
       assert.equal(await page.eval(() => document.title), '(2) Agent Board');
@@ -283,8 +344,7 @@ export const checks: Check[] = [
     expectedErrors: [/this question is no longer open/, /status of 400/],
     async run({ page, mock, shot }) {
       await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
-      await page.goto(`${mock.url}/`);
-      await page.click('[data-tile] a', 'Retry failed webhooks');
+      await page.goto(`${mock.url}/s/s-hooks/overview`);
       await page.until('the menu with its 2 questions', () => location.pathname === '/s/s-hooks/overview' && document.querySelectorAll('fieldset').length === 2);
       await page.click('fieldset button', 'Exponential, 5 tries');
       await page.click('fieldset button', 'Email the account owner');
@@ -362,7 +422,7 @@ export const checks: Check[] = [
     name: 'P0 narrow smoke: no sideways scroll on the board or in the sheet; New task and the options stay reachable',
     narrow: true,
     async run({ page, mock, shot }) {
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       assert.deepEqual(await page.eval(sidewaysScroll), []);
       await page.until('New task in reach', reachable, 'button', 'New task');
@@ -378,7 +438,7 @@ export const checks: Check[] = [
   {
     name: 'P2.1 fonts: Bricolage Grotesque and Hanken Grotesk come with the app, and the page asks no host but 127.0.0.1',
     async run({ page, mock }) {
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       const fonts = await page.eval(async () => {
         await new Promise(requestAnimationFrame);
@@ -400,7 +460,7 @@ export const checks: Check[] = [
   {
     name: "P2.2 the page background is C's ground: #110f0c in dark, #eeeae1 in light",
     async run({ page, mock, look, shot }) {
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       const background = await page.eval(() => [getComputedStyle(document.documentElement).backgroundColor, getComputedStyle(document.body).backgroundColor]);
       assert.deepEqual(background, ['rgba(0, 0, 0, 0)', look.scheme === 'dark' ? 'rgb(17, 15, 12)' : 'rgb(238, 234, 225)']);
@@ -424,7 +484,7 @@ export const checks: Check[] = [
   {
     name: 'P2.4 no console errors on the board, a decision, a menu, a reply with a table, the diff or an artifact',
     async run({ page, mock, shot }) {
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       await page.goto(`${mock.url}/s/s-cart/details`);
       await page.until('the options', () => document.querySelectorAll('button[name="choice"]').length === 3);
@@ -508,6 +568,8 @@ export const checks: Check[] = [
       const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
       assert.deepEqual([s.question, s.dismissedAsk, s.status, s.answered], [null, 'toolu_01Cart', 'idle', legacy ? undefined : null]);
       await page.click('#task-sheet button[aria-label^="Back to"]');
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]'));
+      await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to leave Decide', () =>
         document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'idle');
       await shot('dismissed');
@@ -626,7 +688,7 @@ export const checks: Check[] = [
         }
       });
 
-      await page.goto(`${mock.url}/`);
+      await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       await mark();
       await newBuild(1);
@@ -672,7 +734,7 @@ export const checks: Check[] = [
 
       // The mock serves the same entry whatever it announces, so each reload above came back to it, as when the
       // server reads some other script as the entry.
-      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      await page.until('the card', () => !!document.querySelector('[data-card]'));
       await mark();
       await newBuild(3);
       await sleep(3000);
@@ -723,7 +785,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.1 the Wall: its title and the queue\'s counts, Back to the queue Esc; tiles in priority order with repo · branch and no rank or line counts; Archived (1) collapsed; working clocks tick; Esc goes to the queue and V back, and / draws the same body until P5; a menu answered from the board that stays open turns Needs focus by the clock alone',
+    name: 'P4.1 the Wall: its title and the queue\'s counts, Back to the queue Esc; tiles in priority order with repo · branch and no rank or line counts; Archived (1) collapsed; working clocks tick; Esc goes to the queue and V back; a menu answered from the board that stays open turns Needs focus by the clock alone',
     async run({ page, mock, shot }) {
       const wall = () => ({
         title: document.querySelector('main h1')?.textContent,
@@ -763,8 +825,7 @@ export const checks: Check[] = [
       await shot('wall');
 
       await page.key('Escape');
-      await page.until('the queue', () => location.pathname === '/' && document.documentElement.dataset.view === 'queue');
-      assert.deepEqual({ ...(await page.eval(wall)), texts: undefined }, { ...shown, texts: undefined });
+      await page.until('the queue', () => location.pathname === '/' && document.documentElement.dataset.view === 'queue' && !!document.querySelector('[data-card]'));
       await page.key('v');
       await page.until('the Wall again', () => location.pathname === '/wall' && document.documentElement.dataset.view === 'wall');
 
@@ -781,7 +842,7 @@ export const checks: Check[] = [
     expectedErrors: [/WebSocket/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the tiles', tiles);
+      await page.until('the card', card);
       const bar = await page.eval(() => {
         const left = (s: string) => document.querySelector(s)?.getBoundingClientRect().left ?? NaN;
         const right = (s: string) => document.querySelector(s)?.getBoundingClientRect().right ?? NaN;
@@ -970,7 +1031,7 @@ export const checks: Check[] = [
   {
     name: 'P4.7 Artifacts: 3 opens the list as a column beside a sandboxed frame of the newest artifact, with Open in new tab as a link; another artifact replaces the entry',
     async run({ page, mock, shot }) {
-      await openFromWall(page, mock, 's-cart');
+      await openSheetOf(page, mock, 's-cart');
       const entries = await page.eval(() => window.navigation.entries().length);
       await page.key('3');
       await page.until('the artifacts', () => location.pathname === '/s/s-cart/artifacts' && document.querySelector('#task-sheet iframe') !== null);
@@ -1000,7 +1061,7 @@ export const checks: Check[] = [
   {
     name: 'P4.8 rename: Esc keeps the title and the sheet; Enter sends rename with the new title',
     async run({ page, mock, shot }) {
-      await openFromWall(page, mock, 's-reviews');
+      await openSheetOf(page, mock, 's-reviews');
       const title = () => document.querySelector('#task-sheet h2')?.textContent;
       await page.click('#task-sheet h2 button');
       await page.until('the rename field', () => document.activeElement?.getAttribute('aria-label') === 'Task name');
@@ -1234,7 +1295,7 @@ export const checks: Check[] = [
   {
     name: 'P4.15 answering in the sheet still works until P5: an option on s-cart sends answer with its key and choice',
     async run({ page, mock }) {
-      await openFromWall(page, mock, 's-cart');
+      await openSheetOf(page, mock, 's-cart');
       await page.click('#task-sheet button[name="choice"]', 'Keep the account cart');
       const answers = await logged(mock, 'the answer', (e) => e.action === 'answer');
       assert.deepEqual(answers.map((a) => [a.sessionId, a.body.key, a.body.choice, a.status]), [['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]]);
@@ -1363,7 +1424,7 @@ export const checks: Check[] = [
       await page.key('Escape');
       await page.until('the dialog to close', () => !document.querySelector('dialog#new-task[open]'));
       await page.goto(`${mock.url}/`);
-      await page.until('the tiles', tiles);
+      await page.until('the card', card);
       await page.key('n');
       assert.deepEqual(await page.until('the New task dialog after a reload', dialogPrompt), { value: 'Typed on the Wall', focused: true });
     },
@@ -1409,7 +1470,7 @@ export const checks: Check[] = [
     name: 'P4.close-in-place a sheet loaded in a tab after another page of the board closes in place: the page does not load again, and it says the task is gone',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the tiles', tiles);
+      await page.until('the card', card);
       await page.goto(`${mock.url}/s/s-nope/overview`);
       await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/');
       assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'That task is gone.', inSheet: false, hit: true }]);
@@ -1538,6 +1599,588 @@ export const checks: Check[] = [
       const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === sessionId);
       assert.deepEqual([s.status, s.activity.step], ['working', legacy ? 'Thinking' : null]);
       assert.ok(s.activity.since >= before && s.activity.since <= after, `the clock runs from ${s.activity.since}, not from the New task at ${before}–${after}`);
+    },
+  },
+  {
+    name: 'P5.1.1 the first card is s-cart, an ask, with Retry failed webhooks and Group board tiles by repo peeking out behind it and the sliver; its meter segment is the current one, 40 px wide',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLElement>('[data-card]')?.dataset.kind, document.title]), ['ask', '(3) Agent Board']);
+      assert.deepEqual((await page.eval(peeks)).map((p) => [p.peek, p.session, p.text.split('\n')[0]]), [
+        ['1', 's-hooks', 'Retry failed webhooks'], ['2', 's-group', 'Group board tiles by repo'],
+      ]);
+      assert.equal(await page.eval(() => !!document.querySelector('[data-sliver]')), true);
+      const segments = await page.until('the current segment at full width', () => {
+        const all = [...document.querySelectorAll<HTMLElement>('[data-segment]')].map((s) => ({ session: s.dataset.session, current: s.hasAttribute('data-current'), width: s.getBoundingClientRect().width }));
+        return all[0]?.width === 40 && all;
+      });
+      assert.deepEqual(segments.map((s) => [s.session, s.current]), [
+        ['s-cart', true], ['s-hooks', false], ['s-group', false], ['s-astro', false], ['s-reviews', false], ['s-anchors', false],
+      ]);
+      await page.until('the card to settle', still);
+      await shot('queue-ask');
+    },
+  },
+  {
+    name: 'P5.1.2 the card header names the task, Overview, Diff and Artifacts 2 but no repo or branch; the meta has the rank reason and no rank number; Artifacts 2, O and D open the sheet',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      const { header } = (await page.eval(card))!;
+      for (const text of ['Merge guest cart on login', 'Overview', 'Diff', 'Artifacts 2', 'Blocks the checkout fix; Claude idles until you answer']) assert.ok(header.includes(text), `the header lacks ${text}:\n${header}`);
+      for (const text of ['storefront', 'guest-cart-merge']) assert.ok(!header.includes(text), `the header names ${text}`);
+      assert.doesNotMatch(header, /#\d/);
+      const closed = () => !document.querySelector('#task-sheet[open]') && location.pathname === '/';
+      await page.click('[data-card] header button', 'Artifacts 2');
+      await page.until('the Artifacts tab', () => location.pathname === '/s/s-cart/artifacts' && !!document.querySelector('#task-sheet:modal'));
+      await page.key('Escape');
+      await page.until('the sheet to close', closed);
+      await page.key('o');
+      await page.until('Overview', () => location.pathname === '/s/s-cart/overview' && !!document.querySelector('#task-sheet:modal'));
+      await page.key('Escape');
+      await page.until('the sheet to close', closed);
+      await page.key('d');
+      await page.until('Diff', () => location.pathname === '/s/s-cart/diff' && !!document.querySelector('#task-sheet:modal'));
+    },
+  },
+  {
+    name: 'P5.1.3 the whole card fits the window and the page does not scroll: Worth knowing, the headline, the brief, the details, all three options with their descriptions and the suggestion show',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.until('the card to settle', still);
+      const fit = await page.eval(() => ({ card: !!document.querySelector('[data-card]'), scroll: document.scrollingElement!.scrollHeight, height: innerHeight }));
+      assert.equal(fit.scroll, fit.height, 'the page scrolls');
+      const parts = [
+        '[data-card]', '[data-card] [data-know]', '[data-card] h1', '[data-card] h1 + p', '[data-card] section[aria-label="Claude\'s details"]',
+        '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-primary]',
+      ];
+      for (const selector of parts) assert.equal(await page.eval(whole, selector), true, `${selector} does not show whole`);
+      const options = await page.eval(() => [...document.querySelectorAll<HTMLElement>('[data-card] [data-option]')].map((o) => o.innerText.split('\n').slice(0, 2)));
+      assert.deepEqual(options.map((o) => o[0]), ['1', '2', '3']);
+      const text = (await page.eval(card))!.text;
+      for (const part of [
+        'Guest carts live in a cookie that expires after 24 h', 'What should happen to a guest cart when the shopper logs in?', 'Both carts can hold items; today the guest cart is silently dropped.',
+        "CLAUDE'S DETAILS", 'Add up quantities per product, capped at stock; a toast lists anything trimmed', 'Drop the guest cart as today, but tell the shopper',
+        'A choice dialog after login; one more step before checkout',
+      ]) assert.ok(text.includes(part), `the card lacks ${part}`);
+      await shot('queue-fit');
+    },
+  },
+  {
+    name: 'P5.1.4 option 1 carries Second opinion · 82% and Recommended, the reply, the reasoning, Edit E and high confidence, with the frozen highlight; the primary reads Accept suggestion',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      const first = await page.eval(() => {
+        const option = document.querySelector('[data-card] [data-option="1"]')!.parentElement as HTMLElement;
+        return { frozen: option.hasAttribute('data-frozen'), others: [...document.querySelectorAll('[data-card] [data-option]')].filter((o) => o.parentElement!.hasAttribute('data-frozen')).length, text: option.innerText };
+      });
+      assert.deepEqual([first.frozen, first.others], [true, 1]);
+      for (const part of [
+        'Second opinion · 82%', 'Recommended', 'Merge both carts. Cap each line at available stock and show a toast listing anything trimmed.',
+        'CHK-412 says a cart must never lose items', 'Edit\nE', 'high confidence',
+      ]) assert.ok(first.text.includes(part), `option 1 lacks ${part}:\n${first.text}`);
+      assert.equal((await page.eval(card))!.primary, 'Accept suggestion');
+    },
+  },
+  {
+    name: 'P5.1.5 → skips to s-hooks, a menu whose questions stand side by side numbered 1–3 and 4–6 over the band Second opinion · 64% · medium, and focus moves onto it from the card that went; five more come back to s-cart, and ← brings the last card, Fix broken doc anchors',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.eval(() => document.querySelector<HTMLElement>('[data-card] [data-option="2"]')!.focus());
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.equal(await page.eval(() => (document.activeElement as HTMLElement | null)?.dataset.session ?? document.activeElement?.tagName), 's-hooks');
+      const menu = await page.eval(() => ({
+        columns: [...document.querySelectorAll('[data-card] section[role="group"]')].map((q) => [...q.querySelectorAll<HTMLElement>('[data-option]')].map((o) => o.dataset.option)),
+        tops: [...document.querySelectorAll('[data-card] section[role="group"]')].map((q) => Math.round(q.getBoundingClientRect().top)),
+        band: document.querySelector<HTMLElement>('[data-card] [data-advice]')?.innerText ?? '',
+      }));
+      assert.deepEqual(menu.columns, [['1', '2', '3'], ['4', '5', '6']]);
+      assert.equal(menu.tops[0], menu.tops[1], 'the questions are not side by side');
+      assert.match(menu.band, /^Second opinion · 64% · medium/);
+      await page.until('the card to settle', still);
+      await shot('queue-menu');
+      for (const id of ['s-group', 's-astro', 's-reviews', 's-anchors', 's-cart']) {
+        await page.key('ArrowRight');
+        await page.until(`${id} at the front`, frontIs, id);
+      }
+      await page.key('ArrowLeft');
+      await page.until('the last card at the front', frontIs, 's-anchors');
+      assert.match((await page.eval(card))!.label ?? '', /^Fix broken doc anchors · Your turn$/);
+    },
+  },
+  {
+    name: 'P5.1.6 Space hides the details and the toggle reads Show; → then ← brings s-cart back with its details shown',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      const details = () => {
+        const section = document.querySelector<HTMLElement>('[data-card] section[aria-label="Claude\'s details"]');
+        const toggle = section?.querySelector('button');
+        return section && { shown: section.innerText.includes('CartService.mergeOnLogin'), toggle: toggle?.textContent, expanded: toggle?.getAttribute('aria-expanded') };
+      };
+      assert.deepEqual(await page.eval(details), { shown: true, toggle: 'Hide Space', expanded: 'true' });
+      await page.key(' ');
+      assert.deepEqual(await page.until('the details hidden', () => {
+        const section = document.querySelector<HTMLElement>('[data-card] section[aria-label="Claude\'s details"]');
+        return section && !section.innerText.includes('CartService.mergeOnLogin') && { toggle: section.querySelector('button')?.textContent, expanded: section.querySelector('button')?.getAttribute('aria-expanded') };
+      }), { toggle: 'Show Space', expanded: 'false' });
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('ArrowLeft');
+      await page.until('s-cart again', frontIs, 's-cart');
+      assert.deepEqual(await page.eval(details), { shown: true, toggle: 'Hide Space', expanded: 'true' });
+    },
+  },
+  {
+    name: 'P5.1.7 Elaborate: Y opens the explanation below the details, which stay, and asks for it once; it arrives about 1.2 s later; Y closes it. On s-group it fails with Could not explain: … and Retry asks again',
+    async run({ page, mock, shot }) {
+      await mock.post('/mock/patch', { id: 's-cart', patch: { explanation: null } });
+      await openQueue(page, mock);
+      await page.key('y');
+      const below = (text: string) => {
+        const why = document.querySelector<HTMLElement>('[data-card] [data-elaborate]');
+        const details = document.querySelector<HTMLElement>('[data-card] section[aria-label="Claude\'s details"]');
+        return !!why && !!details && why.innerText.includes(text) && details.innerText.includes('CartService.mergeOnLogin') &&
+          !!(details.compareDocumentPosition(why) & Node.DOCUMENT_POSITION_FOLLOWING) && details.parentElement === why.parentElement;
+      };
+      await page.until('the explanation loading below the details', below, 'Reading the code to explain this…');
+      const [asked] = await logged(mock, 'the request for the explanation', (e) => e.action === 'elaborate');
+      assert.deepEqual([asked.sessionId, asked.body, asked.status], ['s-cart', { key: 'q:toolu_01Cart' }, 204]);
+      await page.until('the explanation', below, 'Background.');
+      const took = Date.now() - asked.at;
+      assert.ok(took > 900 && took < 3000, `the explanation came ${took} ms after the request`);
+      assert.equal(await page.eval(() => document.querySelector('[data-card] footer button[aria-pressed="true"]')?.textContent), 'Elaborate Y');
+      await page.until('the card to settle', still);
+      await shot('queue-elaborate');
+      await page.key('y');
+      await page.until('the explanation to close', () => !document.querySelector('[data-card] [data-elaborate]'));
+      assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-card] section[aria-label="Claude\'s details"]')?.innerText.includes('CartService.mergeOnLogin')), true);
+      assert.equal((await mock.log()).filter((e) => e.action === 'elaborate').length, 1);
+
+      await page.click('[data-peek="2"] > span');
+      await page.until('s-group at the front', frontIs, 's-group');
+      await page.key('y');
+      const failed = await page.until('the failure', () => {
+        const why = document.querySelector<HTMLElement>('[data-card] [data-elaborate="failed"]');
+        return why?.innerText.includes('Retry') && why.innerText;
+      });
+      assert.match(failed, /Could not explain: the explanation run timed out after 300 s/);
+      await page.click('[data-card] [data-elaborate] button', 'Retry');
+      const asks = await until('the second request', async () => {
+        const found = (await mock.log()).filter((e) => e.action === 'elaborate' && e.sessionId === 's-group' && e.status !== null);
+        return found.length === 2 && found;
+      });
+      assert.deepEqual(asks.map((e) => [e.body.key, e.status]), [['s:t-group-4', 204], ['s:t-group-4', 204]]);
+    },
+  },
+  {
+    name: 'P5.1.8 W opens the reply box, focused; /re lists /review and /rename, Esc closes only the list, Tab completes "/rename ", and a second Esc closes the box and focuses the card',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('/re');
+      const listed = () => {
+        const list = [...document.querySelectorAll('[data-card] [role="listbox"] [role="option"] code')].map((c) => c.textContent);
+        return list.length ? list : null;
+      };
+      const list = await page.until('the command list', listed);
+      assert.ok(list.includes('/rename') && list.includes('/review'), list.join(', '));
+      await page.until('the card to settle', still);
+      await shot('queue-composer');
+      await page.key('Escape');
+      await page.until('the list to close', () => !document.querySelector('[data-card] [role="listbox"]'));
+      const box = () => ({ value: document.querySelector<HTMLTextAreaElement>('[data-card] textarea')?.value ?? null, focused: document.activeElement?.matches('[data-card] textarea') ?? false });
+      assert.deepEqual(await page.eval(box), { value: '/re', focused: true });
+      await page.type('n');
+      assert.deepEqual(await page.until('the list again', listed), ['/rename']);
+      await page.key('Tab');
+      assert.deepEqual(await page.until('the completion', () => document.querySelector<HTMLTextAreaElement>('[data-card] textarea')?.value === '/rename ' && !document.querySelector('[data-card] [role="listbox"]') && true), true);
+      await page.key('Escape');
+      await page.until('the box to close and the card to take focus', () => !document.querySelector('[data-card] textarea') && document.activeElement?.hasAttribute('data-card'));
+    },
+  },
+  {
+    name: 'P5.1.9 E opens the reply box with the second opinion\'s reply, focused',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      await page.key('e');
+      const box = await page.until('the reply box', () => {
+        const field = document.querySelector<HTMLTextAreaElement>('[data-card] textarea');
+        return field && { value: field.value, focused: document.activeElement === field };
+      });
+      assert.deepEqual(box, { value: 'Merge both carts. Cap each line at available stock and show a toast listing anything trimmed.', focused: true });
+    },
+  },
+  {
+    name: 'P5.1.10 a click on peek 2 brings s-group to the front; the 5th meter segment shows Lazy-load product reviews as a Your-turn card with its summary, latest reply, Status, the reply box, Reply ↵ and Archive X',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await page.until('s-group at the front', frontIs, 's-group');
+      await page.click('[data-segment]:nth-child(5)');
+      await page.until('s-reviews at the front', frontIs, 's-reviews');
+      const shown = (await page.eval(card))!;
+      assert.deepEqual([shown.kind, shown.label, shown.primary], ['idle', 'Lazy-load product reviews · Your turn', 'Reply']);
+      for (const part of [
+        'Reviews now load when scrolled into view', "CLAUDE'S LATEST REPLY", 'The reviews section now loads when it comes within 600 px', 'STATUS', 'Reviews split into a lazy chunk (41 kB)', 'MESSAGE CLAUDE', 'Archive\nX',
+      ]) assert.ok(shown.text.includes(part), `the card lacks ${part}`);
+      assert.equal(await page.eval(() => !!document.querySelector('[data-card] textarea') && !!document.querySelector('[data-card] table')), true);
+      await page.until('the card to settle', still);
+      await shot('queue-your-turn');
+    },
+  },
+  {
+    name: 'P5.1.11 Needs focus: Migrate docs to Astro 5 says Claude shows a permission prompt in its terminal, the plate names the tty and the subject, and ⏎ (Terminal) asks for the terminal at once',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-astro"]');
+      await page.until('s-astro at the front', frontIs, 's-astro');
+      const shown = (await page.eval(card))!;
+      assert.deepEqual([shown.kind, shown.primary], ['prompt', 'Terminal']);
+      assert.ok(shown.text.includes('Claude is showing a permission prompt for Bash(pnpm dlx @astrojs/upgrade) in its terminal'), shown.text);
+      assert.ok(shown.text.includes('Claude’s terminal · /dev/ttys017\nBash(pnpm dlx @astrojs/upgrade)'), shown.text);
+      await page.until('the card to settle', still);
+      await shot('queue-needs-focus');
+      await page.eval(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      const pressed = Date.now();
+      await page.key('Enter');
+      const [focus] = await logged(mock, 'the terminal request', (e) => e.action === 'focus');
+      assert.deepEqual([focus.sessionId, focus.status], ['s-astro', 204]);
+      assert.ok(focus.at - pressed < 1000, `asked for the terminal ${focus.at - pressed} ms after ⏎`);
+    },
+  },
+  {
+    name: 'P5.1.12 with s-hooks at the front an urgent new decision arrives: the front stays, the Just-in chip names it and its segment is marked; the chip brings it to the front and goes',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const label = (await page.eval(card))!.label;
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
+      const chip = await page.until('the Just-in chip', () => document.querySelector<HTMLElement>('[data-justin]')?.innerText.trim());
+      assert.equal(chip, 'Just in: Retire the v1 orders API');
+      assert.equal((await page.eval(card))!.label, label);
+      assert.deepEqual((await page.eval(segmentsNow)).filter((s) => s.new).map((s) => s.session), ['s-new']);
+      await page.click('[data-justin]');
+      await page.until('s-new at the front', frontIs, 's-new');
+      await page.until('the chip to go', () => !document.querySelector('[data-justin]') && !document.querySelector('[data-segment][data-new]'));
+    },
+  },
+  {
+    name: 'P5.1.13 when s-hooks, at the front, stops waiting for a reason outside the page, the card after it comes up and a toast says Retry failed webhooks no longer waits',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await mock.post('/mock/patch', { id: 's-hooks', patch: { menu: null, status: 'working' } });
+      await page.until('s-group at the front', frontIs, 's-group');
+      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'Retry failed webhooks no longer waits', inSheet: false, hit: true }]);
+    },
+  },
+  {
+    name: 'P5.1.14 a new decision on s-cart, at the front, updates it in place: its key is q:toolu_02, it reads Updated just now, and the guard holds the primary for about 0.9 s',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      const before = (await page.eval(card))!;
+      await mock.post('/mock/patch', {
+        id: 's-cart',
+        patch: { question: { toolUseId: 'toolu_02', title: 'Merge the carts for app logins too?', options: [{ label: 'Yes, everywhere' }, { label: 'Only on the web' }] } },
+      });
+      const sent = Date.now();
+      const updated = await page.until('the update', () => {
+        const c = document.querySelector<HTMLElement>('[data-card]');
+        return c?.dataset.key === 'q:toolu_02' && !!c.querySelector('[data-primary][data-guarded]') && { session: c.dataset.session, label: c.getAttribute('aria-label'), text: c.querySelector('header')!.innerText };
+      });
+      assert.deepEqual([updated.session, updated.label], ['s-cart', before.label]);
+      assert.match(updated.text, /Updated just now/);
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      const held = Date.now() - sent;
+      assert.ok(held > 700 && held < 1600, `the guard ended ${held} ms after the update`);
+      assert.match((await page.eval(card))!.text, /Merge the carts for app logins too\?[\s\S]*Yes, everywhere[\s\S]*Only on the web/);
+      await shot('queue-updated');
+    },
+  },
+  {
+    name: 'P5.1.15 a reload keeps the card at the front: s-group, brought up by a click on its peek, is still there',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await page.until('s-group at the front', frontIs, 's-group');
+      await page.goto(`${mock.url}/`);
+      await page.until('the card', card);
+      assert.equal((await page.eval(card))!.session, 's-group');
+    },
+  },
+  {
+    name: 'P5.1.16 with nothing waiting / reads Nothing needs you. with the Queue toggle off; a decision that arrives brings the queue with it at the front',
+    scenario: 'zero',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
+      assert.deepEqual(await page.eval(() => [location.pathname, document.querySelector('nav[aria-label="View"] a[aria-label="Queue"]')?.getAttribute('aria-disabled'), !!document.querySelector('[data-card]')]), ['/', 'true', false]);
+      await shot('queue-zero');
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
+      await page.until('the new card at the front', frontIs, 's-new');
+      assert.deepEqual(await page.eval(() => [location.pathname, document.querySelector('nav[aria-label="View"] a[aria-label="Queue"]')?.getAttribute('aria-disabled') ?? null]), ['/', null]);
+    },
+  },
+  {
+    name: 'P5.1.17 an ended session with an open question stays out of the deck, the meter and the tab title, and is on the Wall as Ended',
+    scenario: 'ended-question',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      assert.deepEqual((await page.eval(segmentsNow)).map((s) => s.session), ['s-cart', 's-hooks', 's-group', 's-astro', 's-reviews', 's-anchors']);
+      assert.equal(await page.eval(() => document.title), '(3) Agent Board');
+      for (let i = 0; i < 6; i++) {
+        assert.notEqual((await page.eval(card))!.session, 's-gone');
+        await page.key('ArrowRight');
+        await page.until('the next card', () => !document.documentElement.dataset.deal);
+      }
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      assert.equal(await page.eval(() => document.querySelector('[data-tile][data-session="s-gone"]')?.getAttribute('data-attention')), 'exited');
+    },
+  },
+  {
+    name: 'P5.1.18 long details and eight options: the left column scrolls inside the card, and the options and the footer stay in view',
+    scenario: 'long',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.until('the card to settle', still);
+      const left = await page.eval(() => {
+        const column = document.querySelector('[data-card] [data-side="left"]')!;
+        return { scrolls: column.scrollHeight > column.clientHeight + 20, page: document.scrollingElement!.scrollHeight === innerHeight, options: document.querySelectorAll('[data-card] [data-option]').length };
+      });
+      assert.deepEqual(left, { scrolls: true, page: true, options: 8 });
+      for (const selector of ['[data-card] [data-primary]', '[data-card] [data-option="1"]', '[data-card] [data-option="2"]']) {
+        assert.equal(await page.eval(whole, selector), true, `${selector} is out of view`);
+      }
+      await shot('queue-long');
+    },
+  },
+  {
+    name: 'P5.1.19 a second opinion still running shows a spinner, a ticking clock, the step and Stop, which stops it at once; Retry asks again; on a menu the band shows running and failed too',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await page.until('s-group at the front', frontIs, 's-group');
+      const running = () => {
+        const box = document.querySelector<HTMLElement>('[data-card] [data-advice="running"]');
+        return box && { text: box.innerText, spinner: !!box.querySelector('[aria-hidden]'), clock: box.querySelector('strong + span')?.textContent ?? null };
+      };
+      const first = await page.until('the running second opinion', running);
+      assert.match(first.text, /^Second opinion in progress\s+\d+:\d\d\s+Stop\s+Read web\/src\/order\.ts$/);
+      assert.equal(first.spinner, true);
+      await sleep(1100);
+      assert.notEqual((await page.eval(running))?.clock, first.clock, 'the clock did not tick');
+      await page.until('the card to settle', still);
+      await shot('queue-advice-running');
+      const pressed = Date.now();
+      await page.click('[data-card] [data-advice] button', 'Stop');
+      const [stop] = await logged(mock, 'the stop', (e) => e.action === 'stop-advice');
+      assert.deepEqual([stop.sessionId, stop.body, stop.status], ['s-group', { key: 's:t-group-4' }, 204]);
+      assert.ok(stop.at - pressed < 1000, `stopped ${stop.at - pressed} ms after the press`);
+      const stopped = await page.until('the stopped box', () => document.querySelector<HTMLElement>('[data-card] [data-advice="failed"]')?.innerText);
+      assert.match(stopped, /^Second opinion stopped\s+Retry$/);
+      await page.click('[data-card] [data-advice] button', 'Retry');
+      const [retry] = await logged(mock, 'the retry', (e) => e.action === 'retry-advice');
+      assert.deepEqual([retry.sessionId, retry.body, retry.status], ['s-group', { key: 's:t-group-4' }, 204]);
+
+      await mock.post('/mock/advice', { id: 's-hooks', state: 'thinking' });
+      await page.click('[data-segment][data-session="s-hooks"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const band = await page.until('the band running', running);
+      assert.match(band.text, /^Second opinion in progress\s+\d+:\d\d\s+Stop\s+Read the changed files$/);
+      await mock.post('/mock/advice', { id: 's-hooks', state: 'failed' });
+      const failed = await page.until('the band failed', () => document.querySelector<HTMLElement>('[data-card] [data-advice="failed"]')?.innerText);
+      assert.match(failed, /^Second opinion failed: the advisor gave an empty answer\s+Retry$/);
+      await page.until('the card to settle', still);
+      await shot('queue-menu-advice-failed');
+    },
+  },
+  {
+    name: 'P5.1.20 N opens New task over the queue with the prompt focused and Esc closes it; V goes to the Wall and back; on the Wall a waiting tile brings its card to the front and a working one opens its sheet over the Wall',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('n');
+      await page.until('New task, its prompt focused', () => !!document.querySelector<HTMLDialogElement>('dialog#new-task')?.open && document.activeElement === document.querySelector('dialog#new-task textarea'));
+      await page.key('Escape');
+      // The prompt keeps focus while the dialog fades out.
+      await page.until('the dialog to close', () => !document.querySelector('dialog#new-task[open]') && !document.activeElement?.closest('dialog'));
+      await page.key('v');
+      await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
+      await page.key('v');
+      await page.until('the queue', () => location.pathname === '/' && !!document.querySelector('[data-card]'));
+      await page.key('v');
+      await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
+      await page.click('[data-tile][data-session="s-group"] p');
+      await page.until('s-group at the front of the queue', () => location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-group');
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.click('[data-tile][data-session="s-invoice"] p');
+      await page.until('the sheet over the Wall', () => location.pathname === '/s/s-invoice/overview' && !!document.querySelector('#task-sheet:modal') &&
+        (window.navigation.currentEntry?.getState() as { base?: string } | undefined)?.base === '/wall');
+    },
+  },
+  {
+    name: 'P5.1.21 typing in New task on the resting Wall while a session arrives: the queue waits, so "we fix 3 x" and Enter stay in the prompt; nothing is held, archived or undone; once focus leaves, the card comes up',
+    scenario: 'zero',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
+      await page.click('#new-task-inline textarea');
+      await page.type('Fix the login ');
+      await mock.post('/mock/add', { template: 'idle', id: 's-idle' });
+      await page.until('the arrival in the meter', () => !!document.querySelector('[data-segment][data-session="s-idle"]'));
+      for (const key of 'we fix 3 x') await page.key(key);
+      await page.key('Enter');
+      await sleep(300);
+      const held = await page.eval(() => ({
+        card: !!document.querySelector('[data-card]'),
+        value: document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
+        focused: document.activeElement === document.querySelector('#new-task-inline textarea'),
+        toasts: [...document.querySelectorAll('[data-toast]')].length,
+      }));
+      assert.deepEqual(held, { card: false, value: 'Fix the login we fix 3 x\n', focused: true, toasts: 0 });
+      assert.deepEqual((await mock.log()).filter((e) => e.path.startsWith('/api/sessions/')), []);
+      await shot('queue-waits-for-typing');
+      await page.click('main h1');
+      await page.until('the card once focus left', frontIs, 's-idle');
+      await sleep(300);
+      assert.deepEqual((await mock.log()).filter((e) => e.path.startsWith('/api/sessions/')), []);
+    },
+  },
+  {
+    name: 'P5.1.22 a menu answered from the board but still open 10 s later is Needs focus: Claude still shows its menu in the terminal, and ⏎ opens the terminal',
+    scenario: 'menu-stuck',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-hooks"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const shown = (await page.eval(card))!;
+      assert.deepEqual([shown.kind, shown.label, shown.primary], ['prompt', 'Retry failed webhooks · Needs focus', 'Terminal']);
+      assert.ok(shown.text.includes('Claude still shows its menu in the terminal'), shown.text);
+      await page.until('the card to settle', still);
+      await shot('queue-menu-stuck');
+      await page.eval(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      await page.key('Enter');
+      const [focus] = await logged(mock, 'the terminal request', (e) => e.action === 'focus');
+      assert.deepEqual([focus.sessionId, focus.status], ['s-hooks', 204]);
+    },
+  },
+  {
+    name: 'P5.1.23 s-group waits for its second opinion with the primary off as Pick an option; when the advice finishes it becomes what ⏎ sends: Suggestion ready · Accept, guarded about 0.9 s, its option highlighted',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await page.until('s-group at the front', frontIs, 's-group');
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      assert.deepEqual(await page.eval(() => {
+        const c = document.querySelector<HTMLElement>('[data-card]')!;
+        return [c.querySelector('[data-primary]')?.firstElementChild?.textContent, c.querySelector<HTMLButtonElement>('[data-primary]')?.disabled, c.querySelectorAll('[data-frozen]').length];
+      }), ['Pick an option', true, 0]);
+      await mock.post('/mock/advice', { id: 's-group', state: 'done', choice: 'By attention', confidence: 74 });
+      const done = Date.now();
+      const relabelled = await page.until('the relabel', () => {
+        const c = document.querySelector<HTMLElement>('[data-card]')!;
+        const p = c.querySelector<HTMLButtonElement>('[data-primary]')!;
+        return p.hasAttribute('data-guarded') && {
+          label: p.firstElementChild?.textContent, disabled: p.disabled,
+          frozen: [...c.querySelectorAll('[data-frozen] [data-option]')].map((o) => o.textContent?.slice(0, 13)),
+        };
+      });
+      assert.deepEqual(relabelled, { label: 'Suggestion ready · Accept', disabled: false, frozen: ['1By attention'] });
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      const held = Date.now() - done;
+      assert.ok(held > 700 && held < 1600, `the guard ended ${held} ms after the advice finished`);
+      await page.until('the card to settle', still);
+      await shot('queue-suggestion-ready');
+    },
+  },
+  {
+    name: 'P5.1.24 narrow window: the queue has no sideways scroll and its primary stays in reach',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.until('the card to settle', still);
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      assert.equal(await page.eval(() => {
+        const r = document.querySelector('[data-primary]')!.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= innerHeight;
+      }), true, 'the primary is not in the window at the top of the page');
+      await shot('narrow-queue');
+      await page.until('the primary in reach', reachable, '[data-primary]', '');
+      await page.click('[data-segment][data-session="s-hooks"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await page.until('the primary in reach', reachable, '[data-primary]', '');
+      await shot('narrow-queue-menu');
+    },
+  },
+  {
+    name: 'P5.1.wall-age at rest a Wall tile\'s age ends at the tile\'s padding edge, where its ⋯ shows instead on hover',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      const gaps = await page.eval(() => [...document.querySelectorAll<HTMLElement>('[data-tile]')].filter((t) => t.checkVisibility()).map((t) => {
+        const style = getComputedStyle(t);
+        const edge = t.getBoundingClientRect().right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+        const age = t.querySelector('[data-age]')!.getBoundingClientRect();
+        return Math.round((edge - age.right) * 10) / 10;
+      }));
+      assert.ok(gaps.length >= 11);
+      assert.deepEqual(gaps.filter((g) => Math.abs(g) > 0.5), [], `ages end ${gaps.join(', ')} px from the padding edge`);
+      const tile = '[data-tile][data-session="s-invoice"]';
+      const box = await page.eval((tile: string) => {
+        const r = document.querySelector(`${tile} p`)!.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }, tile);
+      await page.hover(box.x, box.y);
+      await page.until('the ⋯ in the age\'s place', (tile: string) => {
+        const menu = document.querySelector<HTMLElement>(`${tile} button[aria-label="Session actions"]`)!;
+        const age = document.querySelector<HTMLElement>(`${tile} [data-age]`)!;
+        return getComputedStyle(menu.parentElement!).opacity === '1' && getComputedStyle(age).opacity === '0';
+      }, tile);
+    },
+  },  {
+    name: 'P5.1.n1-card typing in the reply box holds the card as it is: a new decision on it waits, then updates it in place with the same box and draft; the card leaving waits too, with word that it no longer waits, until focus leaves',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('only if stock');
+      await page.eval(() => void ((window as unknown as { e2eField?: Element }).e2eField = document.querySelector('[data-card] textarea')!));
+      const box = () => {
+        const field = document.querySelector<HTMLTextAreaElement>('[data-card] textarea');
+        return {
+          session: document.querySelector<HTMLElement>('[data-card]')?.dataset.session, key: document.querySelector<HTMLElement>('[data-card]')?.dataset.key,
+          value: field?.value, focused: !!field && document.activeElement === field, same: !!field && field === (window as unknown as { e2eField?: Element }).e2eField,
+        };
+      };
+      await mock.post('/mock/patch', { id: 's-cart', patch: { question: { toolUseId: 'toolu_02', title: 'Merge the carts for app logins too?' } } });
+      await until('the new decision in the snapshot', async () => (await mock.get('/api/state')).sessions.find((x: { id: string }) => x.id === 's-cart').question.toolUseId === 'toolu_02');
+      await sleep(500);
+      assert.deepEqual(await page.eval(box), { session: 's-cart', key: 'q:toolu_01Cart', value: 'only if stock', focused: true, same: true });
+      await page.click('[data-card] h1');
+      await page.until('the update in place', () => document.querySelector<HTMLElement>('[data-card]')?.dataset.key === 'q:toolu_02');
+      assert.deepEqual(await page.eval(box), { session: 's-cart', key: 'q:toolu_02', value: 'only if stock', focused: false, same: true });
+      assert.match((await page.eval(card))!.header, /Updated just now/);
+
+      await page.click('[data-card] textarea');
+      await page.type(' allows');
+      await mock.post('/mock/patch', { id: 's-cart', patch: { question: null, status: 'working' } });
+      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'Merge guest cart on login no longer waits', inSheet: false, hit: true }]);
+      await sleep(300);
+      assert.deepEqual(await page.eval(box), { session: 's-cart', key: 'q:toolu_02', value: 'only if stock allows', focused: true, same: true });
+      // Not on the card, which goes as the pointer goes down.
+      await page.click('main span', 'Previous');
+      await page.until('the card after it once focus left', frontIs, 's-hooks');
     },
   },
 ];

@@ -199,6 +199,8 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
         }
         throw new Error(`${what} never received a click`);
       },
+      // Moves the pointer there, as a hover.
+      hover: (x: number, y: number) => mouse('mouseMoved', x, y),
       async key(key: string) {
         const k = KEYS[key] ?? { code: /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, keyCode: key.toUpperCase().charCodeAt(0), text: key };
         const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode };
