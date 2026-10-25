@@ -5,18 +5,18 @@ import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
+import { answering } from './answering.ts';
 import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
-import { checkDecision, openDecision } from './decision.ts';
+import { checkDecision } from './decision.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
 import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import * as terminal from './terminal.ts';
-import { menuKeystrokes, type MenuAnswer } from './menu.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank, trackDecisions } from './priority.ts';
 import { summarizeStale } from './summary.ts';
@@ -213,12 +213,6 @@ async function syncLive() {
   void summarizeStale();
 }
 
-function liveTty(s: Session) {
-  if (s.status === 'exited') throw new Error('this session has ended; continue it first');
-  if (!s.tty) throw new Error('this session has no terminal yet');
-  return s.tty;
-}
-
 export async function focus(id: string) {
   const s = must(id);
   if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: id });
@@ -235,25 +229,18 @@ export function expectDecision(id: string, seen: string | null | undefined) {
   checkDecision(must(id), seen);
 }
 
-export async function answer(id: string, reply: { key?: string | null; choice?: string; text?: string; files?: string[] }, commands = true) {
-  const s = must(id);
-  const tty = liveTty(s);
-  if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
-  const text = reply.text?.trim() ?? '';
-  const files = await checkUploads(reply.files);
-  if (!reply.choice && !text && !files.length) throw new Error('empty answer');
-  // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
-  if (commands && !reply.choice && !files.length && (await isCommand(s, text))) {
-    await terminal.send(tty, text);
-    return;
-  }
-  checkDecision(s, reply.key, !reply.choice);
-  const parts = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', reply.text?.trim() ?? '']
-    .filter(Boolean);
-  await terminal.send(tty, parts.join(' — '), files);
-  clearQuestion(id);
+// An answered end-of-turn or menu decision has no question to clear, yet its second opinion has to stop and its rank go.
+function decided(id: string) {
+  const s = sessions.get(id);
+  if (s?.question) sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId });
+  trackDecisions();
+  adviseOpen();
   notify();
 }
+
+const answers = answering({ store: sessions, send: terminal.send, keys: terminal.keys, notify, decided, isCommand, checkUploads });
+
+export const { answer, answerMenu, acceptAdvice, dismiss } = answers;
 
 // A running Claude keeps its name in memory and writes it back to the transcript, so a live
 // session is renamed with its own /rename (it runs even mid-turn); an ended one in the file.
@@ -265,19 +252,10 @@ export async function rename(id: string, title: string) {
     const file = await transcriptFile(s.cwd, s.id);
     if (await stat(file).catch(() => null)) await appendFile(file, `${JSON.stringify({ type: 'custom-title', customTitle: name, sessionId: s.id })}\n`);
   } else {
-    if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
-    await terminal.send(liveTty(s), `/rename ${name}`);
+    await answers.type(id, `/rename ${name}`);
   }
   sessions.update(id, { title: name });
   notify();
-}
-
-export async function answerMenu(id: string, body: { toolUseId: string; answers: MenuAnswer[] }) {
-  const s = must(id);
-  const tty = liveTty(s);
-  const menu = s.menu;
-  if (!menu || menu.toolUseId !== body.toolUseId) throw new Error('this question is no longer open');
-  await terminal.keys(tty, menuKeystrokes(menu, body.answers));
 }
 
 // Posted by the PreToolUse hook that `pnpm claude:connect` installs, just before the dialog opens.
@@ -286,15 +264,6 @@ export function menuOpened(hook: { session_id?: string; tool_use_id?: string; to
   if (!menu || !hook.session_id || !sessions.get(hook.session_id)) return;
   sessions.update(hook.session_id, { menu });
   notify();
-}
-
-export async function acceptAdvice(id: string) {
-  const s = must(id);
-  const a = s.advice;
-  const decision = openDecision(s);
-  if (a?.state !== 'done' || a.key !== decision?.key) throw new Error('no advice to accept');
-  if (decision.menu) await answerMenu(id, { toolUseId: decision.menu.toolUseId, answers: a.answers ?? [] });
-  else await answer(id, { key: a.key, choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
 export async function openIn(id: string, app: 'finder' | 'vscode') {
@@ -407,20 +376,6 @@ export async function deleteWorktree(id: string) {
   const repo = repoView(s.repoId);
   if (!repo) throw new Error('worktree not found');
   await removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
-}
-
-function clearQuestion(id: string) {
-  const s = sessions.get(id);
-  if (!s?.question) return;
-  sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId });
-  trackDecisions();
-  adviseOpen();
-}
-
-export function dismiss(id: string) {
-  must(id);
-  clearQuestion(id);
-  notify();
 }
 
 const diffInFlight = new Set<string>();
