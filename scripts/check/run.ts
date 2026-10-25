@@ -64,7 +64,9 @@ async function runOne(mock: Mock, browser: Browser, check: Check, look: Look) {
   const page = await browser.newPage(look);
   const shots = args.shots ? resolve(args.shots, lookName(look)) : null;
   const shot = async (name: string) => {
-    if (shots) await page.shot(join(shots, `${name}.png`));
+    if (!shots) return;
+    await page.until('the transitions to end', () => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished'));
+    await page.shot(join(shots, `${name}.png`));
   };
   try {
     let timer: NodeJS.Timeout | undefined;
