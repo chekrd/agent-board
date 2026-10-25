@@ -211,8 +211,19 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
           for (const type of ['mousePressed', 'mouseReleased']) await cdp('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount });
         }
       },
-      // Moves the pointer there, as a hover.
-      hover: (x: number, y: number) => mouse('mouseMoved', x, y),
+      // Moves the pointer to the middle of the first visible match (whose text contains `text`), once it is on top there.
+      async hover(selector: string, text = '') {
+        const at = await until(`${selector}${text ? ` with "${text}"` : ''} to take the pointer`, () => run((selector: string, text: string) => {
+          const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => e.checkVisibility() && (e.textContent ?? '').includes(text));
+          if (!el) return null;
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          const r = el.getBoundingClientRect();
+          const at = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+          const hit = document.elementFromPoint(at.x, at.y);
+          return hit && el.contains(hit) ? at : null;
+        }, selector, text));
+        await mouse('mouseMoved', at.x, at.y);
+      },
       // Moves the pointer to a point of the viewport, and with `click` clicks there: on a dialog's backdrop, say, which no
       // selector reaches.
       async pointAt(x: number, y: number, click = false) {
