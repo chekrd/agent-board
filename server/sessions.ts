@@ -39,11 +39,12 @@ async function launch(id: string, cwd: string, args: string[], setup?: string | 
   await terminal.start(id, cwd, `/bin/sh ${quote(script)}`);
 }
 
+// With a prompt, Claude starts on it at once; until it registers, idle would show a finished turn that never was.
 export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null }) {
   const id = randomUUID();
   sessions.insert({
     id, repoId: opts.repoId, worktree: opts.worktree, cwd: opts.worktree, pid: null, tty: null,
-    title: opts.title || null, firstPrompt: opts.prompt || null, status: 'idle',
+    title: opts.title || null, firstPrompt: opts.prompt || null, status: opts.prompt ? 'working' : 'idle',
   });
   try {
     await launch(id, opts.worktree, ['--session-id', id, ...(opts.prompt ? ['--', opts.prompt] : [])], opts.setup);
