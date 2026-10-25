@@ -69,7 +69,10 @@ function wakeAtNextChange() {
 // The build this page runs, named by its entry script: import.meta.url names whichever chunk this module lands in,
 // and a split that moved it would reload the page in a loop.
 const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
-let reloading = false;
+// The build the gate waits to reload into: the newest one announced, unless that is the page's own.
+let armedFor: string | null = null;
+let armedAt = 0;
+let checking: ReturnType<typeof setTimeout> | undefined;
 
 function reloadedFor() {
   try {
@@ -79,35 +82,46 @@ function reloadedFor() {
   }
 }
 
-// A new build reloads the page once nothing would be lost: the server can be reached, no send is held, under way or
-// waiting, no field is focused (a draft or a rename), and no dialog or menu is open. Held sends keep their own
-// timers meanwhile, and after 15 s the top bar offers the reload instead. A reload for this build that already
-// brought the tab back to the entry it runs would do so on every connect (the server reads some other script as
-// the entry), so the top bar offers it at once.
-function reloadWhenFree(build: string) {
-  if (reloading) return;
-  reloading = true;
-  const attempt = `${entry} ${build}`;
-  if (reloadedFor() === attempt) {
-    set({ ...state, newVersion: true });
-    return;
+const offer = (newVersion: boolean) => {
+  if (state.newVersion !== newVersion) set({ ...state, newVersion });
+};
+
+// A message names the build the server serves. A new one reloads the page once nothing would be lost: the server
+// can be reached, no send is held, under way or waiting, no field is focused (a draft or a rename), and no dialog or
+// menu is open. Held sends keep their own timers meanwhile, and after 15 s the top bar offers the reload instead.
+// The page's own build announced again stands the gate down. A reload for a build that already brought the tab back
+// to the entry it runs would do so on every connect (the server reads some other script as the entry), so the top
+// bar offers that one at once.
+function announced(uiEntry: unknown) {
+  if (typeof uiEntry !== 'string' || !uiEntry || import.meta.env.DEV || !entry) return;
+  const build = new URL(uiEntry, location.href).href;
+  if (build === entry) {
+    armedFor = null;
+    clearTimeout(checking);
+    return offer(false);
   }
-  const since = Date.now();
-  const check = () => {
-    const free = state.link === 'live' && !sends.items().some(active) && !isEditable(document.activeElement) &&
-      !document.querySelector('dialog[open]') && !menuOpen();
-    if (free) {
-      try {
-        sessionStorage.setItem(RELOADED_FOR, attempt);
-      } catch {
-        // Without storage nothing stops a mismatch from reloading on every connect.
-      }
-      return location.reload();
-    }
-    if (!state.newVersion && Date.now() - since >= RELOAD_CAP_MS) set({ ...state, newVersion: true });
-    setTimeout(check, 250);
-  };
+  if (build === armedFor) return;
+  if (!armedFor) armedAt = Date.now();
+  armedFor = build;
+  clearTimeout(checking);
+  if (reloadedFor() === `${entry} ${build}`) return offer(true);
   check();
+}
+
+function check() {
+  if (!armedFor) return;
+  const free = state.link === 'live' && !sends.items().some(active) && !isEditable(document.activeElement) &&
+    !document.querySelector('dialog[open]') && !menuOpen();
+  if (free) {
+    try {
+      sessionStorage.setItem(RELOADED_FOR, `${entry} ${armedFor}`);
+    } catch {
+      // Without storage nothing stops a mismatch from reloading on every connect.
+    }
+    return location.reload();
+  }
+  if (Date.now() - armedAt >= RELOAD_CAP_MS) offer(true);
+  checking = setTimeout(check, 250);
 }
 
 async function connect() {
@@ -122,8 +136,7 @@ async function connect() {
         sends.reconnected();
         set({ ...state, ...next, link: 'live', connected: true });
         wakeAtNextChange();
-        const build = uiEntry ? new URL(uiEntry, location.href).href : null;
-        if (build && !import.meta.env.DEV && entry && build !== entry) reloadWhenFree(build);
+        announced(uiEntry);
       }
     } catch {
       // reconnect below

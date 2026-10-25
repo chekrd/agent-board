@@ -563,7 +563,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-offline a new build waits for the server: focus leaving a draft while the server cannot be reached does not reload the board, and it reloads once the server is back',
+    name: 'P3.reload-offline a new build waits for the server: focus leaving a draft while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
     expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/s/s-reviews/details`);
@@ -585,6 +585,10 @@ export const checks: Check[] = [
         // The next check's reset cannot reach the mock until the drop is over.
         await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
       }
+      // A server back with the new build names it to the page that reconnects; the mock names the build it serves, so
+      // the check names the new one again once the page has had time to reconnect (it retries every second).
+      await sleep(2500);
+      await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
       await until('the page to reload once the server is back', async () => {
         try {
           return await page.eval(() => (window as unknown as { probe?: number }).probe === undefined && document.readyState === 'complete');
