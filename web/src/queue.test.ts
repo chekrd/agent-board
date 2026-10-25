@@ -1,0 +1,190 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { arrivals, freeze, primary } from './deck.ts';
+import { arrange, createQueue, FRESH_MS, GUARD_MS, UPDATED_MS, type Deal } from './queue.ts';
+import { advice, options, question, session, turn } from './testing.ts';
+import type { Session } from './types.ts';
+
+const ask = (id: string, patch: Partial<Session> = {}) => session(id, { question: question(`q-${id}`), ...patch });
+const ids = (list: readonly { id: string }[]) => list.map((s) => s.id);
+
+// A queue on a clock, timers and storage the test drives, whose transitions apply at once and are recorded.
+function world(storage = new Map<string, string>()) {
+  let now = 1_000_000;
+  let timers: { at: number; fn: () => void }[] = [];
+  const deals: Deal[] = [];
+  const store = {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => void storage.set(k, v),
+    removeItem: (k: string) => void storage.delete(k),
+  };
+  const q = createQueue({
+    now: () => now,
+    storage: store,
+    transition: (change, deal) => {
+      deals.push(deal);
+      change();
+    },
+    later: (fn, ms) => void timers.push({ at: now + ms, fn }),
+  });
+  const advance = (ms: number) => {
+    now += ms;
+    const due = timers.filter((t) => t.at <= now);
+    timers = timers.filter((t) => t.at > now);
+    for (const t of due) t.fn();
+  };
+  return { q, advance, deals, storage, now: () => now };
+}
+
+const a = ask('a', { rank: 2 });
+const b = ask('b', { rank: 3 });
+const c = ask('c', { rank: 4 });
+
+test('the card being read is pinned by id: an arrival takes its place in the order behind it and is announced until shown', () => {
+  const { q } = world();
+  q.sync([a, b]);
+  assert.equal(q.state().front, 'a');
+  const urgent = ask('urgent', { rank: 1 });
+  q.sync([urgent, a, b]);
+  assert.equal(q.state().front, 'a');
+  assert.deepEqual(q.state().order, ['a', 'b', 'urgent']);
+  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, 'a')), ['urgent']);
+  q.jump('urgent');
+  q.sync([urgent, a, b]);
+  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, 'urgent')), [], 'shown once, it is no longer new');
+});
+
+test('when the card being read leaves for an outside reason the one after it comes up, with word that it no longer waits; the page\'s own send says nothing', () => {
+  const { q, deals } = world();
+  q.sync([a, b, c]);
+  assert.deepEqual(q.sync([b, c]), [{ type: 'left', id: 'a' }]);
+  assert.equal(q.state().front, 'b');
+  q.deal('down', () => {});
+  assert.deepEqual(q.sync([c]), []);
+  assert.equal(q.state().front, 'c');
+  assert.deepEqual(deals, ['down']);
+  q.sync([]);
+  assert.equal(q.state().front, null);
+  q.sync([b]);
+  assert.equal(q.state().front, 'b', 'the first arrival into an empty deck comes to the front');
+});
+
+test('the guard holds the answer keys for 900 ms when the front card changes, when its decision changes, and when what ⏎ sends changes', () => {
+  const { q, advance } = world();
+  q.sync([a, b]);
+  assert.equal(q.guarded(), true, 'the first card shown is guarded too');
+  advance(GUARD_MS);
+  assert.equal(q.guarded(), false);
+  q.sync([a, b]);
+  assert.equal(q.guarded(), false, 'a snapshot that changes nothing on the card');
+
+  const updated = ask('a', { rank: 2, question: question('q-a2') });
+  q.sync([updated, b]);
+  assert.equal(q.state().front, 'a');
+  assert.equal(q.guarded(), true);
+  assert.equal(q.state().updated.get('a'), q.state().guardUntil - GUARD_MS + UPDATED_MS);
+  advance(UPDATED_MS);
+  assert.deepEqual([...q.state().updated], [], '"Updated just now" ends after 10 s');
+
+  const advised = { ...updated, advice: advice('q:q-a2', { choice: 'Keep', at: 7 }) };
+  q.sync([advised, b]);
+  q.freeze('q:q-a2', freeze(advised)!);
+  advance(GUARD_MS);
+  q.sync([advised, b]);
+  assert.equal(q.guarded(), false);
+  q.sync([{ ...advised, advice: advice('q:q-a2', { choice: 'Merge', at: 8 }) }, b]);
+  assert.equal(q.guarded(), true, 'the primary turned from Accept suggestion to Send “Keep”');
+});
+
+test('a second opinion that finishes while ⏎ has nothing to send becomes what it sends, restarts the guard and shows as late; no later one replaces it', () => {
+  const { q, advance } = world();
+  const s = ask('s');
+  const key = 'q:q-s';
+  q.sync([s]);
+  q.freeze(key, freeze(s)!);
+  advance(GUARD_MS);
+  assert.deepEqual(primary(s, q.state().frozen.get(key)!), { label: 'Pick an option', disabled: true, press: null });
+
+  const done = { ...s, advice: advice(key, { choice: 'Merge', at: 9 }) };
+  q.sync([done]);
+  assert.deepEqual(q.state().frozen.get(key), { via: 'advice', label: 'Merge', adviceAt: 9, late: true });
+  assert.equal(q.guarded(), true);
+  assert.deepEqual(primary(done, q.state().frozen.get(key)!).press, { action: 'accept-advice', body: { key, adviceAt: 9 }, label: 'Merge' });
+
+  advance(GUARD_MS);
+  const newer = { ...s, advice: advice(key, { choice: 'Keep', at: 12 }) };
+  q.sync([newer]);
+  assert.deepEqual(q.state().frozen.get(key), { via: 'advice', label: 'Merge', adviceAt: 9, late: true });
+  assert.deepEqual(primary(newer, q.state().frozen.get(key)!), {
+    label: 'Send “Merge”', disabled: false, press: { action: 'answer', body: { key, choice: 'Merge' }, label: 'Merge' },
+  }, '⏎ never switches to the newer suggestion');
+  assert.equal(q.guarded(), true, 'the relabel restarts the guard');
+});
+
+test('a rewrite of the decision that drops the frozen option freezes it again, as an update', () => {
+  const { q, advance } = world();
+  const s = session('t', { summary: turn('t1'), advice: advice('s:t1', { choice: 'Ship', at: 7 }) });
+  q.sync([s]);
+  q.freeze('s:t1', freeze(s)!);
+  advance(GUARD_MS);
+  q.sync([{ ...s, summary: turn('t1', options('Ship now', 'Wait')) }]);
+  assert.deepEqual(q.state().frozen.get('s:t1'), { via: 'advice', label: null, adviceAt: 7 }, 'the advice matches no option now');
+  assert.equal(q.guarded(), true);
+  assert.ok(q.state().updated.has('t'));
+});
+
+test('skip, previous and jump move the front, each in a transition of its own', () => {
+  const { q, deals } = world();
+  q.sync([a, b, c]);
+  q.skip();
+  assert.equal(q.state().front, 'b');
+  q.sync([a, b, c]);
+  assert.deepEqual(q.state().order, ['b', 'c', 'a']);
+  q.previous();
+  assert.equal(q.state().front, 'a');
+  q.sync([a, b, c]);
+  q.jump('c');
+  q.jump('c');
+  assert.equal(q.state().front, 'c');
+  assert.deepEqual(deals, ['back', 'enter-back', 'enter']);
+});
+
+test('a send that failed waits right after the card being read until it has been at the front, which shows its message once', () => {
+  const { q } = world();
+  q.sync([a, b, c]);
+  q.notSent('c', 'this question is no longer open');
+  q.sync([a, b, c]);
+  assert.deepEqual(ids(arrange([a, b, c], q.state())), ['a', 'c', 'b']);
+  q.skip();
+  q.sync([a, b, c]);
+  assert.equal(q.state().front, 'c');
+  assert.deepEqual(q.state().notSent.get('c'), { message: 'this question is no longer open', shown: true });
+  q.skip();
+  q.sync([a, b, c]);
+  assert.equal(q.state().notSent.has('c'), false);
+  assert.deepEqual(q.state().order, ['a', 'b', 'c'], 'back in its own place');
+});
+
+test('the pin and the frozen choices live in sessionStorage too, so a reload restores both', () => {
+  const first = world();
+  first.q.sync([a, b]);
+  first.q.jump('b');
+  first.q.freeze('q:q-b', { via: 'recommended', label: 'Keep' });
+  const reloaded = world(first.storage);
+  assert.equal(reloaded.q.state().front, 'b');
+  assert.deepEqual([...reloaded.q.state().frozen], [['q:q-b', { via: 'recommended', label: 'Keep' }]]);
+  reloaded.q.sync([a, b]);
+  assert.equal(reloaded.q.state().front, 'b');
+  assert.equal(reloaded.q.guarded(), true);
+  assert.equal(world(new Map([['agent-board:frozen', '{not json']])).q.state().frozen.size, 0);
+});
+
+test('a fresh ring lasts 2.6 s', () => {
+  const { q, advance } = world();
+  q.fresh('a');
+  assert.ok(q.state().fresh.has('a'));
+  advance(FRESH_MS - 1);
+  assert.ok(q.state().fresh.has('a'));
+  advance(1);
+  assert.equal(q.state().fresh.has('a'), false);
+});
