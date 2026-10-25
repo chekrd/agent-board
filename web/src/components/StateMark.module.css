@@ -1,0 +1,22 @@
+@layer components {
+  .mark {
+    flex: none;
+    display: inline-block;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+
+    &[data-state="decide"] { border-radius: 2px; background: var(--accent-ink); rotate: 45deg; }
+    &[data-state="focus"] { border-radius: 2px; background: var(--prompt); }
+    &[data-state="idle"] { background: var(--idle); }
+    &[data-state="working"] {
+      width: calc(var(--size) + 3px);
+      height: calc(var(--size) + 3px);
+      border: 2px solid var(--work);
+      border-right-color: transparent;
+      animation: spin 1.1s linear infinite;
+    }
+    &[data-state="archived"] { border-radius: 2px; border: 1.5px solid var(--muted); }
+    &[data-state="exited"] { border: 1.5px solid var(--muted); }
+  }
+}
