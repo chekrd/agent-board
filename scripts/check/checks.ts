@@ -1420,4 +1420,29 @@ export const checks: Check[] = [
       })), { loaded: '/s/s-nope/overview', at: 1, entries: ['/', '/'] });
     },
   },
+  {
+    name: 'P4.branches-once New task\'s two hosts share one read of the branch list: Existing branch and a change of repository each ask the server once, and the dialog shows the same chips',
+    async run({ page, mock }) {
+      const reads = async (repo: number) => (await mock.log()).filter((e) => e.method === 'GET' && e.path === `/api/repos/${repo}/branches`).length;
+      const chips = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
+      const pick = (repo: string) => {
+        const select = document.querySelector<HTMLSelectElement>('#new-task-inline select')!;
+        select.value = repo;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the New task form', () => !!document.querySelector('#new-task-inline textarea'));
+      await page.eval(pick, '1');
+      await page.click('#new-task-inline button', 'More options');
+      await page.click('#new-task-inline label', 'Existing branch');
+      await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), '#new-task-inline');
+      await sleep(300);
+      assert.equal(await reads(1), 1);
+      await page.eval(pick, '2');
+      await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), '#new-task-inline');
+      await sleep(300);
+      assert.deepEqual([await reads(1), await reads(2)], [1, 1]);
+      assert.deepEqual(await page.eval(chips, 'dialog#new-task'), await page.eval(chips, '#new-task-inline'));
+    },
+  },
 ];

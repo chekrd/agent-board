@@ -1,4 +1,4 @@
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useActionState, useEffect, useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { api } from '../api.ts';
 import { openSheet, type View } from '../router.ts';
 import type { RepoView } from '../types.ts';
@@ -38,7 +38,14 @@ function stored(): Fields {
 
 // Both hosts show the same fields, so a prompt begun on the Wall is there over the queue, and a reload keeps it.
 let fields = stored();
+// They share the branch list too: both are mounted at once, and one read serves them.
+let branches: { repoId: number; list: Branch[] } | null = null;
+let reading: number | null = null;
 const subscribers = new Set<() => void>();
+
+const notify = () => {
+  for (const fn of subscribers) fn();
+};
 
 function edit(patch: Partial<Fields>) {
   fields = { ...fields, ...patch };
@@ -47,7 +54,18 @@ function edit(patch: Partial<Fields>) {
   } catch {
     // A page without storage keeps them in memory only.
   }
-  for (const fn of subscribers) fn();
+  notify();
+}
+
+function readBranches(repoId: number) {
+  if (reading === repoId) return;
+  reading = repoId;
+  api<Branch[]>('GET', `/api/repos/${repoId}/branches`).catch(() => []).then((list) => {
+    if (reading !== repoId) return;
+    reading = null;
+    branches = { repoId, list };
+    notify();
+  });
 }
 
 const subscribe = (fn: () => void) => {
@@ -67,23 +85,19 @@ export function openNewTask(view: View) {
 
 function NewTaskForm({ repos, accent, inline, done }: { repos: RepoView[]; accent: boolean; inline: boolean; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
+  const read = useSyncExternalStore(subscribe, () => branches);
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
-  const [branches, setBranches] = useState<Branch[]>([]);
   useEffect(() => {
-    if (!f.existing) return;
-    let current = true;
-    api<Branch[]>('GET', `/api/repos/${repo.id}/branches`).then((b) => current && setBranches(b), () => current && setBranches([]));
-    return () => {
-      current = false;
-    };
+    if (f.existing) readBranches(repo.id);
   }, [f.existing, repo.id]);
 
   const name = f.name.trim();
   const branch = f.branch.trim();
   const valid = f.existing ? !!branch : NAME.test(name);
   const main = repo.worktrees.find((w) => w.isMain);
-  const picked = branches.find((b) => b.name === branch);
-  const chips = f.existing ? branches.filter((b) => b.name !== branch && b.name.includes(branch)) : [];
+  const list = read?.repoId === repo.id ? read.list : [];
+  const picked = list.find((b) => b.name === branch);
+  const chips = f.existing ? list.filter((b) => b.name !== branch && b.name.includes(branch)) : [];
 
   const [error, create, pending] = useActionState(async () => {
     const now = fields;
