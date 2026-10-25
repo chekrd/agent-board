@@ -9,7 +9,6 @@ import type { RepoView, Session } from './types.ts';
 import { isEditable, menuOpen } from './useKeys.ts';
 import { attentionChangesAt } from './util.ts';
 
-// Connecting until the first snapshot, live while the socket is open, reconnecting after a drop.
 export type Link = 'connecting' | 'live' | 'reconnecting';
 
 interface State {

@@ -5,7 +5,6 @@ import type { Kind } from './deck.ts';
 
 export type Tab = 'overview' | 'diff' | 'artifacts';
 
-// The KeyboardEvent fields the keys read.
 export interface Key {
   key: string;
   code: string;
@@ -22,13 +21,11 @@ export interface Target {
   editable: boolean;
   // A button, link or the like, which Enter and Space activate.
   control: boolean;
-  // An option on a card.
   option: boolean;
   // The diff's resize handle, which takes its own arrows.
   resizer: boolean;
 }
 
-// The front card on the queue.
 export interface Card {
   kind: Kind;
   // Ask and end of turn: how many options there are.
@@ -39,7 +36,6 @@ export interface Card {
   lone: boolean;
   // A done second opinion, which E copies into the composer.
   suggestion: boolean;
-  // The primary button is enabled.
   primary: boolean;
   why: boolean;
   composing: boolean;
@@ -90,7 +86,6 @@ interface Row {
   scopes: Scope[];
   // An answer key: it waits out the guard after a card change.
   guarded?: boolean;
-  // Holding the key down repeats it.
   repeats?: boolean;
   matches: (e: Key) => boolean;
   act: (ctx: KeyContext, e: Key) => Action | null;
@@ -173,7 +168,6 @@ export function typingLock(now: () => number = Date.now) {
       until = 0;
     },
     locked: () => now() < until,
-    // Whether the lock takes this key.
     takes(e: Key) {
       if (now() >= until) return false;
       until = e.key === 'Escape' ? 0 : now() + LOCK_MS;

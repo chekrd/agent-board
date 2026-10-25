@@ -23,7 +23,6 @@ export interface NotSent {
 }
 
 export interface QueueState {
-  // The card being read, pinned by session id.
   front: string | null;
   // The deck as last shown, front first, which tells who follows a card that leaves.
   order: readonly string[];
