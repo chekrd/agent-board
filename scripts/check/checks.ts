@@ -3228,4 +3228,26 @@ export const checks: Check[] = [
       await page.until('the dock', docked, 3);
     },
   },
+  {
+    name: 'P6.edge-card the card of a capsule at the right edge of the window, where it cannot open rightwards, opens leftwards from the capsule\'s end and stays inside the window (volume45, no ended pill)',
+    scenario: 'volume45',
+    async run({ page, mock, look, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the dock', docked, 16);
+      const id = await page.eval(() => {
+        const capsules = [...document.querySelectorAll<HTMLElement>('[data-dock] [data-capsule]')];
+        const right = Math.max(...capsules.map((c) => c.getBoundingClientRect().right));
+        return capsules.find((c) => c.getBoundingClientRect().right === right)!.dataset.session!;
+      });
+      await page.hover(`[data-capsule][data-session="${id}"] button`);
+      await page.until('its card', hoverCard, id);
+      await page.until('the card to settle', settled);
+      const card = (await page.eval(hoverCard, id))!;
+      assert.ok(card.capsule.left + (card.box.right - card.box.left) > look.width, 'the card would have fitted rightwards');
+      assert.ok(card.inside, 'the card is not inside the window');
+      assert.ok(Math.abs(card.box.right - card.capsule.right) < 1, 'the card does not end where its capsule ends');
+      assert.ok(card.box.bottom <= card.capsule.top, 'the card is not above its capsule');
+      await shot('hover-card-edge');
+    },
+  },
 ];
