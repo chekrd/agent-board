@@ -213,6 +213,38 @@ test('accepting the second opinion on a menu drives it with the suggested answer
   assert.deepEqual([w.row().answered?.key, w.row().answered?.text], ['m:m1', 'Colour: Red']);
 });
 
+test('a rename sent while an answer types goes out after it, and claims nothing', async () => {
+  const w = world(session({ summary }), { hold: true });
+  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  await flush();
+  const rename = w.answers.type('s', '/rename Cart merge');
+  await flush();
+  assert.deepEqual(w.typed, ['My decision: Ship.'], 'not inside the answer\'s paste');
+  w.sends[0].done();
+  await answer;
+  await flush();
+  assert.deepEqual(w.typed, ['My decision: Ship.', '/rename Cart merge']);
+  w.sends[1].done();
+  await rename;
+  assert.deepEqual([w.row().answered?.key, w.row().answered?.text, w.decided, w.notified()], ['s:t2', 'Ship', ['s'], 1]);
+});
+
+test('typing that answers nothing is checked when its turn comes: a prompt Claude showed meanwhile, or an ended session, refuses it', async () => {
+  const w = world(session({ summary }), { hold: true });
+  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  await flush();
+  const rename = assert.rejects(w.answers.type('s', '/rename Cart merge'), /Claude is showing a permission prompt in its terminal/);
+  await flush();
+  w.store.update('s', { status: 'waiting', waitingFor: 'a permission prompt' });
+  w.sends[0].done();
+  await answer;
+  await rename;
+  assert.deepEqual(w.typed, ['My decision: Ship.']);
+  const ended = world(session({ status: 'exited' }));
+  await assert.rejects(ended.answers.type('s', '/rename Cart merge'), /this session has ended/);
+  assert.deepEqual(ended.typed, []);
+});
+
 test('dismiss closes the decision through decided and types nothing', () => {
   const w = world(session({ question }));
   w.answers.dismiss('s');

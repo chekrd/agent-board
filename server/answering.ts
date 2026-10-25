@@ -32,6 +32,13 @@ export function liveTty(s: Session) {
   return s.tty;
 }
 
+// Text typed while Claude shows a permission prompt or a menu would answer that instead.
+function promptTty(s: Session) {
+  const tty = liveTty(s);
+  if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
+  return tty;
+}
+
 export function answering({ store, send, keys, notify, decided, isCommand, checkUploads }: AnsweringDeps) {
   const turns = new Map<string, Promise<void>>();
 
@@ -79,8 +86,7 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     const command = commands && !reply.choice && !files.length && (await isCommand(must(id), text));
     await inTurn(id, () => {
       const s = must(id);
-      const tty = liveTty(s);
-      if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
+      const tty = promptTty(s);
       if (command) return { type: () => send(tty, text) };
       checkDecision(s, reply.key, !reply.choice);
       const about = s.question && reply.key === `q:${s.question.toolUseId}` ? `Re: "${s.question.title}"` : '';
@@ -111,5 +117,13 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     decided(id);
   }
 
-  return { answer, answerMenu, acceptAdvice, dismiss };
+  // For typing that answers nothing, such as a /rename: it takes its turn too, so it never lands inside another send.
+  async function type(id: string, text: string) {
+    await inTurn(id, () => {
+      const tty = promptTty(must(id));
+      return { type: () => send(tty, text) };
+    });
+  }
+
+  return { answer, answerMenu, acceptAdvice, dismiss, type };
 }
