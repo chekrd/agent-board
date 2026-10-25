@@ -56,7 +56,7 @@ export interface Menu {
 }
 
 export interface Activity {
-  step: string;
+  step: string | null;
   since: number;
 }
 

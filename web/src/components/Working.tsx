@@ -9,7 +9,7 @@ export function Working({ session, large = false }: { session: Session; large?: 
     <div className={styles.working} data-large={large || undefined}>
       <span className={styles.spinner} aria-hidden />
       {large && <strong>Claude is working</strong>}
-      <span className={styles.step} title={a?.step}>{a?.step ?? 'Starting'}</span>
+      <span className={styles.step} title={a?.step ?? undefined}>{a?.step ?? 'Starting'}</span>
       {a && <span className={styles.elapsed} title="Time since your last message"><Elapsed since={a.since} /></span>}
     </div>
   );
