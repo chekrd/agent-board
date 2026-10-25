@@ -12,6 +12,7 @@ import { ARTIFACT_CSP, artifactFile } from './artifacts.ts';
 import { HOST, PORT, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
+import { Refusal } from './decision.ts';
 import { elaborate } from './explain.ts';
 import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
@@ -35,9 +36,10 @@ app.use(async (c, next) => {
   await next();
 });
 
+// A refusal is the page acting on a decision that moved on, not a fault. Node's own errors carry a code too.
 app.onError((err, c) => {
-  console.error(c.req.method, c.req.path, err);
-  return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  if (!(err instanceof Refusal)) console.error(c.req.method, c.req.path, err);
+  return c.json({ error: err instanceof Error ? err.message : String(err), ...(err instanceof Refusal && { code: err.code }) }, 400);
 });
 
 app.get('/api/state', (c) => c.json(snapshot()));
@@ -163,7 +165,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'dismiss': S.dismiss(id); break;
     case 'rename': await S.rename(id, body.title); break;
     case 'answer-menu': await S.answerMenu(id, body); break;
-    case 'accept-advice': await S.acceptAdvice(id); break;
+    case 'accept-advice': await S.acceptAdvice(id, typeof body.adviceAt === 'number' ? body.adviceAt : undefined); break;
     case 'retry-advice': retryAdvice(id); break;
     case 'stop-advice': stopAdvice(id); break;
     case 'elaborate': elaborate(id); break;
