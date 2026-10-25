@@ -22,7 +22,7 @@ export function Wall({ deck }: { deck: readonly Session[] }) {
   const working = active.filter((s) => attentionOf(s) === 'working').length;
   const title = !sessions.length ? (repos.length ? 'No sessions yet.' : 'No repositories yet.') : deck.length ? 'Every agent, in priority order' : 'Nothing needs you.';
   const sub = !sessions.length ? null
-    : deck.length ? `${meter(deck, null).label} wait in the queue.`
+    : deck.length ? `${meter(deck, null).label} ${deck.length === 1 ? 'waits' : 'wait'} in the queue.`
     : working ? `${working} ${working === 1 ? 'agent is' : 'agents are'} at work.`
     : 'No agent is working right now.';
 

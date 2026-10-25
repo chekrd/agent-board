@@ -2040,12 +2040,13 @@ export const checks: Check[] = [
       await page.key('Enter');
       await sleep(300);
       const held = await page.eval(() => ({
+        sub: document.querySelector('main h1 + p')?.textContent,
         card: !!document.querySelector('[data-card]'),
         value: document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
         focused: document.activeElement === document.querySelector('#new-task-inline textarea'),
         toasts: [...document.querySelectorAll('[data-toast]')].length,
       }));
-      assert.deepEqual(held, { card: false, value: 'Fix the login we fix 3 x\n', focused: true, toasts: 0 });
+      assert.deepEqual(held, { sub: '1 finished turn waits in the queue.', card: false, value: 'Fix the login we fix 3 x\n', focused: true, toasts: 0 });
       assert.deepEqual((await mock.log()).filter((e) => e.path.startsWith('/api/sessions/')), []);
       await shot('queue-waits-for-typing');
       await page.click('main h1');
