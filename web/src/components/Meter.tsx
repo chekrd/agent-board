@@ -11,8 +11,8 @@ const jump = (id: string) => {
   go('/');
 };
 
-// One segment per waiting card, or a bar per kind past 20. Its counts are in the aria-label and the tab title, not on
-// screen; the slot beside it announces cards that arrived since the page loaded.
+// One segment per waiting card, or past 20 a bar per kind that shows its count. There is no text label: the counts
+// are in the aria-label and the tab title. The slot beside it announces cards that arrived since the page loaded.
 export function Meter({ deck, repos, current }: { deck: readonly Session[]; repos: RepoView[]; current: string | null }) {
   const { seen, front } = useQueue();
   const arrived = seen ? arrivals(deck, seen, front) : [];
