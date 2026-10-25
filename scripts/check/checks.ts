@@ -1241,7 +1241,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.16 narrow window: no sideways scroll on the Wall or in the sheet, which is full width; New task and the sheet\'s close stay in reach',
+    name: 'P4.16 narrow window: no sideways scroll on the Wall or in the sheet, which is full width; New task and the sheet\'s close stay in reach; the reload pill meets nothing else in the top bar and shows its whole text',
     narrow: true,
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -1249,6 +1249,26 @@ export const checks: Check[] = [
       assert.deepEqual(await page.eval(sidewaysScroll), []);
       await page.until('New task in reach', reachable, 'button[aria-label="New task"]', '');
       await shot('narrow-wall');
+
+      // A build this tab already reloaded for is offered at once.
+      const build = '/assets/index-narrow.js';
+      await page.eval((build: string) => {
+        const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
+        sessionStorage.setItem('agent-board:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
+      }, build);
+      await mock.post('/mock/ui-entry', { src: build });
+      await page.until('the reload pill', () => !!document.querySelector('[data-new-version]'));
+      const bar = await page.eval(() => {
+        const box = (s: string) => document.querySelector(s)?.getBoundingClientRect();
+        const pill = document.querySelector<HTMLElement>('[data-new-version]')!;
+        const at = pill.getBoundingClientRect();
+        const meets = (b: DOMRect | undefined) => !!b && at.left < b.right && b.left < at.right && at.top < b.bottom && b.top < at.bottom;
+        const others = ['[data-wordmark]', '[data-link]', '[data-meter]', '[data-repos]', 'nav[aria-label="View"]', 'button[aria-label="New task"]'];
+        return { meets: others.filter((s) => meets(box(s))), cut: pill.scrollWidth > pill.clientWidth, inside: at.left >= 0 && at.right <= innerWidth };
+      });
+      assert.deepEqual(bar, { meets: [], cut: false, inside: true });
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await shot('narrow-reload-pill');
       await page.click('[data-tile][data-session="s-invoice"] a');
       await page.until('the sheet', sheetOpen);
       await page.until('the sheet to settle', settled);
