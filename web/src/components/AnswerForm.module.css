@@ -108,7 +108,7 @@
     font-weight: 700;
     border-radius: 4px;
     padding: 0 5px;
-    color: var(--accent-text);
+    color: var(--ground);
     background: var(--del);
     &[data-level="medium"] { background: var(--warn); }
     &[data-level="high"] { background: var(--ok); }

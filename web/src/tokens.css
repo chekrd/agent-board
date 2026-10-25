@@ -3,97 +3,193 @@
 @layer reset {
   *, *::before, *::after { box-sizing: border-box; }
   body, h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
-  button, input, textarea, select { font: inherit; color: inherit; }
+  button, input, textarea, select { font: inherit; color: inherit; letter-spacing: inherit; }
 }
 
 @layer tokens {
   :root, [data-theme="dark"] {
     color-scheme: light dark;
     &[data-theme="dark"] { color-scheme: dark; }
-    --bg: light-dark(#f4f5f7, #0d0f13);
-    --surface: light-dark(#ffffff, #15181e);
-    --surface-2: light-dark(#eceef2, #1c2028);
-    --border: light-dark(#d9dce2, #2a2f39);
-    --text: light-dark(#1a1d22, #e4e6ea);
-    --muted: light-dark(#5d6571, #8b93a1);
-    --accent: light-dark(#c2410c, #ff8a3d);
-    --accent-soft: light-dark(#fff1e7, #2f1f14);
-    --accent-text: light-dark(#ffffff, #1a0d03);
-    --info: light-dark(#1d4ed8, #6ea8ff);
-    --info-soft: light-dark(#eef4ff, #121b2e);
-    --ok: light-dark(#15803d, #4ade80);
-    --warn: light-dark(#a16207, #facc15);
-    --add: light-dark(#15803d, #4ade80);
-    --del: light-dark(#b91c1c, #f87171);
+    --ground: light-dark(#eeeae1, #110f0c);
+    --ground-2: light-dark(#e7e2d7, #0c0b09);
+    --deck-1: light-dark(#e2dccf, #1e1b17);
+    --deck-2: light-dark(#ddd7ca, #191613);
+    --deck-3: light-dark(#cfc7b8, #151310);
+    --card: light-dark(#fffdf9, #201d19);
+    --card-2: light-dark(#faf7f1, #1c1915);
+    --raised: light-dark(#f5f1ea, #28241f);
+    --raised-2: light-dark(#ece6dc, #322d27);
+    --hover: light-dark(rgb(40 30 10 / 0.04), rgb(255 248 235 / 0.045));
+    --line: light-dark(#ddd5c7, #37322b);
+    --line-2: light-dark(#c6bdab, #4b443a);
+    --text: light-dark(#1a1712, #f4efe7);
+    --text-2: light-dark(#3b352c, #d4ccc0);
+    --muted: light-dark(#655d51, #a79e91);
+    --accent: #cdf44a;
+    --on-accent: #141900;
+    --accent-ink: light-dark(#4a6500, #cdf44a);
+    --accent-tint: light-dark(#f4fbdc, rgb(205 244 74 / 0.075));
+    --accent-line: light-dark(#7b9c16, rgb(205 244 74 / 0.62));
+    --accent-glow: light-dark(rgb(110 140 0 / 0.22), rgb(205 244 74 / 0.32));
+    --seg-decide: light-dark(#5f8000, #cdf44a);
+    --prompt: light-dark(#7d4b00, #ffb547);
+    --prompt-tint: light-dark(#fff4e2, rgb(255 181 71 / 0.08));
+    --prompt-line: light-dark(#c98a2e, rgb(255 181 71 / 0.55));
+    --idle: light-dark(#1a1712, #f4efe7);
+    --idle-line: light-dark(rgb(26 23 18 / 0.38), rgb(244 239 231 / 0.4));
+    --work: light-dark(#4c6079, #9db1c7);
+    --know: light-dark(#1f56c8, #8cc0ff);
+    --know-tint: light-dark(#ebf1ff, rgb(140 192 255 / 0.085));
+    --know-line: light-dark(#86a6ea, rgb(140 192 255 / 0.5));
+    --danger: light-dark(#b93427, #ff8070);
+    --ok: light-dark(#19764a, #5ad69a);
+    --ok-ring: light-dark(rgb(25 118 74 / 0.14), rgb(90 214 154 / 0.16));
+    --merged: light-dark(#6b4fc4, #bba4ff);
+    --code-bg: light-dark(rgb(26 23 18 / 0.07), rgb(255 255 255 / 0.075));
+    --scrim: light-dark(rgb(38 32 22 / 0.42), rgb(5 4 3 / 0.66));
+    --focus-ring: light-dark(#4a6500, #cdf44a);
+    --kbd-bg: light-dark(rgb(26 23 18 / 0.06), rgb(255 255 255 / 0.07));
+    --kbd-line: light-dark(rgb(26 23 18 / 0.15), rgb(255 255 255 / 0.13));
+    --term-bg: light-dark(#23201b, #0b0a08);
+    --tint-decide: light-dark(#f7fbe7, #22251a);
+    --tint-focus: light-dark(#fff6e8, #272016);
     --radius: 8px;
     --font-display: 'Bricolage Grotesque Variable', 'Hanken Grotesk Variable', system-ui, sans-serif;
     --font: 'Hanken Grotesk Variable', system-ui, -apple-system, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+    /* The older names, which today's components still use. New code uses the names above. */
+    --bg: var(--ground);
+    --surface: var(--card);
+    --surface-2: var(--raised);
+    --border: var(--line);
+    --accent-soft: var(--accent-tint);
+    --accent-text: var(--on-accent);
+    --info: var(--know);
+    --info-soft: var(--know-tint);
+    --warn: var(--prompt);
+    --del: var(--danger);
+    --add: var(--ok);
+  }
+
+  :root {
+    --shadow: 0 34px 70px -30px rgb(70 52 24 / 0.38), 0 1px 2px rgb(70 52 24 / 0.08);
+    --spot: radial-gradient(ellipse 60% 62% at 50% 40%, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0) 72%);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --shadow: 0 44px 90px -34px rgb(0 0 0 / 0.8), 0 1px 0 rgb(255 255 255 / 0.04) inset;
+      --spot: radial-gradient(ellipse 60% 62% at 50% 40%, rgb(255 236 205 / 0.05), rgb(0 0 0 / 0) 72%);
+    }
+  }
+
+  [data-theme="dark"] {
+    --shadow: 0 44px 90px -34px rgb(0 0 0 / 0.8), 0 1px 0 rgb(255 255 255 / 0.04) inset;
+    --spot: radial-gradient(ellipse 60% 62% at 50% 40%, rgb(255 236 205 / 0.05), rgb(0 0 0 / 0) 72%);
   }
 }
 
 @layer base {
   html, body, #root { height: 100%; }
   body {
-    background: var(--bg);
+    background: var(--ground);
     color: var(--text);
-    font: 13px/1.45 var(--font);
+    font: 15px/1.5 var(--font);
     -webkit-font-smoothing: antialiased;
   }
   h1, h2, h3 { font-family: var(--font-display); }
   a { color: inherit; }
-  code, pre, kbd { font-family: var(--mono); font-size: 0.95em; }
+  code, pre { font-family: var(--mono); font-size: 0.95em; }
+  ::placeholder { color: var(--muted); opacity: 1; }
+  :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border: 1px solid var(--kbd-line);
+    border-radius: 5px;
+    background: var(--kbd-bg);
+    font: 650 11px/1 var(--font);
+  }
 
   button {
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    border-radius: 6px;
-    padding: 4px 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 9px;
+    background: var(--raised);
+    padding: 5px 12px;
+    font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
     &:hover { border-color: var(--muted); }
     &:disabled { opacity: 0.5; cursor: default; }
-    &[data-variant="primary"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-    &[data-variant="ghost"] { background: none; border-color: transparent; color: var(--muted); &:hover { color: var(--text); } }
-    &[data-variant="danger"] { color: var(--del); }
+    &[data-variant="primary"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+      font-weight: 700;
+      box-shadow: 0 8px 22px -12px var(--accent-glow);
+      &:hover:not(:disabled) { filter: brightness(1.06); }
+      kbd { background: rgb(20 25 0 / 0.1); border-color: rgb(20 25 0 / 0.22); }
+    }
+    &[data-variant="ghost"] {
+      background: none;
+      border-color: transparent;
+      color: var(--muted);
+      &:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+    }
+    &[data-variant="danger"] { color: var(--danger); }
   }
 
   input, textarea, select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 8px;
-    &:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+    background: var(--raised);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    padding: 7px 12px;
+    &:focus-visible { outline-offset: -1px; }
   }
 
   select, ::picker(select) { appearance: base-select; }
-  ::picker(select) { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+  ::picker(select) { border: 1px solid var(--line-2); border-radius: 14px; background: var(--raised); box-shadow: var(--shadow); }
 
   dialog {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--card);
     color: var(--text);
     padding: 0;
     width: min(680px, 92vw);
     max-height: 86vh;
+    box-shadow: var(--shadow);
     opacity: 1;
-    transition: opacity 150ms, display 150ms allow-discrete, overlay 150ms allow-discrete;
+    transition: opacity 160ms, display 160ms allow-discrete, overlay 160ms allow-discrete;
     @starting-style { opacity: 0; }
     &:not([open]) { opacity: 0; }
-    &::backdrop { background: rgb(0 0 0 / 0.45); }
+    &::backdrop {
+      background: var(--scrim);
+      opacity: 1;
+      transition: opacity 160ms, display 160ms allow-discrete, overlay 160ms allow-discrete;
+      @starting-style { opacity: 0; }
+    }
+    &:not([open])::backdrop { opacity: 0; }
   }
 
   [popover] {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 14px;
+    background: var(--raised);
     color: var(--text);
-    padding: 4px;
+    padding: 6px;
     margin: 4px 0;
+    overflow: visible;
     position-area: bottom span-left;
     position-try-fallbacks: flip-block;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+    box-shadow: var(--shadow);
   }
 
   /* Kept out of CSS Modules: Lightning CSS hashes view-transition idents. */
@@ -103,4 +199,20 @@
   }
 
   ::view-transition-group(.tile) { animation-duration: 280ms; }
+
+  @keyframes spin {
+    to { rotate: 360deg; }
+  }
+
+  @keyframes breathe {
+    50% { opacity: 0.3; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after, ::backdrop, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }

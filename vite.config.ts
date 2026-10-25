@@ -7,7 +7,8 @@ const server = process.env.AGENT_BOARD_API ?? 'http://127.0.0.1:7420';
 export default defineConfig({
   root: 'web',
   plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
-  css: { transformer: 'lightningcss' },
+  // Animation names stay global, so a module can use the keyframes that tokens.css shares.
+  css: { transformer: 'lightningcss', lightningcss: { cssModules: { animation: false } } },
   build: { outDir: 'dist', emptyOutDir: true, target: 'esnext', cssMinify: 'lightningcss' },
   server: {
     host: '127.0.0.1',

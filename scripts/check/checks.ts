@@ -20,7 +20,7 @@ export interface Check {
   run: (t: Context) => Promise<void>;
 }
 
-const logged =(mock: Mock, what: string, match: (e: Entry) => boolean) =>
+const logged = (mock: Mock, what: string, match: (e: Entry) => boolean) =>
   until(`${what} in the mock's log`, async () => {
     const found = (await mock.log()).filter((e) => match(e) && e.status !== null);
     return found.length ? found : null;
@@ -51,10 +51,11 @@ const reachable = (selector: string, text: string) => {
   if (!el) return false;
   el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const r = el.getBoundingClientRect();
-  return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+  // Layout positions are fractional and scroll offsets whole pixels, so an element scrolled into view can stick out by less than one.
+  return r.width > 0 && r.left > -1 && r.top > -1 && r.right < innerWidth + 1 && r.bottom < innerHeight + 1;
 };
 
-const edgeLine =(end: 'top' | 'bottom', line: number) => {
+const edgeLine = (end: 'top' | 'bottom', line: number) => {
   const list = document.querySelector('section[data-file]')?.parentElement;
   if (!list) return false;
   list.scrollTop = end === 'top' ? 0 : list.scrollHeight;
@@ -215,6 +216,52 @@ export const checks: Check[] = [
       assert.deepEqual(files.toSorted(), ['bricolage-grotesque-latin-opsz-normal', 'hanken-grotesk-latin-wght-normal']);
       const outside = page.requests.filter((url) => !/^(data|blob):/.test(url) && new URL(url).hostname !== '127.0.0.1');
       assert.deepEqual(outside, []);
+    },
+  },
+  {
+    name: "P2.2 the page background is C's ground: #110f0c in dark, #eeeae1 in light",
+    async run({ page, mock, look, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      const background = await page.eval(() => [getComputedStyle(document.documentElement).backgroundColor, getComputedStyle(document.body).backgroundColor]);
+      assert.deepEqual(background, ['rgba(0, 0, 0, 0)', look.scheme === 'dark' ? 'rgb(17, 15, 12)' : 'rgb(238, 234, 225)']);
+      await shot('board');
+    },
+  },
+  {
+    name: 'P2.3 the Diff tab stays dark in the light theme too, and the older token names resolve dark inside it',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+      const view = await page.eval(() => {
+        const { backgroundColor, color } = getComputedStyle(document.querySelector('[data-theme="dark"]')!);
+        return { backgroundColor, color };
+      });
+      assert.ok(luminance(view.backgroundColor) < 0.05, `the diff background ${view.backgroundColor} is not dark`);
+      assert.ok(luminance(view.color) > 0.5, `the diff text ${view.color} is not light`);
+      await shot('diff');
+    },
+  },
+  {
+    name: 'P2.4 no console errors on the board, a decision, a menu, a reply with a table, the diff or an artifact',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      await page.goto(`${mock.url}/s/s-cart/details`);
+      await page.until('the options', () => document.querySelectorAll('button[name="choice"]').length === 3);
+      await shot('task-ask');
+      await page.goto(`${mock.url}/s/s-hooks/details`);
+      await page.until('the menu with its 2 questions', () => document.querySelectorAll('fieldset').length === 2);
+      await shot('task-menu');
+      await page.goto(`${mock.url}/s/s-reviews/details`);
+      await page.until('the latest reply with its table', () => document.querySelector('section table') !== null);
+      await shot('task-reply');
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('every file rendered', () => [...document.querySelectorAll('section[data-file] diffs-container')].filter((d) => d.shadowRoot?.querySelector('pre')).length === 12);
+      await page.goto(`${mock.url}/s/s-cart/artifacts`);
+      await page.until('the artifact', () => document.querySelector('iframe') !== null);
+      await shot('artifact');
+      assert.deepEqual(page.errors, []);
     },
   },
 ];

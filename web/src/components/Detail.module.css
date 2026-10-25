@@ -107,7 +107,7 @@
     flex-wrap: wrap;
     color: var(--muted);
     font-size: 12px;
-    strong { color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+    strong { color: var(--accent-ink); text-transform: uppercase; letter-spacing: 0.04em; }
   }
 
   .age { margin-left: auto; }
@@ -119,7 +119,7 @@
   .elaborate {
     align-self: flex-start;
     padding: 2px 0;
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
     &::after { content: " ▾"; }
     &[aria-expanded="true"]::after { content: " ▴"; }
