@@ -69,13 +69,15 @@ export function showTab(tab: Tab, item?: string | null) {
   if (sheet) go(sessionPath(sheet.id, tab, item), { history: 'replace', state: navigation.currentEntry?.getState() });
 }
 
+// Stepping back into another document would load the board afresh and lose what the page shows, such as the toast
+// that the task is gone.
 export function closeSheet() {
   const route = current();
   if (!route.sheet) return;
   const base = viewPath(route.view);
   const entry = navigation.currentEntry;
   const previous = entry && entry.index > 0 ? navigation.entries()[entry.index - 1] : undefined;
-  if (previous?.url && new URL(previous.url).pathname === base) settle(navigation.back());
+  if (previous?.sameDocument && previous.url && new URL(previous.url).pathname === base) settle(navigation.back());
   else go(base, { history: 'replace' });
 }
 

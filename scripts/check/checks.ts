@@ -1376,4 +1376,19 @@ export const checks: Check[] = [
       await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
     },
   },
+  {
+    name: 'P4.close-in-place a sheet loaded in a tab after another page of the board closes in place: the page does not load again, and it says the task is gone',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', tiles);
+      await page.goto(`${mock.url}/s/s-nope/overview`);
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/');
+      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'That task is gone.', inSheet: false, hit: true }]);
+      assert.deepEqual(await page.eval(() => ({
+        loaded: new URL(performance.getEntriesByType('navigation')[0].name).pathname,
+        at: window.navigation.currentEntry?.index,
+        entries: window.navigation.entries().map((e) => new URL(e.url!).pathname),
+      })), { loaded: '/s/s-nope/overview', at: 1, entries: ['/', '/'] });
+    },
+  },
 ];
