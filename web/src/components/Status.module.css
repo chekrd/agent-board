@@ -21,31 +21,31 @@
     &[data-attention="decide"] { background: var(--accent); color: var(--accent-text); &::before { background: var(--accent-text); } }
     &[data-attention="focus"] { color: var(--warn); &::before { background: var(--warn); } }
     &[data-attention="idle"] { color: var(--text); &::before { background: var(--text); } }
-    &[data-attention="working"]::before { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    &[data-attention="working"]::before { background: var(--ok); animation: breathe 1.4s ease-in-out infinite; }
     &[data-attention="exited"] { background: none; &::before { background: transparent; border: 1px solid var(--muted); } }
   }
 
   .pr {
+    --dot: var(--prompt);
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 11px;
+    gap: 7px;
+    height: 26px;
+    padding: 0 11px;
+    border: 1px solid var(--line-2);
+    border-radius: 13px;
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 600;
     white-space: nowrap;
     text-decoration: none;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0 7px;
-    --dot: var(--warn);
+    transition: background-color 0.15s;
 
-    &::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dot); }
-    &[data-watching]::before { animation: pulse 1.4s ease-in-out infinite; }
+    &::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+    &[data-watching]::before { animation: breathe 1.4s ease-in-out infinite; }
     &[data-state="PASSED"] { --dot: var(--ok); }
-    &[data-state="FAILED"], &[data-state="ERROR"] { --dot: var(--del); color: var(--del); }
-    &[data-state="CLOSED"] { --dot: var(--muted); color: var(--muted); }
-    &:hover { border-color: var(--muted); }
-  }
-
-  @keyframes pulse {
-    50% { opacity: 0.3; }
+    &[data-state="FAILED"], &[data-state="ERROR"] { --dot: var(--danger); border-color: var(--danger); color: var(--danger); }
+    &[data-state="CLOSED"] { --dot: var(--muted); }
+    &[href]:hover { background: var(--hover); }
   }
 }

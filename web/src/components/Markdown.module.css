@@ -1,12 +1,29 @@
 @layer components {
   .markdown {
-    line-height: 1.55;
-    & > * + * { margin-top: 0.7em; }
-    h1, h2, h3, h4 { font-size: 1.05em; }
-    ul, ol { padding-left: 1.4em; }
-    code { background: var(--surface-2); padding: 1px 4px; border-radius: 4px; }
-    pre { background: var(--surface-2); padding: 10px 12px; border-radius: 6px; overflow-x: auto; code { background: none; padding: 0; } }
-    a { color: var(--accent); }
-    table { border-collapse: collapse; td, th { border: 1px solid var(--border); padding: 4px 8px; } }
+    line-height: 1.6;
+    & > * { margin-block: 0; }
+    & > * + * { margin-block-start: 10px; }
+    h1, h2, h3, h4, h5, h6 { font: 650 1.05em/1.4 var(--font); color: var(--text); }
+    ul, ol { padding-left: 1.3em; }
+    li + li, li > :is(ul, ol) { margin-top: 4px; }
+    li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+    strong { font-weight: 650; color: var(--text); }
+    code { font-size: 0.86em; color: var(--text); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+    pre {
+      font-size: 0.86em;
+      line-height: 1.5;
+      background: var(--code-bg);
+      padding: 10px 12px;
+      border-radius: 10px;
+      overflow-x: auto;
+      code { font-size: inherit; background: none; padding: 0; }
+    }
+    a { color: var(--accent-ink); text-underline-offset: 2px; }
+    blockquote { margin-inline: 0; padding-left: 12px; border-left: 3px solid var(--line-2); color: var(--text-2); }
+    hr { border: 0; border-top: 1px solid var(--line); }
+    table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 6px 12px; text-align: start; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { font-weight: 650; color: var(--text); border-bottom-color: var(--line-2); }
+    :is(th, td):first-child { padding-left: 0; }
   }
 }
