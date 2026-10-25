@@ -1,16 +1,22 @@
 import { useSyncExternalStore } from 'react';
 import { sessionAction } from './api.ts';
-import { createOutbox, type Body, type Outgoing } from './outbox.ts';
+import { createOutbox, type Outgoing } from './outbox.ts';
 
 export const HOLD_MS = 5000;
 
-// Keepalive requests in flight share 64 KiB. A bigger body goes as a plain request, which may not finish if the
-// page goes away meanwhile.
+// Keepalive requests in flight share 64 KiB, and one that would pass it fails at once. A body that does not fit
+// goes as a plain request, which may not finish if the page goes away meanwhile.
 const KEEPALIVE_BYTES = 60_000;
+let keptAlive = 0;
 
-const bytes = (body: Body) => new TextEncoder().encode(JSON.stringify(body)).length;
-
-const post = (o: Outgoing, keepalive = bytes(o.body) < KEEPALIVE_BYTES) => sessionAction(o.sessionId, o.action, o.body, { keepalive });
+function post(o: Outgoing) {
+  const size = new TextEncoder().encode(JSON.stringify(o.body)).length;
+  const keepalive = keptAlive + size <= KEEPALIVE_BYTES;
+  if (keepalive) keptAlive += size;
+  return sessionAction(o.sessionId, o.action, o.body, { keepalive }).finally(() => {
+    if (keepalive) keptAlive -= size;
+  });
+}
 
 const subscribers = new Set<() => void>();
 
@@ -26,15 +32,7 @@ export const sends = createOutbox({
 
 // The page is going away or being frozen: whatever has not been posted yet goes now. Not on visibilitychange,
 // since whoever comes back within 5 s can still take it back.
-function flush() {
-  let budget = KEEPALIVE_BYTES;
-  sends.flush((o) => {
-    const size = bytes(o.body);
-    const keepalive = size <= budget;
-    if (keepalive) budget -= size;
-    post(o, keepalive).catch(() => {});
-  });
-}
+const flush = () => sends.flush((o) => void post(o).catch(() => {}));
 
 addEventListener('pagehide', flush);
 document.addEventListener('freeze', flush);

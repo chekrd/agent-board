@@ -283,6 +283,7 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
       if (done.length) set(items.filter((i) => !done.includes(i)));
     },
 
+    // A snapshot came in, so the server can be reached: what a network error left waiting goes out again.
     reconnected() {
       for (const i of items) if (i.state === 'waiting') send(i.id);
     },

@@ -98,7 +98,7 @@ async function connect() {
         if (uiEntry && !import.meta.env.DEV && entry && new URL(uiEntry, location.href).href !== entry) reloadWhenFree();
         sends.reconcile(next.sessions);
         sends.confirm(next.sessions);
-        if (state.link === 'reconnecting') sends.reconnected();
+        sends.reconnected();
         set({ ...state, ...next, link: 'live', connected: true });
         wakeAtNextChange();
       }
