@@ -72,15 +72,16 @@ function wakeAtNextChange() {
 const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
 let reloading = false;
 
-// A new build reloads the page once nothing would be lost: no send held, under way or waiting, no field focused (a
-// draft or a rename), and no dialog or menu open. Held sends keep their own timers meanwhile, and after 15 s the
-// top bar offers the reload instead.
+// A new build reloads the page once nothing would be lost: the server can be reached, no send is held, under way or
+// waiting, no field is focused (a draft or a rename), and no dialog or menu is open. Held sends keep their own
+// timers meanwhile, and after 15 s the top bar offers the reload instead.
 function reloadWhenFree() {
   if (reloading) return;
   reloading = true;
   const since = Date.now();
   const check = () => {
-    const free = !sends.items().some(active) && !isEditable(document.activeElement) && !document.querySelector('dialog[open]') && !menuOpen();
+    const free = state.link === 'live' && !sends.items().some(active) && !isEditable(document.activeElement) &&
+      !document.querySelector('dialog[open]') && !menuOpen();
     if (free) return location.reload();
     if (!state.newVersion && Date.now() - since >= RELOAD_CAP_MS) set({ ...state, newVersion: true });
     setTimeout(check, 250);
@@ -95,12 +96,12 @@ async function connect() {
       const { readable } = await ws.opened;
       for await (const message of readable) {
         const { uiEntry, ...next } = JSON.parse(String(message));
-        if (uiEntry && !import.meta.env.DEV && entry && new URL(uiEntry, location.href).href !== entry) reloadWhenFree();
         sends.reconcile(next.sessions);
         sends.confirm(next.sessions);
         sends.reconnected();
         set({ ...state, ...next, link: 'live', connected: true });
         wakeAtNextChange();
+        if (uiEntry && !import.meta.env.DEV && entry && new URL(uiEntry, location.href).href !== entry) reloadWhenFree();
       }
     } catch {
       // reconnect below
