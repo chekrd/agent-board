@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { wsUrl } from './api.ts';
-import { SHEET_DIALOG } from './keys.ts';
 import { orderKey } from './order.ts';
 import { active } from './outbox.ts';
 import { sends } from './sends.ts';
@@ -30,8 +29,9 @@ let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', con
 const subscribers = new Set<() => void>();
 let order = '';
 
-// On the queue the tiles' reorder would cut a card's own transition short, and under a sheet it has nothing to show.
-const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector(`#${SHEET_DIALOG}[open]`);
+// On the queue the tiles' reorder would cut a card's own transition short, and under a sheet or dialog it has nothing
+// to show.
+const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector('dialog[open]');
 
 // The state changes at once and only the redraw waits for a reorder's transition, so a set made meanwhile builds on
 // the newest state and is not undone when the transition applies.
@@ -43,7 +43,8 @@ function set(next: State) {
   const notify = () => {
     for (const fn of subscribers) fn();
   };
-  if (animate) document.startViewTransition(() => flushSync(notify));
+  // A reorder that comes while one runs skips it, which rejects the skipped one's ready.
+  if (animate) document.startViewTransition(() => flushSync(notify)).ready.catch(() => {});
   else notify();
 }
 
