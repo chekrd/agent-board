@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { decisionKey } from '../../server/decision.ts';
+import { KEYS } from '../../web/src/keys.ts';
 import { sleep, until, type Look, type Page } from './cdp.ts';
 import { startMock, type Entry, type Mock } from './mock.ts';
 
@@ -131,6 +135,116 @@ const listen = () => {
   w.e2eMessages = [];
   new WebSocket(`ws://${location.host}/ws/events`).onmessage = (e) => w.e2eMessages.push(JSON.parse(e.data));
   return document.querySelector('script[type="module"][src]')?.getAttribute('src') ?? null;
+};
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.json': 'application/json',
+};
+
+// The build with no board behind it: the page loads, and its socket never opens, so no snapshot ever arrives.
+async function withoutBoard(run: (url: string) => Promise<void>) {
+  const server = createServer(async (req, res) => {
+    const path = new URL(req.url ?? '/', 'http://board').pathname;
+    if (path === '/favicon.ico') return void res.writeHead(204).end();
+    const file = extname(path) ? join(BUILD, path) : join(BUILD, 'index.html');
+    const body = file.startsWith(BUILD) ? await readFile(file).catch(() => null) : null;
+    res.writeHead(body ? 200 : 404, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
+    res.end(body);
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((ok) => server.close(ok));
+  }
+}
+
+const tiles = () => document.querySelectorAll('[data-tile]').length > 0;
+
+const sheetOpen = () => !!document.querySelector('#task-sheet:modal');
+
+// No transition is running, as when a sheet or dialog has finished sliding in.
+const settled = () => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished');
+
+async function openFromWall(page: Page, mock: Mock, id: string) {
+  await page.goto(`${mock.url}/wall`);
+  await page.until('the tiles', tiles);
+  await page.click(`[data-tile][data-session="${id}"] a`);
+  await page.until(`the sheet of ${id}`, sheetOpen);
+}
+
+// The labels of the open ⋯ menu.
+const menuItems = () => {
+  const menu = document.querySelector(':popover-open');
+  return menu && [...menu.querySelectorAll('button')].map((b) => b.firstElementChild?.textContent);
+};
+
+// A frame of the board's own page at another width, which draws what a window that wide would.
+const frame = (path: string, width: number, height: number) =>
+  new Promise<void>((done) => {
+    document.getElementById('e2e-frame')?.remove();
+    const f = document.createElement('iframe');
+    f.id = 'e2e-frame';
+    f.src = path;
+    f.style.cssText = `position: fixed; inset: 0 auto auto 0; width: ${width}px; height: ${height}px; border: 0; z-index: 9999; background: Canvas`;
+    f.onload = () => done();
+    document.body.append(f);
+  });
+
+// The meter in the page, or in the frame: whether it meets the wordmark or Repos, its segments' widths, its bars, the
+// text it carries for screen readers and the text it shows.
+const meterIn = (inFrame: boolean) => {
+  const doc = inFrame ? (document.getElementById('e2e-frame') as HTMLIFrameElement).contentDocument! : document;
+  const box = (el: Element | null) => el?.getBoundingClientRect() ?? null;
+  const meets = (a: DOMRect | null, b: DOMRect | null) => !!a && !!b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const wordmark = box(doc.querySelector('[data-wordmark]'));
+  const repos = box(doc.querySelector('[data-repos]'));
+  const parts = [box(doc.querySelector('[data-meter]')), box(doc.querySelector('[data-meter] [role="group"]'))];
+  return {
+    overlap: parts.some((m) => meets(m, wordmark) || meets(m, repos)),
+    segments: [...doc.querySelectorAll('[data-segment]')].map((s) => Math.round(s.getBoundingClientRect().width * 10) / 10),
+    bars: [...doc.querySelectorAll('[data-bar]')].map((b) => b.textContent),
+    label: doc.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label') ?? null,
+    shown: (doc.querySelector('[data-meter]') as HTMLElement | null)?.innerText.trim() ?? null,
+    justIn: [...doc.querySelectorAll<HTMLElement>('[data-justin]')].map((j) => j.innerText.trim()),
+  };
+};
+
+// The toasts of a kind: what each shows, whether it sits inside the open sheet, and whether a point in its middle hits
+// it; null while there is none.
+const toastsOf = (kind: string) => {
+  const shown = [...document.querySelectorAll<HTMLElement>(`[data-toast][data-kind="${kind}"]`)].map((t) => {
+    const r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return { kind: t.dataset.kind, text: t.innerText.trim(), inSheet: !!t.closest('#task-sheet'), hit: !!hit && t.contains(hit) };
+  });
+  return shown.length ? shown : null;
+};
+
+// One file of the diff on its own, whole, with the way back to all files.
+const wholeFile = (path: string) =>
+  document.querySelector('[data-theme="dark"] code')?.textContent === path && document.querySelectorAll('section[data-file]').length === 1 &&
+  !!document.querySelector('[data-theme="dark"] > div')?.textContent?.includes('← All files');
+
+// The connection pill once it reads `link` and, while reconnecting, says since when.
+const pillAt = (link: string) => {
+  const p = document.querySelector<HTMLElement>('[data-link]');
+  if (p?.dataset.link !== link || (link === 'reconnecting' && !p.title)) return null;
+  return { link: p.dataset.link, text: p.innerText.trim(), title: p.title, breathing: getComputedStyle(p.firstElementChild!).animationName };
+};
+
+// The reload pill and what the page has: the marker a reload would drop, the link, and the New task prompt. With
+// `until` set, null until the pill shows or the board reconnects.
+const reloadState = (until: 'pill' | 'reconnecting' | null) => {
+  const state = {
+    pill: document.querySelector<HTMLElement>('[data-new-version]')?.innerText.trim() ?? null,
+    link: document.querySelector<HTMLElement>('[data-link]')?.dataset.link ?? null,
+    marker: (window as unknown as Probe).e2eMarker ?? null,
+    prompt: document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value ?? null,
+    typing: document.activeElement === document.querySelector('#new-task-inline textarea'),
+  };
+  return (until === 'pill' && !state.pill) || (until === 'reconnecting' && state.link !== 'reconnecting') ? null : state;
 };
 
 export const checks: Check[] = [
@@ -606,6 +720,623 @@ export const checks: Check[] = [
         }
       }, 10_000);
       await page.until('the Wall', () => document.querySelector('#new-task-inline textarea') !== null);
+    },
+  },
+  {
+    name: 'P4.1 the Wall: its title and the queue\'s counts, Back to the queue Esc; tiles in priority order with repo · branch and no rank or line counts; Archived (1) collapsed; working clocks tick; Esc goes to the queue and V back, and / draws the same body until P5; a menu answered from the board that stays open turns Needs focus by the clock alone',
+    async run({ page, mock, shot }) {
+      const wall = () => ({
+        title: document.querySelector('main h1')?.textContent,
+        sub: document.querySelector('main h1 + p')?.textContent,
+        back: document.querySelector('main a[href="/"]')?.textContent,
+        order: [...document.querySelectorAll<HTMLElement>('[data-tile]')].filter((t) => !t.closest('details')).map((t) => `${t.dataset.session} ${t.dataset.attention}`),
+        archived: document.querySelector('main details > summary')?.textContent,
+        open: document.querySelector<HTMLDetailsElement>('main details')?.open,
+        texts: Object.fromEntries([...document.querySelectorAll<HTMLElement>('[data-tile]')].map((t) => [t.dataset.session, t.innerText])) as Record<string, string>,
+      });
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      const shown = await page.eval(wall);
+      assert.deepEqual({ ...shown, texts: undefined }, {
+        title: 'Every agent, in priority order',
+        sub: '3 decisions · 1 terminal prompt · 2 finished turns wait in the queue.',
+        back: 'Back to the queue Esc',
+        order: [
+          's-cart decide', 's-hooks decide', 's-group decide', 's-astro focus', 's-reviews idle', 's-anchors idle',
+          's-invoice working', 's-search working', 's-thumbs working', 's-split exited', 's-stripe exited',
+        ],
+        archived: 'Archived (1)',
+        open: false,
+        texts: undefined,
+      });
+      for (const [id, text] of Object.entries(shown.texts)) {
+        assert.doesNotMatch(text, /#\d|(^|\s)[+−]\d/, `${id} shows a rank or a line count`);
+      }
+      assert.match(shown.texts['s-cart'], /storefront · guest-cart-merge/);
+      assert.match(shown.texts['s-invoice'], /billing-api · invoice-rounding/);
+      const clock = () => document.querySelector('[data-tile][data-session="s-invoice"] [title="How long the turn has run"]')?.textContent;
+      const first = await page.eval(clock);
+      await sleep(1100);
+      const second = await page.eval(clock);
+      assert.match(first ?? '', /^\d+:\d\d$/);
+      assert.notEqual(second, first, 'the working clock did not tick');
+      await shot('wall');
+
+      await page.key('Escape');
+      await page.until('the queue', () => location.pathname === '/' && document.documentElement.dataset.view === 'queue');
+      assert.deepEqual({ ...(await page.eval(wall)), texts: undefined }, { ...shown, texts: undefined });
+      await page.key('v');
+      await page.until('the Wall again', () => location.pathname === '/wall' && document.documentElement.dataset.view === 'wall');
+
+      const hooks = () => [document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention'), document.title];
+      await mock.post('/mock/patch', { id: 's-hooks', patch: { answered: { key: 'm:toolu_01Hooks', text: 'Backoff: Exponential, 5 tries', at: Date.now() - 8000 } } });
+      await page.until('the answered menu to count as working', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'working');
+      assert.deepEqual(await page.eval(hooks), ['working', '(2) Agent Board']);
+      await page.until('the menu still open to need focus', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'focus');
+      assert.deepEqual(await page.eval(hooks), ['focus', '(2) Agent Board']);
+    },
+  },
+  {
+    name: 'P4.2 the top bar: Live and (3) in the tab title; six meter segments whose counts are only in the aria-label, then Repos, the view toggle and New task; before the first snapshot the pill reads Connecting… and every view says so',
+    expectedErrors: [/WebSocket/],
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', tiles);
+      const bar = await page.eval(() => {
+        const left = (s: string) => document.querySelector(s)?.getBoundingClientRect().left ?? NaN;
+        const right = (s: string) => document.querySelector(s)?.getBoundingClientRect().right ?? NaN;
+        const pill = document.querySelector<HTMLElement>('[data-link]');
+        return {
+          link: [pill?.dataset.link, pill?.innerText.trim()],
+          title: document.title,
+          segments: document.querySelectorAll('[data-segment]').length,
+          label: document.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label'),
+          shown: document.querySelector<HTMLElement>('header')?.innerText,
+          order: right('[data-meter] [role="group"]') <= left('[data-repos]') && left('[data-repos]') < left('nav[aria-label="View"]') &&
+            left('nav[aria-label="View"]') < left('button[aria-label="New task"]'),
+        };
+      });
+      assert.deepEqual({ ...bar, shown: undefined }, {
+        link: ['live', 'Live'], title: '(3) Agent Board', segments: 6, label: '3 decisions · 1 terminal prompt · 2 finished turns', shown: undefined, order: true,
+      });
+      assert.doesNotMatch(bar.shown ?? '', /\d/, 'the top bar shows a count');
+      await shot('top-bar');
+
+      await withoutBoard(async (url) => {
+        for (const path of ['/', '/wall', '/s/s-cart/overview']) {
+          await page.goto(`${url}${path}`);
+          await sleep(300);
+          const before = await page.eval(() => ({
+            link: document.querySelector<HTMLElement>('[data-link]')?.dataset.link,
+            text: document.querySelector<HTMLElement>('[data-link]')?.innerText.trim(),
+            view: [...document.querySelectorAll<HTMLElement>('main, #task-sheet[open]')].map((v) => v.innerText.trim()).at(-1),
+          }));
+          assert.deepEqual(before, { link: 'connecting', text: 'Connecting…', view: 'Connecting…' }, path);
+        }
+        await shot('connecting');
+      });
+    },
+  },
+  {
+    name: 'P4.3 the meter at volume: 24 and 45 cards keep it clear of the wordmark and Repos at 1440 and 1100 px, 45 draw bars of 30, 5 and 10; 20 cards at 1100 px keep every segment 6 px or wider; counts stay in the aria-label, and an arrival shows the Just-in chip, short where the slot is narrow',
+    scenario: 'volume',
+    async run({ page, mock, look, shot }) {
+      const load = async (scenario: string, ready: (inFrame: boolean) => boolean) => {
+        await mock.post(`/mock/scenario/${scenario}`);
+        await page.goto(`${mock.url}/`);
+        await page.until(`${scenario} in the meter`, ready, false);
+        await page.eval(frame, '/', 1100, 900);
+        await page.until(`${scenario} in the meter at 1100 px`, ready, true);
+        return [await page.eval(meterIn, false), await page.eval(meterIn, true)];
+      };
+      const bars = (inFrame: boolean) => {
+        const doc = inFrame ? (document.getElementById('e2e-frame') as HTMLIFrameElement).contentDocument : document;
+        return doc?.querySelectorAll('[data-bar]').length === 3;
+      };
+      const twenty = (inFrame: boolean) => {
+        const doc = inFrame ? (document.getElementById('e2e-frame') as HTMLIFrameElement).contentDocument : document;
+        return doc?.querySelectorAll('[data-segment]').length === 20;
+      };
+
+      for (const [wide, at1100] of [await load('volume', bars)]) {
+        for (const m of [wide, at1100]) {
+          assert.deepEqual([m.overlap, m.label, m.shown, m.justIn], [false, '14 decisions · 3 terminal prompts · 7 finished turns', '14\n3\n7', []]);
+        }
+      }
+      await shot('meter-volume-1100');
+      await page.eval(() => document.getElementById('e2e-frame')?.remove());
+      await shot('meter-volume');
+
+      for (const m of await load('volume45', bars)) {
+        assert.deepEqual([m.overlap, m.bars, m.label], [false, ['30', '5', '10'], '30 decisions · 5 terminal prompts · 10 finished turns']);
+      }
+      await page.eval(() => document.getElementById('e2e-frame')?.remove());
+      await shot('meter-volume45');
+
+      const [wide, narrow] = await load('volume20', twenty);
+      for (const m of [wide, narrow]) {
+        assert.deepEqual([m.overlap, m.label, m.shown, m.justIn], [false, '12 decisions · 3 terminal prompts · 5 finished turns', '', []]);
+        assert.ok(m.segments.every((w) => w >= 6), `segments ${m.segments.join(', ')}`);
+      }
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 2 });
+      await page.until('the Just-in chip at 1100 px', () =>
+        !!(document.getElementById('e2e-frame') as HTMLIFrameElement).contentDocument?.querySelector('[data-justin]'));
+      assert.deepEqual((await page.eval(meterIn, true)).justIn, ['Just in']);
+      assert.deepEqual((await page.eval(meterIn, false)).justIn, [look.width > 1100 ? 'Just in: Retire the v1 orders API' : 'Just in']);
+      await shot('meter-just-in-1100');
+    },
+  },
+  {
+    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, Worth knowing, the composer, Status · updated, the latest reply, Facts and the Artifacts links; Esc in the composer\'s command list closes only the list',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.click('[data-tile][data-session="s-invoice"] p');
+      await page.until('the sheet', sheetOpen);
+      assert.deepEqual(await page.eval(() => [location.pathname, document.activeElement?.id]), ['/s/s-invoice/overview', 'task-sheet']);
+      const clock = () => {
+        const c = document.querySelector<HTMLElement>('#task-sheet [title="Time since your last message"]');
+        return c && { text: c.textContent, size: getComputedStyle(c).fontSize };
+      };
+      const first = await page.until('the working banner', clock);
+      const overview = await page.eval(() => {
+        const sheet = document.querySelector<HTMLElement>('#task-sheet')!;
+        return {
+          working: sheet.innerText.includes('Claude is working'),
+          know: sheet.innerText.includes('Two customers were billed one cent too much'),
+          composer: !!sheet.querySelector('textarea'),
+          status: [...sheet.querySelectorAll('h3')].map((h) => h.textContent).find((t) => t?.startsWith('Status')),
+          reply: sheet.innerText.includes("CLAUDE'S LATEST REPLY") && sheet.innerText.includes('The cent goes missing'),
+          facts: [...sheet.querySelectorAll('dt')].map((d) => d.textContent),
+          artifacts: [...sheet.querySelectorAll('aside button')].map((b) => b.querySelector('strong')?.textContent),
+        };
+      });
+      assert.equal(first.size, '30px');
+      assert.deepEqual({ ...overview, status: undefined }, {
+        working: true, know: true, composer: true, status: undefined, reply: true,
+        facts: ['Task', 'Worktree', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
+      });
+      assert.match(overview.status ?? '', /^Status · updated \d+m ago$/);
+      await sleep(1100);
+      assert.notEqual((await page.eval(clock))?.text, first.text, 'the clock did not tick');
+      await page.until('the sheet to settle', settled);
+      await shot('sheet-overview');
+
+      await page.click('#task-sheet textarea');
+      await page.type('/re');
+      await page.until('the command list', () => document.querySelectorAll('#task-sheet [role="listbox"] [role="option"]').length > 0);
+      await page.key('Escape');
+      await page.until('the list to close', () => !document.querySelector('#task-sheet [role="listbox"]'));
+      assert.deepEqual(await page.eval(() => [!!document.querySelector('#task-sheet:modal'), document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value]), [true, '/re']);
+    },
+  },
+  {
+    name: 'P4.5 Diff: 2 replaces the entry; the tree resizes by key and resets on a double click, kept in localStorage; a file opens whole, J and K step; Esc goes back to all files, a second Esc closes the sheet and focus returns to the tile\'s name',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.eval(() => document.querySelector<HTMLElement>('[data-tile][data-session="s-invoice"] a')!.focus());
+      await page.key('Enter');
+      await page.until('the sheet', sheetOpen);
+      const entries = await page.eval(() => window.navigation.entries().length);
+      await page.key('2');
+      await page.until('the file tree', () => location.pathname === '/s/s-invoice/diff' && document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+      assert.equal(await page.eval(() => window.navigation.entries().length), entries, 'the tab pushed an entry');
+      await page.until('the diff', () => document.querySelectorAll('section[data-file] diffs-container').length > 0);
+      await shot('sheet-diff');
+
+      const width = () => ({
+        now: document.querySelector('[role="separator"]')?.getAttribute('aria-valuenow'),
+        kept: localStorage.getItem('diff-tree-width'),
+      });
+      await page.eval(() => document.querySelector<HTMLElement>('[role="separator"]')!.focus());
+      await page.key('ArrowRight');
+      await page.key('ArrowRight');
+      assert.deepEqual(await page.eval(width), { now: '292', kept: '292' });
+      await page.key('ArrowLeft');
+      assert.deepEqual(await page.eval(width), { now: '276', kept: '276' });
+      await page.eval(() => document.querySelector('[role="separator"]')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+      assert.deepEqual(await page.eval(width), { now: '260', kept: '260' });
+
+      await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
+      await page.until('server/git.ts whole', wholeFile, 'server/git.ts');
+      await page.key('j');
+      await page.until('the next file whole', wholeFile, 'server/mcpGuard.test.ts');
+      await page.key('k');
+      await page.until('the file before whole', wholeFile, 'server/git.ts');
+      await shot('sheet-diff-file');
+
+      await page.key('Escape');
+      await page.until('all files again', () => document.querySelectorAll('section[data-file]').length === 12);
+      assert.equal(await page.eval(sheetOpen), true, 'Esc in one file closed the sheet');
+      await page.key('Escape');
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+      assert.equal(await page.eval(() => document.activeElement?.closest('[data-tile]')?.getAttribute('data-session') + ' ' + document.activeElement?.tagName), 's-invoice A');
+    },
+  },
+  {
+    name: 'P4.6 browser Back closes the sheet; a sheet whose task goes away closes with "That task is gone."',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.eval(() => history.back());
+      await page.until('the sheet to close on Back', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+
+      await openFromWall(page, mock, 's-split');
+      await mock.post('/api/sessions/s-split/forget');
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'That task is gone.', inSheet: false, hit: true }]);
+    },
+  },
+  {
+    name: 'P4.7 Artifacts: 3 opens the list as a column beside a sandboxed frame of the newest artifact, with Open in new tab as a link; another artifact replaces the entry',
+    async run({ page, mock, shot }) {
+      await openFromWall(page, mock, 's-cart');
+      const entries = await page.eval(() => window.navigation.entries().length);
+      await page.key('3');
+      await page.until('the artifacts', () => location.pathname === '/s/s-cart/artifacts' && document.querySelector('#task-sheet iframe') !== null);
+      const shown = await page.eval(() => {
+        const frame = document.querySelector('#task-sheet iframe')!;
+        const link = [...document.querySelectorAll<HTMLAnchorElement>('#task-sheet a')].find((a) => a.textContent?.includes('Open in new tab'));
+        return {
+          column: getComputedStyle(document.querySelector('[role="tablist"][aria-label="Artifacts"]')!).flexDirection,
+          list: [...document.querySelectorAll('[aria-label="Artifacts"] [role="tab"] strong')].map((t) => t.textContent),
+          sandbox: frame.getAttribute('sandbox'),
+          src: frame.getAttribute('src'),
+          link: link && [link.getAttribute('href'), link.target],
+        };
+      });
+      assert.deepEqual(shown, {
+        column: 'column', list: ['Login flow with the merge step', 'Cart merge — before and after'], sandbox: 'allow-scripts',
+        src: '/api/sessions/s-cart/artifacts/art-cart-2', link: ['/api/sessions/s-cart/artifacts/art-cart-2', '_blank'],
+      });
+      await page.until('the sheet to settle', settled);
+      await shot('sheet-artifacts');
+      await page.click('[aria-label="Artifacts"] [role="tab"]', 'Cart merge');
+      await page.until('the other artifact', () => location.pathname === '/s/s-cart/artifacts/art-cart-1' &&
+        document.querySelector('#task-sheet iframe')?.getAttribute('src') === '/api/sessions/s-cart/artifacts/art-cart-1');
+      assert.equal(await page.eval(() => window.navigation.entries().length), entries, 'a tab or an artifact pushed an entry');
+    },
+  },
+  {
+    name: 'P4.8 rename: Esc keeps the title and the sheet; Enter sends rename with the new title',
+    async run({ page, mock, shot }) {
+      await openFromWall(page, mock, 's-reviews');
+      const title = () => document.querySelector('#task-sheet h2')?.textContent;
+      await page.click('#task-sheet h2 button');
+      await page.until('the rename field', () => document.activeElement?.getAttribute('aria-label') === 'Task name');
+      await page.type(' X');
+      await page.key('Escape');
+      await page.until('the title back', () => document.querySelector('#task-sheet h2')?.textContent === 'Lazy-load product reviews');
+      assert.equal(await page.eval(sheetOpen), true, 'Esc in the rename field closed the sheet');
+      await page.click('#task-sheet h2 button');
+      await page.until('the rename field', () => document.activeElement?.getAttribute('aria-label') === 'Task name');
+      await page.type(' X');
+      await shot('rename');
+      await page.key('Enter');
+      const [renamed] = await logged(mock, 'the rename', (e) => e.action === 'rename');
+      assert.deepEqual([renamed.sessionId, renamed.body, renamed.status], ['s-reviews', { title: 'Lazy-load product reviews X' }, 204]);
+      await page.until('the new title', () => document.querySelector('#task-sheet h2')?.textContent === 'Lazy-load product reviews X');
+      assert.equal(await page.eval(title), 'Lazy-load product reviews X');
+    },
+  },
+  {
+    name: 'P4.9 the ⋯ menu lists what each session can do; Delete worktree… asks in a dialog that names the branch, the path and the loss, starts on Cancel and closes on Esc; a failed loss check says so; Delete worktree deletes',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      const open = async (id: string) => {
+        await page.click(`[data-tile][data-session="${id}"] button[aria-label="Session actions"]`);
+        return page.until(`the menu of ${id}`, menuItems);
+      };
+      assert.deepEqual(await open('s-stripe'), ['Continue', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Delete worktree…']);
+      await page.key('Escape');
+      await page.until('the menu to close', () => !document.querySelector(':popover-open'));
+      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Delete worktree…']);
+      await shot('session-menu');
+
+      const asked = () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#delete-worktree');
+        if (!d?.open || d.innerText.includes('Checking')) return null;
+        return {
+          title: d.querySelector('h2')?.textContent,
+          path: d.querySelector('code')?.textContent,
+          text: d.innerText,
+          loss: [...d.querySelectorAll('li')].map((l) => l.textContent),
+          focus: document.activeElement?.textContent,
+        };
+      };
+      await page.click(':popover-open button', 'Delete worktree');
+      const shown = await page.until('the delete dialog', asked);
+      assert.deepEqual({ ...shown, text: undefined }, {
+        title: 'Delete the worktree and its local branch invoice-rounding?', path: '~/code/worktrees/invoice-rounding/billing-api', text: undefined,
+        loss: ['3 uncommitted or untracked files', '2 commits that no other branch or remote has'], focus: 'Cancel',
+      });
+      assert.match(shown.text, /This throws away:/);
+      await page.until('the dialog to settle', settled);
+      await shot('delete-dialog');
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('dialog#delete-worktree[open]'));
+
+      await open('s-stripe');
+      await page.click(':popover-open button', 'Delete worktree');
+      const failed = await page.until('the failed loss check', asked);
+      assert.match(failed.text, /Could not check what would be lost \(git status failed: fatal: unable to read the index\); uncommitted changes and unpushed commits may be lost\./);
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('dialog#delete-worktree[open]'));
+
+      await open('s-invoice');
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the delete dialog', asked);
+      await page.click('dialog#delete-worktree button', 'Delete worktree');
+      const [deleted] = await logged(mock, 'the deletion', (e) => e.method === 'POST' && e.action === 'delete-worktree');
+      assert.deepEqual([deleted.sessionId, deleted.status], ['s-invoice', 204]);
+      await page.until('the tile to go', () => !document.querySelector('[data-tile][data-session="s-invoice"]'));
+    },
+  },
+  {
+    name: 'P4.10 New task on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches as chips with the hint',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock, shot }) {
+      const submit = () => document.querySelector('#new-task-inline textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the New task form', () => !!document.querySelector('#new-task-inline textarea'));
+      await page.click('#new-task-inline textarea');
+      await page.type('Fix the login redirect');
+      await page.eval(() => {
+        const repo = document.querySelector<HTMLSelectElement>('#new-task-inline select')!;
+        repo.value = '1';
+        repo.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await page.click('#new-task-inline input[placeholder="fix-login-redirect"]');
+      await page.type('fix-login');
+      await shot('new-task-wall');
+      await page.eval(submit);
+      const [created] = await logged(mock, 'the new task', (e) => e.method === 'POST' && e.path === '/api/worktrees');
+      const { repoId, name, prompt, startClaude, existingBranch } = created.body;
+      assert.deepEqual({ repoId, name, prompt, startClaude, existingBranch, status: created.status }, {
+        repoId: 1, name: 'fix-login', prompt: 'Fix the login redirect', startClaude: true, existingBranch: false, status: 200,
+      });
+      await page.until('its sheet', () => !!document.querySelector('#task-sheet:modal') && /^\/s\/[^/]+\/overview$/.test(location.pathname) &&
+        document.querySelector('#task-sheet h2')?.textContent === 'fix-login');
+      await page.click('#task-sheet button[aria-label^="Back to"]');
+      await page.until('an empty form', () => !document.querySelector('#task-sheet[open]') && document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value === '');
+
+      await page.click('#new-task-inline textarea');
+      await page.type('Try a refused name');
+      await page.click('#new-task-inline input[placeholder="fix-login-redirect"]');
+      await page.type('fail');
+      await page.eval(submit);
+      const error = await page.until('the inline error', () => document.querySelector('#new-task-inline [role="alert"]')?.textContent);
+      assert.match(error, /cannot be created here/);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('#new-task-inline textarea, #new-task-inline input')].map((f) => f.value)), ['Try a refused name', 'fail']);
+
+      await page.click('#new-task-inline button', 'More options');
+      await page.click('#new-task-inline label', 'Existing branch');
+      await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
+      const chips = await page.until('the branch chips', () => {
+        const list = [...document.querySelectorAll('#new-task-inline [aria-label="Branches"] button')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
+        return list.length && list;
+      });
+      for (const chip of [['main', 'main checkout'], ['guest-cart-merge', 'own worktree'], ['release/2026.10', '']]) assert.deepEqual(chips.find((c) => c[0] === chip[0]), chip);
+      const hint = () => document.querySelector('#new-task-inline form > p:not([role])')?.textContent;
+      assert.equal(await page.eval(hint), 'Switches ~/code/storefront to the branch and starts Claude there.');
+      await page.click('#new-task-inline [aria-label="Branches"] button', 'guest-cart-merge');
+      await page.until('the hint for a branch with its own worktree', () =>
+        document.querySelector('#new-task-inline form > p:not([role])')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
+      await shot('new-task-existing-branch');
+    },
+  },
+  {
+    name: 'P4.11 Repos: Add, a folder\'s ×, Rescan, Settings Save, Remove worktree and Continue send their requests, and Continue opens the sheet',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.click('[data-repos]');
+      await page.until('Repos', () => !!document.querySelector('dialog#workspace:modal'));
+      assert.equal(await page.eval(() => document.activeElement?.id), 'workspace');
+      await page.until('the sheet to settle', settled);
+      await shot('repos');
+      const request = async (what: string, method: string, path: string) => (await logged(mock, what, (e) => e.method === method && e.path === path)).at(-1)!;
+
+      await page.click('#workspace input[aria-label="Repository or folder"]');
+      await page.type('~/code/payments');
+      await page.click('#workspace button[type="submit"]', 'Add');
+      assert.deepEqual((await request('Add', 'POST', '/api/repos')).body, { path: '~/code/payments' });
+      await page.click('#workspace button[aria-label="Stop scanning ~/code"]');
+      assert.deepEqual((await request('the folder\'s ×', 'DELETE', '/api/roots')).body, { path: '~/code' });
+      await page.click('#workspace button', 'Rescan');
+      await request('Rescan', 'POST', '/api/rescan');
+      await page.click('#workspace button', 'Settings');
+      await page.click('#workspace input[name="baseBranch"]');
+      await page.type('origin/develop');
+      await page.click('#workspace button[type="submit"]', 'Save');
+      assert.equal((await request('Save', 'PATCH', '/api/repos/1')).body.baseBranch, 'origin/develop');
+      const row = '#workspace [data-worktree="~/code/worktrees/lazy-reviews/storefront"]';
+      await page.click(`${row} button`, 'Remove');
+      await page.click(`${row} button[type="submit"]`, 'Remove worktree');
+      assert.deepEqual((await request('Remove worktree', 'DELETE', '/api/worktrees')).body, {
+        repoId: 1, path: '~/code/worktrees/lazy-reviews/storefront', deleteBranch: false, force: false,
+      });
+      await page.click('#workspace [data-worktree="~/code/storefront"] button', 'Continue');
+      assert.deepEqual((await request('Continue', 'POST', '/api/sessions')).body, { repoId: 1, worktree: '~/code/storefront', continueId: 'c-sf-1' });
+      await page.until('the continued conversation\'s sheet', () =>
+        location.pathname === '/s/c-sf-1/overview' && !!document.querySelector('#task-sheet:modal') && !document.querySelector('dialog#workspace[open]'));
+    },
+  },
+  {
+    name: 'P4.12 toasts inside the open sheet: an error from its ⋯ menu shows in the sheet and takes the point at its middle; an archive\'s Undo and a toast\'s × both work there',
+    expectedErrors: [/boom/, /status of 400/],
+    async run({ page, mock, shot }) {
+      await openFromWall(page, mock, 's-invoice');
+      await mock.post('/mock/fail', { error: 'boom' });
+      await page.click('#task-sheet button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Archive');
+      assert.deepEqual(await page.until('the error toast', toastsOf, 'error'), [{ kind: 'error', text: 'boom', inSheet: true, hit: true }]);
+
+      await page.click('#task-sheet button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Archive');
+      await logged(mock, 'the archive', (e) => e.action === 'archive' && e.body.archived === true && e.status === 204);
+      assert.deepEqual(await page.until('the undo toast', toastsOf, 'undo'), [{ kind: 'undo', text: 'Archived Fix invoice PDF rounding\nUndo', inSheet: true, hit: true }]);
+      await shot('toasts-in-sheet');
+      await page.click('[data-toast][data-kind="undo"] button', 'Undo');
+      const [unarchived] = await logged(mock, 'the undo', (e) => e.action === 'archive' && e.body.archived === false);
+      assert.deepEqual([unarchived.sessionId, unarchived.status], ['s-invoice', 204]);
+      await page.click('[data-toast][data-kind="error"] button[aria-label="Dismiss"]');
+      await page.until('the toasts to go', () => !document.querySelector('[data-toast]'));
+      assert.equal(await page.eval(sheetOpen), true);
+    },
+  },
+  {
+    name: 'P4.13 ? opens Keys with the rows of the KEYS table and Esc closes it; with the delete dialog open ? does nothing',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.key('?');
+      const rows = await page.until('the Keys dialog', () =>
+        document.querySelector<HTMLDialogElement>('dialog#keys')?.open && [...document.querySelectorAll('dialog#keys dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));
+      assert.deepEqual(rows, KEYS.map((r) => [r.keys, r.help]));
+      assert.equal(await page.eval(() => document.activeElement?.id), 'keys');
+      await page.until('the dialog to settle', settled);
+      await shot('keys');
+      await page.key('Escape');
+      await page.until('Keys to close', () => !document.querySelector('dialog#keys[open]'));
+
+      await page.click('[data-tile][data-session="s-invoice"] button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree[open]'));
+      await page.key('?');
+      await sleep(300);
+      assert.deepEqual(await page.eval(() => [!!document.querySelector('dialog#keys[open]'), !!document.querySelector('dialog#delete-worktree[open]')]), [false, true]);
+    },
+  },
+  {
+    name: 'P4.14 a dropped connection: within 1.5 s the pill reads Reconnecting…, breathes and says since when, then Live again',
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
+      const start = Date.now();
+      await mock.post('/mock/drop', { ms: 3000 });
+      try {
+        const down = await page.until('the pill to turn reconnecting', pillAt, 'reconnecting');
+        assert.ok(Date.now() - start < 1500, `reconnecting after ${Date.now() - start} ms`);
+        assert.deepEqual({ ...down, title: undefined }, { link: 'reconnecting', text: 'Reconnecting…', title: undefined, breathing: 'breathe' });
+        assert.match(down.title, /^Lost the connection to Agent Board at .+; what you see may be out of date\. Answers you send wait and go out once it is back\.$/);
+        await shot('reconnecting');
+      } finally {
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
+      }
+      const back = await until('the pill to turn live again', () => page.eval(pillAt, 'live'), 10_000);
+      assert.deepEqual({ ...back, breathing: undefined }, { link: 'live', text: 'Live', title: '', breathing: undefined });
+    },
+  },
+  {
+    name: 'P4.15 answering in the sheet still works until P5: an option on s-cart sends answer with its key and choice',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-cart');
+      await page.click('#task-sheet button[name="choice"]', 'Keep the account cart');
+      const answers = await logged(mock, 'the answer', (e) => e.action === 'answer');
+      assert.deepEqual(answers.map((a) => [a.sessionId, a.body.key, a.body.choice, a.status]), [['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]]);
+    },
+  },
+  {
+    name: 'P4.16 narrow window: no sideways scroll on the Wall or in the sheet, which is full width; New task and the sheet\'s close stay in reach',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await page.until('New task in reach', reachable, 'button[aria-label="New task"]', '');
+      await shot('narrow-wall');
+      await page.click('[data-tile][data-session="s-invoice"] a');
+      await page.until('the sheet', sheetOpen);
+      await page.until('the sheet to settle', settled);
+      const sheet = await page.eval(() => {
+        const r = document.querySelector('#task-sheet')!.getBoundingClientRect();
+        return { left: Math.round(r.left), width: Math.round(r.width), innerWidth };
+      });
+      assert.deepEqual(sheet, { left: 0, width: sheet.innerWidth, innerWidth: sheet.innerWidth });
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await page.until('the sheet\'s close in reach', reachable, '#task-sheet button[aria-label^="Back to"]', '');
+      await shot('narrow-sheet');
+    },
+  },
+  {
+    name: 'P4.17 the reload pill: a new build announced while the New task prompt has focus offers "New version · Reload" after 15 s with the link live; the page\'s own build clears it, another arms it again, and the pill reloads',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.click('#new-task-inline textarea');
+      await page.type('Fix the login redirect');
+      await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
+      const own = await page.eval(() => document.querySelector('script[type="module"][src]')!.getAttribute('src')!);
+      const offered = async (build: string) => {
+        const at = Date.now();
+        await mock.post('/mock/ui-entry', { src: build });
+        await sleep(1000);
+        assert.deepEqual(await page.eval(reloadState, null), { pill: null, link: 'live', marker: true, prompt: 'Fix the login redirect', typing: true });
+        const state = await until('the reload pill', () => page.eval(reloadState, 'pill'), 20_000);
+        assert.ok(Date.now() - at >= 14_500, `offered after ${Date.now() - at} ms`);
+        assert.deepEqual(state, { pill: 'New version · Reload', link: 'live', marker: true, prompt: 'Fix the login redirect', typing: true });
+      };
+      await offered('/assets/index-next1.js');
+      await shot('reload-pill');
+      await mock.post('/mock/ui-entry', { src: own });
+      await page.until('the pill to go', () => !document.querySelector('[data-new-version]'));
+      await offered('/assets/index-next2.js');
+      await page.click('[data-new-version]');
+      await until('the page to reload', async () => {
+        try {
+          return await page.eval(() => (window as unknown as Probe).e2eMarker === undefined && document.readyState === 'complete');
+        } catch {
+          return false;
+        }
+      });
+      await page.until('the prompt kept through the reload', () => document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value === 'Fix the login redirect');
+    },
+  },
+  {
+    name: 'P4.17 the reload pill hides while the board reconnects',
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.click('#new-task-inline textarea');
+      await page.type('Fix the login redirect');
+      await mock.post('/mock/ui-entry', { src: '/assets/index-next1.js' });
+      await until('the reload pill', () => page.eval(() => !!document.querySelector('[data-new-version]')), 20_000);
+      await mock.post('/mock/drop', { ms: 3000 });
+      try {
+        const dropped = await page.until('the board to reconnect', reloadState, 'reconnecting');
+        assert.deepEqual([dropped.link, dropped.pill], ['reconnecting', null]);
+      } finally {
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
+      }
+      await until('the link to come back', () => page.eval(() => document.querySelector('[data-link="live"]') !== null), 10_000);
+    },
+  },
+  {
+    name: 'P4.18 New task keeps one set of fields: a prompt typed on the Wall is in the dialog N opens over the queue, and a reload keeps it',
+    async run({ page, mock, shot }) {
+      const dialogPrompt = () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#new-task');
+        const prompt = d?.querySelector('textarea');
+        return d?.open && prompt && { value: prompt.value, focused: document.activeElement === prompt };
+      };
+      await page.goto(`${mock.url}/wall`);
+      await page.click('#new-task-inline textarea');
+      await page.type('Typed on the Wall');
+      await page.click('nav[aria-label="View"] a', 'Queue');
+      await page.until('the queue', () => location.pathname === '/');
+      await page.key('n');
+      assert.deepEqual(await page.until('the New task dialog', dialogPrompt), { value: 'Typed on the Wall', focused: true });
+      await page.until('the dialog to settle', settled);
+      await shot('new-task-dialog');
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('dialog#new-task[open]'));
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', tiles);
+      await page.key('n');
+      assert.deepEqual(await page.until('the New task dialog after a reload', dialogPrompt), { value: 'Typed on the Wall', focused: true });
     },
   },
 ];
