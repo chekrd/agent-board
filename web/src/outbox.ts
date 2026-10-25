@@ -1,5 +1,6 @@
 import { checkDecision, decisionKey, Refusal } from '../../server/decision.ts';
 import type { MenuAnswer, Session, SessionStatus } from './types.ts';
+import { menuStuck } from './util.ts';
 
 export type Action = 'answer' | 'answer-menu' | 'accept-advice' | 'dismiss';
 
@@ -213,14 +214,15 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
   }
 
   // The snapshot shows the session moved on from what the item answered. An answer lands as `answered` before
-  // Claude starts, so that alone would bring the card back as Your turn for a moment.
+  // Claude starts, so that alone would bring the card back as Your turn for a moment. A menu still open 10 s after
+  // the answer is stuck, and its card comes back as Needs focus.
   function took(i: Item<R>, s: Session | undefined) {
     if (!s) return true;
     if (s.status !== i.status && s.status !== 'idle') return true;
     if (s.lastTurn !== i.lastTurn) return true;
     const open = decisionKey(s);
     if (i.action === 'dismiss') return open !== i.key;
-    if (i.action === 'answer-menu') return s.menu?.toolUseId !== i.body.toolUseId;
+    if (i.action === 'answer-menu') return s.menu?.toolUseId !== i.body.toolUseId || menuStuck(s, now());
     return open !== null && open !== i.key;
   }
 

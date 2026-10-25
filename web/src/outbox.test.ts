@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { setImmediate as settle } from 'node:timers/promises';
+import { deckOf, kindOf } from './deck.ts';
 import { createOutbox, NO_ANSWER, type Folded, type Outgoing, type Request } from './outbox.ts';
 import { menu, question, session, turn } from './testing.ts';
 import type { Session } from './types.ts';
@@ -219,6 +220,24 @@ test('a sent item stays until the snapshot shows the session moved on, and at mo
   assert.deepEqual(states(), ['sent']);
   tick(1);
   assert.deepEqual(states(), []);
+});
+
+test('a menu still open 10 s after the board answered it counts as taken, so its card comes back as Needs focus then and not 5 s later', async (t) => {
+  const { box, posts, tick, states } = outbox(t);
+  box.hold(hooks, menuAnswer, '');
+  tick(5000);
+  const stuck = { ...hooks, answered: { key: 'm:m1', text: 'Backoff: Linear · Give up: Email', at: Date.now() } };
+  tick(1500);
+  posts[0].ok();
+  await settle();
+  box.confirm([stuck]);
+  tick(8499);
+  box.confirm([stuck]);
+  assert.deepEqual([states(), deckOf([stuck], box.busy())], [['sent'], []]);
+  tick(1);
+  box.confirm([stuck]);
+  assert.deepEqual(states(), []);
+  assert.deepEqual(deckOf([stuck], box.busy()).map((s) => [s.id, kindOf(s)]), [['hooks', 'prompt']]);
 });
 
 test('busy: a held, sending, waiting or unconfirmed send keeps its session out of the deck; a failed one and a command do not', async (t) => {

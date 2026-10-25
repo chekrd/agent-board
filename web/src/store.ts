@@ -49,16 +49,23 @@ function set(next: State) {
 
 let wake: ReturnType<typeof setTimeout> | undefined;
 
-// A menu answered from the board turns from working to Needs focus by the clock alone, with no snapshot to say so.
-function wakeAtNextChange(sessions: Session[]) {
+// A menu answered from the board turns from working to Needs focus by the clock alone, with no snapshot to say so;
+// its send counts as taken then, so the card comes back.
+function wakeAtNextChange() {
   clearTimeout(wake);
   const now = Date.now();
-  const next = Math.min(...sessions.flatMap((s) => {
+  const next = Math.min(...state.sessions.flatMap((s) => {
     const at = attentionChangesAt(s);
     return at !== null && at > now ? [at] : [];
   }));
-  if (next !== Infinity) wake = setTimeout(() => set({ ...state }), next - now);
+  if (next === Infinity) return;
+  wake = setTimeout(() => {
+    sends.confirm(state.sessions);
+    set({ ...state });
+    wakeAtNextChange();
+  }, next - now);
 }
+
 
 // The build this page runs, named by its entry script: import.meta.url names whichever chunk this module lands in,
 // and a split that moved it would reload the page in a loop.
@@ -93,7 +100,7 @@ async function connect() {
         sends.confirm(next.sessions);
         if (state.link === 'reconnecting') sends.reconnected();
         set({ ...state, ...next, link: 'live', connected: true });
-        wakeAtNextChange(next.sessions);
+        wakeAtNextChange();
       }
     } catch {
       // reconnect below
