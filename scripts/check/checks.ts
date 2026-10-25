@@ -412,4 +412,37 @@ export const checks: Check[] = [
       await reloaded('once the dialog closed');
     },
   },
+  {
+    name: 'P3.reload-offline a new build waits for the server: focus leaving a draft while the server cannot be reached does not reload the board, and it reloads once the server is back',
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-reviews/details`);
+      await page.click('textarea');
+      await page.type('Ship it after lunch');
+      await page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
+      await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
+      await mock.post('/mock/drop', { ms: 4000 });
+      try {
+        await page.until('the server to drop the page', () => fetch('/').then(() => false, () => true));
+        await page.click('h4', 'Status');
+        await sleep(1500);
+        const kept = await page.eval(() => [
+          (window as unknown as { probe?: number }).probe, document.activeElement === document.body, document.querySelector('textarea')?.value,
+        ]);
+        assert.deepEqual(kept, [1, true, 'Ship it after lunch'], 'reloaded while the server could not be reached');
+        await shot('offline-holds-reload');
+      } finally {
+        // The next check's reset cannot reach the mock until the drop is over.
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
+      }
+      await until('the page to reload once the server is back', async () => {
+        try {
+          return await page.eval(() => (window as unknown as { probe?: number }).probe === undefined && document.readyState === 'complete');
+        } catch {
+          return false;
+        }
+      }, 10_000);
+      await page.until('the task page', () => document.querySelector('textarea') !== null);
+    },
+  },
 ];
