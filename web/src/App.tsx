@@ -32,7 +32,7 @@ export function App() {
     document.documentElement.dataset.view = route.view;
   }, [route.view]);
 
-  useDeckSync(deck, store.link !== 'connecting', store.sessions, store.repos);
+  useDeckSync(deck, { live: store.link !== 'connecting', onQueue: route.view === 'queue', sessions: store.sessions, repos: store.repos });
   useBoardKeys({ route, deck: deck.length, repos: store.repos.length > 0, artifacts: !!sheetSession?.artifacts.length });
 
   return (

@@ -76,7 +76,7 @@ export function DecisionBody(p: DecisionBodyProps) {
         {p.composer && (
           <Composer
             session={session}
-            answers={decision.key}
+            decision={decision.key}
             label="Your own answer"
             placeholder={decision.options.length ? 'Or write your own answer, / for commands, paste or drop files…' : 'Reply, / for commands, paste or drop files…'}
             {...p.composer}

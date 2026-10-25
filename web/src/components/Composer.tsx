@@ -121,8 +121,8 @@ const files = (e: { dataTransfer?: DataTransfer | null; clipboardData?: DataTran
 
 export interface ComposerProps {
   session: Session;
-  // The decision the card shows, which Enter answers; null for a plain message.
-  answers: string | null;
+  // The key of the decision the card shows, which Enter answers; null for a plain message.
+  decision: string | null;
   label: string;
   placeholder: string;
   // A new value asks for focus.
@@ -134,7 +134,7 @@ export interface ComposerProps {
 
 // The reply box: Enter sends, Shift+Enter adds a line, "/" lists the session's commands, and files come by paste,
 // drop or the paperclip. Esc closes the command list first, then leaves the box.
-export function Composer({ session, answers, label, placeholder, focus, note, onSend, onEscape }: ComposerProps) {
+export function Composer({ session, decision, label, placeholder, focus, note, onSend, onEscape }: ComposerProps) {
   const id = session.id;
   const draft = useDraft(id);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -180,7 +180,7 @@ export function Composer({ session, answers, label, placeholder, focus, note, on
     } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const ready = readyPaths(draft);
-      if ((draft.text.trim() || ready.length) && !uploading(draft)) onSend(typed(answers, draft.text, ready, commands));
+      if ((draft.text.trim() || ready.length) && !uploading(draft)) onSend(typed(decision, draft.text, ready, commands));
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onEscape();

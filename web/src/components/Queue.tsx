@@ -43,8 +43,11 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
   const [shown, setShown] = useState(live);
   const next = typing && differs(shown, live) ? shown : live;
   if (next !== shown) setShown(next);
-  const [first] = useState(() => live?.id ?? null);
-  const [firstPeeks] = useState(() => arranged.slice(1, 3).map((s, i) => `${i}:${s.id}`));
+  const rest = arranged.filter((s) => s.id !== shown?.id);
+  const peeking = rest.slice(0, 2).map((s, i) => `${i}:${s.id}`);
+  // What the queue drew first after it opened is simply there; what comes later moves in.
+  const [first, setFirst] = useState<{ card: string; peeks: string[] } | null>(null);
+  if (!first && shown) setFirst({ card: shown.id, peeks: peeking });
 
   useEffect(() => {
     queue.show(shown);
@@ -70,7 +73,6 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
     cardFocused.current = inside && !!to.closest('[data-card]');
   };
 
-  const rest = arranged.filter((s) => s.id !== shown?.id);
   const arrived = new Set(q.seen ? arrivals(deck, q.seen, q.shown).map((s) => s.id) : []);
   return (
     <div ref={region} className={styles.region} onFocus={onFocus} onBlur={onBlur}>
@@ -80,9 +82,9 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
           <div className={styles.deck}>
             {arranged.length > 3 && <div className={styles.sliver} data-sliver aria-hidden />}
             {rest.slice(0, 2).map((s, i) => (
-              <Peek key={`${i}:${s.id}`} session={s} slot={i + 1} repos={repos} arrived={arrived.has(s.id)} enter={!firstPeeks.includes(`${i}:${s.id}`)} />
+              <Peek key={peeking[i]} session={s} slot={i + 1} repos={repos} arrived={arrived.has(s.id)} enter={!!first && !first.peeks.includes(peeking[i])} />
             ))}
-            <Card key={shown.id} session={shown} repos={repos} deck={arranged.length} enter={shown.id !== first} send={send} />
+            <Card key={shown.id} session={shown} repos={repos} deck={arranged.length} enter={!!first && shown.id !== first.card} send={send} />
           </div>
           <Side direction="next" disabled={arranged.length < 2} />
         </main>
@@ -132,14 +134,16 @@ function Peek({ session, slot, repos, arrived, enter }: { session: Session; slot
   );
 }
 
-// The queue follows the deck on every view, so what arrives is told apart from what was there at the first snapshot,
-// and a card that stops waiting for a reason outside this page is named in a toast.
-export function useDeckSync(deck: readonly Session[], live: boolean, sessions: readonly Session[], repos: RepoView[]) {
+// The queue follows the deck on every view, so what arrives is told apart from what was there at the first snapshot.
+// On the queue, the card being read that stops waiting for a reason outside this page is named in a toast.
+export function useDeckSync(deck: readonly Session[], { live, onQueue, sessions, repos }: { live: boolean; onQueue: boolean; sessions: readonly Session[]; repos: RepoView[] }) {
   const names = useRef(new Map<string, string>());
   useEffect(() => {
     if (!live) return;
     const named = new Map(sessions.map((s) => [s.id, sessionLabel(s, locate(repos, s).branch)]));
-    for (const { id } of queue.sync(deck)) toast('info', `${named.get(id) ?? names.current.get(id) ?? 'A task'} no longer waits`, { session: id });
+    for (const { id } of queue.sync(deck)) {
+      if (onQueue) toast('info', `${named.get(id) ?? names.current.get(id) ?? 'A task'} no longer waits`, { session: id });
+    }
     names.current = named;
-  }, [deck, live, sessions, repos]);
+  }, [deck, live, onQueue, sessions, repos]);
 }

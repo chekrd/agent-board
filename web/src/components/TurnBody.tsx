@@ -24,7 +24,7 @@ export function TurnBody({ session, composer }: { session: Session; composer: Co
             {failed && <code>{failed}</code>}
           </div>
         )}
-        <Composer session={session} answers={null} label="Message Claude" placeholder="Reply, / for commands, paste or drop files…" {...composer} />
+        <Composer session={session} decision={null} label="Message Claude" placeholder="Reply, / for commands, paste or drop files…" {...composer} />
       </Column>
     </div>
   );
