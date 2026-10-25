@@ -2182,5 +2182,25 @@ export const checks: Check[] = [
       await page.click('main span', 'Previous');
       await page.until('the card after it once focus left', frontIs, 's-hooks');
     },
+  },  {
+    name: 'P5.1.d4 a decision without options shows its second opinion as a block of its own, highlighted as what ⏎ accepts, with Edit; Accept suggestion is the primary',
+    scenario: 'freetext',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-flag"]');
+      await page.until('s-flag at the front', frontIs, 's-flag');
+      const shown = await page.eval(() => {
+        const block = document.querySelector<HTMLElement>('[data-card] [data-suggestion]')!;
+        return {
+          options: document.querySelectorAll('[data-card] [data-option]').length, frozen: block.hasAttribute('data-frozen'), text: block.innerText,
+          buttons: [...block.querySelectorAll('button')].map((b) => b.textContent),
+        };
+      });
+      assert.deepEqual({ ...shown, text: undefined }, { options: 0, frozen: true, text: undefined, buttons: ['Edit E'] });
+      assert.match(shown.text, /^Second opinion · 77%\s+Call it `checkout\.mergeGuestCart`, like the other checkout flags\.\s+Every flag in config\/flags\.ts follows checkout\.<feature>\.\s+Edit\s+E\s+high confidence$/);
+      assert.equal((await page.eval(card))!.primary, 'Accept suggestion');
+      await page.until('the card to settle', still);
+      await shot('queue-free-text');
+    },
   },
 ];
