@@ -43,7 +43,6 @@ function client(url: string, stop: () => Promise<void>) {
   };
 }
 
-// Starts a mock of its own on a free port, unless `port` names one that is already running.
 export async function startMock(o: { port?: number; dist: string }) {
   if (o.port) return client(`http://127.0.0.1:${o.port}`, async () => {});
   const child = spawn(process.execPath, [SERVER, '--port', '0', '--dist', o.dist], { stdio: ['ignore', 'pipe', 'inherit'] });

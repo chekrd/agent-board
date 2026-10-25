@@ -21,7 +21,6 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Truthy<T> = Exclude<T, null | undefined | false | 0 | ''>;
 
-// Polls `fn` until it returns something truthy.
 export async function until<T>(what: string, fn: () => T | Promise<T>, timeout = 5000): Promise<Truthy<T>> {
   const end = Date.now() + timeout;
   for (;;) {
@@ -158,7 +157,6 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
     return {
       errors,
       eval: run,
-      // Polls a page function until it returns something truthy.
       until: <A extends unknown[], T>(what: string, fn: (...args: A) => T, ...args: A) => until(what, () => run(fn, ...args)),
       async goto(url: string) {
         refuseLive(url);

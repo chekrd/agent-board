@@ -20,8 +20,7 @@ export interface Check {
   run: (t: Context) => Promise<void>;
 }
 
-// Waits until the mock has answered requests that match.
-const logged = (mock: Mock, what: string, match: (e: Entry) => boolean) =>
+const logged =(mock: Mock, what: string, match: (e: Entry) => boolean) =>
   until(`${what} in the mock's log`, async () => {
     const found = (await mock.log()).filter((e) => match(e) && e.status !== null);
     return found.length ? found : null;
@@ -55,8 +54,7 @@ const reachable = (selector: string, text: string) => {
   return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
 };
 
-// Scrolls the diff list to one end and tells whether the line numbers there reach `line`.
-const edgeLine = (end: 'top' | 'bottom', line: number) => {
+const edgeLine =(end: 'top' | 'bottom', line: number) => {
   const list = document.querySelector('section[data-file]')?.parentElement;
   if (!list) return false;
   list.scrollTop = end === 'top' ? 0 : list.scrollHeight;
@@ -96,6 +94,7 @@ export const checks: Check[] = [
 
       await page.click('a[href="/"]');
       await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile]:has(a[href="/s/s-cart/details"])')?.getAttribute('data-attention') === 'working');
+      assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
       assert.equal(await page.eval(() => document.title), '(2) Agent Board');
       await shot('board-answered');
     },
