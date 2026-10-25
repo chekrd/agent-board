@@ -12,6 +12,7 @@ import type { FullDiff } from '../../server/git.ts';
 import type { Session } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
+import { readEntry, watchEntry } from '../../server/uiEntry.ts';
 import type { RepoView } from '../../server/workspace.ts';
 import { isolateHome, refuseLive } from '../isolate.ts';
 import { addFromTemplate, artifactPage, COMMANDS, DELETE_LOSS, explanationOf, TEMPLATES, worktreeRootOf, type Template } from './fixtures.ts';
@@ -103,18 +104,22 @@ function shown(s: Session) {
 
 const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
 
+// As in server/main.ts, every push names the UI build; the server before named it only when a socket opened.
+let uiEntry: string | null = null;
+watchEntry(() => readEntry(join(DIST, 'index.html')), (entry) => {
+  uiEntry = entry;
+  if (!args.legacy) push();
+});
+
 function push() {
   if (pushing) return;
   pushing = true;
   queueMicrotask(() => {
     pushing = false;
-    const message = JSON.stringify(snapshot());
+    const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry }) });
     for (const ws of clients) ws.send(message);
   });
 }
-
-const uiEntry = async () =>
-  (await readFile(join(DIST, 'index.html'), 'utf8').catch(() => '')).match(/src="([^"]+\.js)"/)?.[1] ?? null;
 
 function load(name: string) {
   const make = scenarios[name];
@@ -128,6 +133,7 @@ function load(name: string) {
   dropUntil = 0;
   state = make(Date.now());
   if (args.legacy) for (const s of state.sessions) s.answered = null;
+  answers = answeringFor(state);
   scenarioName = name;
   push();
 }
@@ -207,18 +213,27 @@ function closeQuestion(id: string) {
   if (question) update(id, { question: null, dismissedAsk: question.toolUseId });
 }
 
-const answers = answering({
-  store: { get: find, update },
-  send: () => pause(TYPING_MS),
-  keys: () => pause(TYPING_MS),
-  notify: push,
-  decided: (id) => {
-    closeQuestion(id);
-    claudeWorks(id);
-  },
-  isCommand: async (_s, text) => isCommand(text),
-  checkUploads: async (files) => checkUploads(files),
-});
+// One per scenario: a send still waiting its turn when another scenario loads is refused, not run on the new one.
+function answeringFor(scenario: Scenario) {
+  const get = (id: string) => {
+    if (scenario !== state) throw new Error('the mock loaded another scenario meanwhile');
+    return find(id);
+  };
+  return answering({
+    store: { get, update },
+    send: () => pause(TYPING_MS),
+    keys: () => pause(TYPING_MS),
+    notify: push,
+    decided: (id) => {
+      closeQuestion(id);
+      claudeWorks(id);
+    },
+    isCommand: async (_s, text) => isCommand(text),
+    checkUploads: async (files) => checkUploads(files),
+  });
+}
+
+let answers = answeringFor(state);
 
 function legacyAnswer(s: Session, reply: Reply, commands = true) {
   liveTty(s);
@@ -277,12 +292,13 @@ function stopAdvice(s: Session) {
   if (a?.state === 'thinking' && a.key === openDecision(s)?.key) update(s.id, { advice: { ...a, state: 'failed', activity: null, error: 'stopped', at: Date.now() } });
 }
 
-function rename(s: Session, title: unknown) {
+async function rename(s: Session, title: unknown) {
   const name = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!name) throw new Error('the name is empty');
   if (s.status !== 'exited') {
-    if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
-    liveTty(s);
+    if (!args.legacy) await answers.type(s.id, `/rename ${name}`);
+    else if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
+    else liveTty(s);
   }
   update(s.id, { title: name });
 }
@@ -746,10 +762,10 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws/events' || !allowed(req)) return socket.destroy();
-  wss.handleUpgrade(req, socket, head, async (ws) => {
+  wss.handleUpgrade(req, socket, head, (ws) => {
     clients.add(ws);
     ws.on('close', () => clients.delete(ws));
-    ws.send(JSON.stringify({ ...snapshot(), uiEntry: await uiEntry() }));
+    ws.send(JSON.stringify({ ...snapshot(), uiEntry }));
   });
 });
 
