@@ -31,7 +31,7 @@ pnpm open               # Brave --app window on http://127.0.0.1:7420
 
 Code changes never restart the server on their own. After pulling or editing server code, run `pnpm build` (UI) and `pnpm service:restart`; Claude sessions keep running either way. Re-run `pnpm service:install` after switching Node versions, since the agent pins the current `node` path.
 
-Development: `pnpm start` runs the server in the foreground (stop the launchd agent first with `pnpm service:uninstall`), `pnpm dev` serves the UI with HMR on :5173, `pnpm check` typechecks, lints and runs the tests (`pnpm test` runs only the tests: transcript parsing, artifact storage, menu keystrokes, the MCP guard, and the diff and `git wt` on throwaway repos).
+Development: `pnpm start` runs the server in the foreground (stop the launchd agent first with `pnpm service:uninstall`), `pnpm dev` serves the UI with HMR on :5173, `pnpm check` typechecks, lints and runs the tests (`pnpm test` runs only the tests: transcript parsing, artifact storage, decisions, menu keystrokes, the MCP guard, the diff and `git wt` on throwaway repos, and the board's tile order). The tests run with `HOME` set to a fresh temporary folder, so none of them can reach the live board's state.
 
 State lives in `~/Library/Application Support/agent-board/` (`state.db`, per-session hook/MCP config, `server.log`).
 
