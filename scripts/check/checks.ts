@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
+import { copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { decisionKey } from '../../server/decision.ts';
 import { sleep, until, type Look, type Page } from './cdp.ts';
-import type { Entry, Mock } from './mock.ts';
+import { startMock, type Entry, type Mock } from './mock.ts';
+
+const BUILD = join(import.meta.dirname, '..', '..', 'web', 'dist');
 
 export interface Context {
   page: Page;
@@ -68,6 +74,24 @@ const luminance = (rgb: string) => {
   const [r, g, b] = (rgb.match(/[\d.]+/g) ?? []).map((c) => Number(c) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
+
+// What a check leaves on the page's window: a marker a reload would drop, and the messages of a socket of its own.
+interface Probe {
+  e2eMarker?: boolean;
+  e2eMessages: { uiEntry?: string | null; sessions: { title: string | null }[] }[];
+}
+
+// The first message the check's socket got, or the first that shows `title`.
+const received = (title: string | null) => {
+  const m = (window as unknown as Probe).e2eMessages?.find((m) => title === null || m.sessions.some((s) => s.title === title));
+  return m && { carries: 'uiEntry' in m, uiEntry: m.uiEntry ?? null };
+};
+
+const navigation = () => ({
+  marker: (window as unknown as Probe).e2eMarker ?? null,
+  type: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type ?? null,
+  entry: document.querySelector('script[type="module"][src]')?.getAttribute('src') ?? null,
+});
 
 export const checks: Check[] = [
   {
@@ -335,21 +359,91 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P1a.mock-reset an answer still typing when the scenario loads again fails and leaves the fresh scenario alone',
+    name: 'P1a.mock-reset an answer still typing when the scenario loads again fails and leaves the fresh scenario alone; so does a note waiting behind an answer to an end-of-turn decision',
     async run({ mock }) {
       const { legacy } = await mock.get('/mock');
-      const cart = async () => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
-      const answer = fetch(`${mock.url}/api/sessions/s-cart/answer`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: 'q:toolu_01Cart', choice: 'Keep the account cart' }),
+      const sessionsNow = async () => new Map<string, any>((await mock.get('/api/state')).sessions.map((s: { id: string }) => [s.id, s]));
+      const answer = (id: string, body: object) => fetch(`${mock.url}/api/sessions/${id}/answer`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       });
-      if (legacy) await answer;
-      else await until('the answer to be claimed and typing', async () => (await cart()).answered);
+      const { summary } = (await sessionsNow()).get('s-group');
+      const sends = [
+        answer('s-cart', { key: 'q:toolu_01Cart', choice: 'Keep the account cart' }),
+        answer('s-group', { key: `s:${summary.basis}`, choice: summary.decision.options[0].label }),
+      ];
+      if (legacy) await Promise.all(sends);
+      else await until('both answers to be claimed and typing', async () => {
+        const now = await sessionsNow();
+        return now.get('s-cart').answered && now.get('s-group').answered;
+      });
+      // A message meets an end-of-turn decision and claims it, so one still waiting its turn must not reach the fresh s-group.
+      sends.push(answer('s-group', { key: null, text: 'Also bump the version' }));
+      if (legacy) await sends[2];
+      else await until('the note to wait its turn', async () => (await mock.log()).some((e) => e.sessionId === 's-group' && e.body.key === null && e.status === null));
       await mock.post('/mock/scenario/queue');
-      const reply = await answer;
-      assert.deepEqual([reply.status, reply.status === 204 ? null : (await reply.json()).error], legacy ? [204, null] : [400, 'the mock loaded another scenario meanwhile']);
+      const replies = await Promise.all(sends.map(async (sent) => {
+        const reply = await sent;
+        return [reply.status, reply.status === 204 ? null : (await reply.json()).error];
+      }));
+      assert.deepEqual(replies, Array(3).fill(legacy ? [204, null] : [400, 'the mock loaded another scenario meanwhile']));
       await sleep(1000);
-      const s = await cart();
-      assert.deepEqual([s.question?.toolUseId, s.answered ?? null, s.status], ['toolu_01Cart', null, 'idle']);
+      const now = await sessionsNow();
+      const [cart, group] = [now.get('s-cart'), now.get('s-group')];
+      assert.deepEqual([cart.question?.toolUseId, cart.answered ?? null, cart.status], ['toolu_01Cart', null, 'idle']);
+      assert.deepEqual([decisionKey(group), group.answered ?? null, group.status], [`s:${summary.basis}`, null, 'idle']);
+    },
+  },
+  {
+    name: 'P1b.ui-entry a socket gets uiEntry, the build\'s entry script, on open and in every snapshot pushed after (on --legacy only on open); the open page keeps itself when the entry is its own',
+    async run({ page, mock }) {
+      const { legacy } = await mock.get('/mock');
+      await page.goto(`${mock.url}/`);
+      await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+      const entry = await page.eval(() => {
+        const w = window as unknown as Probe;
+        w.e2eMarker = true;
+        w.e2eMessages = [];
+        new WebSocket(`ws://${location.host}/ws/events`).onmessage = (e) => w.e2eMessages.push(JSON.parse(e.data));
+        return document.querySelector('script[type="module"][src]')?.getAttribute('src');
+      });
+      assert.match(entry ?? '', /^\/assets\/index-[\w-]+\.js$/);
+      assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: entry });
+      const title = 'Lazy-load product reviews, patched';
+      await mock.post('/mock/patch', { id: 's-reviews', patch: { title } });
+      assert.deepEqual(await page.until('the snapshot pushed after the patch', received, title), legacy ? { carries: false, uiEntry: null } : { carries: true, uiEntry: entry });
+      // The page's own socket got the same push; a reload it caused would have replaced the document by now.
+      await sleep(1000);
+      assert.deepEqual(await page.eval(navigation), { marker: true, type: 'navigate', entry });
+    },
+  },
+  {
+    name: 'P1b.ui-entry-build a build written into the folder the server serves reaches an open page: it reloads into the new entry once, and stays',
+    async run({ page }) {
+      const dist = mkdtempSync(join(tmpdir(), 'agent-board-dist-'));
+      let own: Mock | undefined;
+      try {
+        cpSync(BUILD, dist, { recursive: true });
+        own = await startMock({ dist });
+        await page.goto(`${own.url}/`);
+        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
+        const html = readFileSync(join(dist, 'index.html'), 'utf8');
+        const entry = html.match(/src="([^"]+\.js)"/)![1];
+        const next = entry.replace(/\.js$/, '-next.js');
+        copyFileSync(join(dist, entry), join(dist, next));
+        writeFileSync(join(dist, 'index.html'), html.replace(entry, next));
+        // Read twice 2 s apart before it counts, so the reload comes 2 to 4 s after the build.
+        const reloaded = await until('the page to reload into the new build', () => page.eval(navigation).then((n) => n.entry === next && n, () => null), 15_000);
+        assert.deepEqual(reloaded, { marker: null, type: 'reload', entry: next });
+        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
+        await own.post('/mock/patch', { id: 's-reviews', patch: { title: 'Lazy-load product reviews, patched' } });
+        await sleep(3000);
+        assert.deepEqual(await page.eval(navigation), { marker: true, type: 'reload', entry: next });
+      } finally {
+        await own?.stop();
+        rmSync(dist, { recursive: true, force: true });
+      }
     },
   },
   {
