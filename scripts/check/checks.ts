@@ -195,4 +195,26 @@ export const checks: Check[] = [
       await shot('narrow-task');
     },
   },
+  {
+    name: 'P2.1 fonts: Bricolage Grotesque and Hanken Grotesk come with the app, and the page asks no host but 127.0.0.1',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      const fonts = await page.eval(async () => {
+        await new Promise(requestAnimationFrame);
+        await document.fonts.ready;
+        return {
+          display: document.fonts.check('600 38px "Bricolage Grotesque Variable"'),
+          text: document.fonts.check('15px "Hanken Grotesk Variable"'),
+          loaded: [...new Set([...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replaceAll('"', '')))].toSorted(),
+        };
+      });
+      // check() is true for a family that nothing declares, too; only the loaded faces show the fonts arrived.
+      assert.deepEqual(fonts, { display: true, text: true, loaded: ['Bricolage Grotesque Variable', 'Hanken Grotesk Variable'] });
+      const files = page.requests.filter((url) => url.endsWith('.woff2')).map((url) => new URL(url).pathname.split('/').at(-1)!.replace(/-[\w-]{8}\.woff2$/, ''));
+      assert.deepEqual(files.toSorted(), ['bricolage-grotesque-latin-opsz-normal', 'hanken-grotesk-latin-wght-normal']);
+      const outside = page.requests.filter((url) => !/^(data|blob):/.test(url) && new URL(url).hostname !== '127.0.0.1');
+      assert.deepEqual(outside, []);
+    },
+  },
 ];

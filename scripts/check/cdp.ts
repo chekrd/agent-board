@@ -114,9 +114,14 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const cdp = (method: string, params: object = {}) => send(method, params, sessionId);
     const errors: string[] = [];
+    const requests: string[] = [];
     const onEvent = (e: CdpEvent) => {
       if (e.sessionId !== sessionId) return;
-      if (e.method === 'Runtime.exceptionThrown') {
+      if (e.method === 'Network.requestWillBeSent') {
+        requests.push(e.params.request.url);
+      } else if (e.method === 'Network.webSocketCreated') {
+        requests.push(e.params.url);
+      } else if (e.method === 'Runtime.exceptionThrown') {
         const d = e.params.exceptionDetails;
         errors.push(`uncaught: ${d.exception?.description ?? d.text}`);
       } else if (e.method === 'Runtime.consoleAPICalled' && (e.params.type === 'error' || e.params.type === 'assert')) {
@@ -126,7 +131,7 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
       }
     };
     listeners.add(onEvent);
-    await Promise.all([cdp('Page.enable'), cdp('Runtime.enable'), cdp('Log.enable')]);
+    await Promise.all([cdp('Page.enable'), cdp('Runtime.enable'), cdp('Log.enable'), cdp('Network.enable')]);
     await cdp('Emulation.setDeviceMetricsOverride', { width: look.width, height: look.height, deviceScaleFactor: 1, mobile: false });
     await cdp('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-color-scheme', value: look.scheme }, { name: 'prefers-reduced-motion', value: look.motion }],
@@ -156,6 +161,7 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
 
     return {
       errors,
+      requests,
       eval: run,
       until: <A extends unknown[], T>(what: string, fn: (...args: A) => T, ...args: A) => until(what, () => run(fn, ...args)),
       async goto(url: string) {

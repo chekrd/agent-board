@@ -26,7 +26,8 @@
     --add: light-dark(#15803d, #4ade80);
     --del: light-dark(#b91c1c, #f87171);
     --radius: 8px;
-    --font: system-ui, -apple-system, sans-serif;
+    --font-display: 'Bricolage Grotesque Variable', 'Hanken Grotesk Variable', system-ui, sans-serif;
+    --font: 'Hanken Grotesk Variable', system-ui, -apple-system, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
 }
@@ -39,6 +40,7 @@
     font: 13px/1.45 var(--font);
     -webkit-font-smoothing: antialiased;
   }
+  h1, h2, h3 { font-family: var(--font-display); }
   a { color: inherit; }
   code, pre, kbd { font-family: var(--mono); font-size: 0.95em; }
 
