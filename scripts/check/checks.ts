@@ -1339,4 +1339,41 @@ export const checks: Check[] = [
       assert.deepEqual(await page.until('the New task dialog after a reload', dialogPrompt), { value: 'Typed on the Wall', focused: true });
     },
   },
+  {
+    name: 'P4.esc-layers Esc over one file of the diff closes what is on top first: Keys, the ⋯ menu and the delete dialog each close and leave the file on its own; then Esc goes back to all files, and then closes the sheet',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.key('2');
+      await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+      await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
+      await page.until('server/git.ts whole', wholeFile, 'server/git.ts');
+      const layers = () => ({
+        keys: !!document.querySelector('dialog#keys[open]'),
+        menu: !!document.querySelector('[popover="auto"]:popover-open'),
+        delete: !!document.querySelector('dialog#delete-worktree[open]'),
+        sheet: !!document.querySelector('#task-sheet:modal'),
+        files: document.querySelectorAll('section[data-file]').length,
+      });
+      const escape = async (what: string, selector: string, open: () => Promise<void>) => {
+        await open();
+        await page.until(what, (s: string) => !!document.querySelector(s), selector);
+        await page.key('Escape');
+        await page.until(`${what} to close`, (s: string) => !document.querySelector(s), selector);
+        await sleep(150);
+        assert.deepEqual(await page.eval(layers), { keys: false, menu: false, delete: false, sheet: true, files: 1 }, what);
+        assert.equal(await page.eval(wholeFile, 'server/git.ts'), true, `Esc on ${what} let go of the one file`);
+      };
+      await escape('Keys', 'dialog#keys[open]', () => page.key('?'));
+      await escape('the ⋯ menu', '[popover="auto"]:popover-open', () => page.click('#task-sheet button[aria-label="Session actions"]'));
+      await escape('the delete dialog', 'dialog#delete-worktree[open]', async () => {
+        await page.click('#task-sheet button[aria-label="Session actions"]');
+        await page.click(':popover-open button', 'Delete worktree');
+      });
+      await page.key('Escape');
+      await page.until('all files again', () => document.querySelectorAll('section[data-file]').length === 12);
+      assert.equal(await page.eval(sheetOpen), true, 'Esc in one file closed the sheet');
+      await page.key('Escape');
+      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+    },
+  },
 ];

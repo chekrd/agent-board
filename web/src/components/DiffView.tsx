@@ -3,6 +3,7 @@ import type { ThemeRegistration } from 'shiki';
 import { FileDiff } from '@pierre/diffs/react';
 import { useEffect, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { api } from '../api.ts';
+import { SHEET_DIALOG } from '../keys.ts';
 import type { FullDiff } from '../types.ts';
 import styles from './DiffView.module.css';
 import { fileAnchor, FileTree, treeOrder } from './FileTree.tsx';
@@ -15,6 +16,8 @@ const FILE_OPTIONS = {
   diffStyle: 'split', theme: 'darcula', themeType: 'dark', overflow: 'scroll', lineDiffType: 'word', stickyHeader: true,
   unsafeCSS: '[data-diffs-header][data-diffs-header] { background-color: #2f2f2f; border-bottom: 1px solid #383838; }',
 } as const;
+
+const COVERS_SHEET = `dialog:modal:not(#${SHEET_DIALOG}), [popover="auto"]:popover-open`;
 
 // J and K step through the files of the diff on screen.
 let stepper: ((by: 1 | -1) => void) | null = null;
@@ -173,11 +176,12 @@ export function DiffView({ worktree }: { worktree: string }) {
     };
   });
 
-  // Esc in one file goes back to all files and keeps the sheet open.
+  // Esc in one file goes back to all files and keeps the sheet open. A dialog or the ⋯ menu over the sheet takes the
+  // Esc first: cancelling it here would keep that layer open.
   useEffect(() => {
     if (!focused) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector(COVERS_SHEET)) return;
       e.preventDefault();
       showAll();
     };
