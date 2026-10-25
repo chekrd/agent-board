@@ -56,6 +56,7 @@
     "check": "tsc && oxlint server web/src scripts && pnpm test",
     "claude:connect": "node scripts/claude.ts connect",
     "claude:disconnect": "node scripts/claude.ts disconnect",
-    "test": "node scripts/isolate.ts node --test 'server/**/*.test.ts' 'web/src/**/*.test.ts'"
+    "test": "node scripts/isolate.ts node --test 'server/**/*.test.ts' 'web/src/**/*.test.ts'",
+    "mock": "node scripts/mock/server.ts"
   }
 }
