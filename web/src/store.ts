@@ -1,27 +1,81 @@
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { wsUrl } from './api.ts';
+import { SHEET_DIALOG } from './keys.ts';
 import { orderKey } from './order.ts';
+import { active } from './outbox.ts';
+import { sends } from './sends.ts';
 import type { RepoView, Session } from './types.ts';
+import { isEditable, menuOpen } from './useKeys.ts';
+import { attentionChangesAt } from './util.ts';
+
+// Connecting until the first snapshot, live while the socket is open, reconnecting after a drop.
+export type Link = 'connecting' | 'live' | 'reconnecting';
 
 interface State {
   roots: string[];
   repos: RepoView[];
   sessions: Session[];
+  link: Link;
+  // link === 'live', for today's connection dot.
   connected: boolean;
+  // A new build has waited 15 s for a moment when reloading loses nothing.
+  newVersion: boolean;
 }
 
-let state: State = { roots: [], repos: [], sessions: [], connected: false };
+const RELOAD_CAP_MS = 15_000;
+
+let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', connected: false, newVersion: false };
 const subscribers = new Set<() => void>();
+let order = '';
+
+// On the queue the tiles' reorder would cut a card's own transition short, and under a sheet it has nothing to show.
+const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector(`#${SHEET_DIALOG}[open]`);
 
 function set(next: State) {
-  const reordered = orderKey(next.sessions) !== orderKey(state.sessions);
+  const key = orderKey(next.sessions);
+  const reordered = key !== order;
+  order = key;
   const apply = () => {
     state = next;
     for (const fn of subscribers) fn();
   };
-  if (reordered && state.connected && !document.hidden) document.startViewTransition(() => flushSync(apply));
+  if (reordered && state.link === 'live' && !document.hidden && reorderShows()) document.startViewTransition(() => flushSync(apply));
   else apply();
+}
+
+let wake: ReturnType<typeof setTimeout> | undefined;
+
+// A menu answered from the board turns from working to Needs focus by the clock alone, with no snapshot to say so.
+function wakeAtNextChange(sessions: Session[]) {
+  clearTimeout(wake);
+  const now = Date.now();
+  const next = Math.min(...sessions.flatMap((s) => {
+    const at = attentionChangesAt(s);
+    return at !== null && at > now ? [at] : [];
+  }));
+  if (next !== Infinity) wake = setTimeout(() => set({ ...state }), next - now);
+}
+
+// The build this page runs, named by its entry script: import.meta.url names whichever chunk this module lands in,
+// and a split that moved it would reload the page in a loop.
+const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
+let reloading = false;
+
+// A new build reloads the page once nothing would be lost: no send held, under way or waiting, no field focused (a
+// draft or a rename), and no dialog or menu open. Held sends keep their own timers meanwhile, and after 15 s the
+// top bar offers the reload instead.
+function reloadWhenFree() {
+  if (reloading) return;
+  reloading = true;
+  const since = Date.now();
+  const check = () => {
+    const free = !sends.items().some(active) && !isEditable(document.activeElement) && !document.querySelector('dialog[open]') && !menuOpen();
+    if (free) return location.reload();
+    if (!state.newVersion && Date.now() - since >= RELOAD_CAP_MS) set({ ...state, newVersion: true });
+    setTimeout(check, 250);
+  };
+  check();
 }
 
 async function connect() {
@@ -31,13 +85,17 @@ async function connect() {
       const { readable } = await ws.opened;
       for await (const message of readable) {
         const { uiEntry, ...next } = JSON.parse(String(message));
-        if (uiEntry && !import.meta.env.DEV && new URL(uiEntry, location.href).href !== import.meta.url) location.reload();
-        set({ ...next, connected: true });
+        if (uiEntry && !import.meta.env.DEV && entry && new URL(uiEntry, location.href).href !== entry) reloadWhenFree();
+        sends.reconcile(next.sessions);
+        sends.confirm(next.sessions);
+        if (state.link === 'reconnecting') sends.reconnected();
+        set({ ...state, ...next, link: 'live', connected: true });
+        wakeAtNextChange(next.sessions);
       }
     } catch {
       // reconnect below
     }
-    if (state.connected) set({ ...state, connected: false });
+    if (state.link === 'live') set({ ...state, link: 'reconnecting', connected: false });
     await new Promise((r) => setTimeout(r, 1000));
   }
 }
