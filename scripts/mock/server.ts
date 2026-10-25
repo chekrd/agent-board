@@ -104,8 +104,8 @@ function shown(s: Session) {
 
 const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
 
-// As in server/main.ts, a socket that opens gets the entry index.html names now and every push the one the polls took;
-// the server before named it only when a socket opened.
+// As in server/main.ts: every snapshot names the entry the polls have taken, and a socket that opens first reads
+// index.html, which can only cast doubt on it. On --legacy only a socket that opens is told an entry, what that read finds.
 const ui = watchEntry(() => readEntry(join(DIST, 'index.html')), () => {
   if (!args.legacy) push();
 });
@@ -762,11 +762,11 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws/events' || !allowed(req)) return socket.destroy();
   wss.handleUpgrade(req, socket, head, async (ws) => {
-    const uiEntry = await ui.fresh();
+    const read = await ui.fresh();
     if (ws.readyState !== ws.OPEN) return;
     clients.add(ws);
     ws.on('close', () => clients.delete(ws));
-    ws.send(JSON.stringify({ ...snapshot(), uiEntry }));
+    ws.send(JSON.stringify({ ...snapshot(), uiEntry: args.legacy ? read : ui.settled() }));
   });
 });
 

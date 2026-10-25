@@ -586,7 +586,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P1b.ui-entry-early a page loaded from a new build before the server has taken it loads once and stays: the snapshot on open names its entry, one pushed meanwhile none, and the one when the build is taken its entry',
+    name: 'P1b.ui-entry-early a page loaded from a new build before the server has taken it loads once and stays: the snapshot on open and one pushed meanwhile name no entry, and the one when the build is taken names its entry',
     async run({ page }) {
       await withOwnBuild(async (own, build) => {
         const url = `${own.url}/`;
@@ -597,7 +597,7 @@ export const checks: Check[] = [
         assert.equal(loads(page, url), 1, 'the page reloaded');
         await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
         assert.equal(await page.eval(listen), next);
-        assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: next });
+        assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: null });
         const title = 'Lazy-load product reviews, patched';
         await own.post('/mock/patch', { id: 's-reviews', patch: { title } });
         await sleep(300);
