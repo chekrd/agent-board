@@ -1,6 +1,7 @@
 import { useActionState, useState, type ReactNode } from 'react';
 import { api } from '../api.ts';
 import { openSheet } from '../router.ts';
+import { useStore } from '../store.ts';
 import type { Conversation, RepoView, Session, WorktreeView } from '../types.ts';
 import { ago } from '../util.ts';
 import { Icon } from './Icon.tsx';
@@ -17,6 +18,7 @@ export function openRepos() {
 }
 
 export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; repos: RepoView[]; sessions: Session[] }) {
+  const { link } = useStore();
   const [path, setPath] = useState('');
   const [error, addPath, adding] = useActionState(async () => {
     try {
@@ -65,7 +67,11 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
               <button type="button" className={styles.tiny} title="Search the scanned folders for repositories and worktrees again" onClick={() => api('POST', '/api/rescan').catch(reportError)}>Rescan</button>
             </div>
           )}
-          {!repos.length && <p className={styles.none}>Add a repository or a folder of repositories to begin.</p>}
+          {link === 'connecting' ? (
+            <p className={sheet.connecting}>Connecting…</p>
+          ) : (
+            !repos.length && <p className={styles.none}>Add a repository or a folder of repositories to begin.</p>
+          )}
           {repos.map((repo) => (
             <RepoSection key={repo.id} repo={repo} sessions={sessions} />
           ))}

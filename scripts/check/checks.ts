@@ -2932,4 +2932,27 @@ export const checks: Check[] = [
       await page.until('a click beside it to close the sheet', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
     },
   },
+  {
+    name: 'P6.repos-connecting Repos says Connecting… until the first snapshot, and its empty state once the board says there are no repositories',
+    scenario: 'norepos',
+    expectedErrors: [/WebSocket/],
+    async run({ page, mock, shot }) {
+      const repos = () => document.querySelector<HTMLDialogElement>('dialog#workspace')?.open && document.querySelector<HTMLElement>('dialog#workspace')!.innerText;
+      await withoutBoard(async (url) => {
+        await page.goto(`${url}/`);
+        await page.click('[data-repos]');
+        const text = await page.until('Repos', repos);
+        assert.match(text, /Connecting…/);
+        assert.doesNotMatch(text, /Add a repository or a folder of repositories to begin/);
+        await page.until('the dialog to settle', settled);
+        await shot('repos-connecting');
+      });
+      await page.goto(`${mock.url}/`);
+      await page.until('the live pill', () => !!document.querySelector('[data-link="live"]'));
+      await page.click('[data-repos]');
+      const text = await page.until('Repos', repos);
+      assert.match(text, /Add a repository or a folder of repositories to begin\./);
+      assert.doesNotMatch(text, /Connecting…/);
+    },
+  },
 ];
