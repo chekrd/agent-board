@@ -135,6 +135,7 @@
       font-weight: 700;
       box-shadow: 0 8px 22px -12px var(--accent-glow);
       &:hover:not(:disabled) { filter: brightness(1.06); }
+      &:disabled { background: var(--raised-2); border-color: var(--raised-2); color: var(--muted); box-shadow: none; opacity: 1; }
       kbd { background: rgb(20 25 0 / 0.1); border-color: rgb(20 25 0 / 0.22); }
     }
     &[data-variant="ghost"] {
