@@ -147,8 +147,4 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  @keyframes spin {
-    to { rotate: 360deg; }
-  }
 }
