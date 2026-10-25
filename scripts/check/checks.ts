@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { until, type Look, type Page } from './cdp.ts';
+import { sleep, until, type Look, type Page } from './cdp.ts';
 import type { Entry, Mock } from './mock.ts';
 
 export interface Context {
@@ -332,6 +332,24 @@ export const checks: Check[] = [
       await page.until('the s-cart tile to leave Decide', () =>
         document.querySelector('[data-tile]:has(a[href="/s/s-cart/details"])')?.getAttribute('data-attention') === 'idle');
       await shot('dismissed');
+    },
+  },
+  {
+    name: 'P1a.mock-reset an answer still typing when the scenario loads again fails and leaves the fresh scenario alone',
+    async run({ mock }) {
+      const { legacy } = await mock.get('/mock');
+      const cart = async () => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
+      const answer = fetch(`${mock.url}/api/sessions/s-cart/answer`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: 'q:toolu_01Cart', choice: 'Keep the account cart' }),
+      });
+      if (legacy) await answer;
+      else await until('the answer to be claimed and typing', async () => (await cart()).answered);
+      await mock.post('/mock/scenario/queue');
+      const reply = await answer;
+      assert.deepEqual([reply.status, reply.status === 204 ? null : (await reply.json()).error], legacy ? [204, null] : [400, 'the mock loaded another scenario meanwhile']);
+      await sleep(1000);
+      const s = await cart();
+      assert.deepEqual([s.question?.toolUseId, s.answered ?? null, s.status], ['toolu_01Cart', null, 'idle']);
     },
   },
 ];
