@@ -23,6 +23,20 @@ export function turnDecision(s: Session): Decision | null {
   return { ...summary.decision, options };
 }
 
+// The decision the task page shows. Unlike openDecision, archived and ended sessions keep theirs.
+export const decisionKey = (s: Session) =>
+  s.menu ? `m:${s.menu.toolUseId}` : s.question ? `q:${s.question.toolUseId}` : turnDecision(s) ? `s:${s.summary!.basis}` : null;
+
+// `seen` is the decision the page showed, null for none; a page built before this check sends nothing and
+// reloads once it reconnects. A typed reply may also meet a decision read from the end of the turn: that is
+// read from the very message the developer was answering, and the reply is sent the same either way.
+export function checkDecision(s: Session, seen: string | null | undefined, typed = false) {
+  if (seen === undefined) throw new Error('this page is out of date; reload it');
+  const open = decisionKey(s);
+  if (seen === open || (typed && seen === null && open?.startsWith('s:'))) return;
+  throw new Error(seen === null ? 'Claude has asked something meanwhile; read it first' : 'this question is no longer open');
+}
+
 const menuText = (menu: Menu) =>
   menu.questions.map((q, i) =>
     `${i + 1}. ${q.header ? `[${q.header}] ` : ''}${q.question} (${q.multiSelect ? 'pick any' : 'pick one, or write an own answer'})\n` +

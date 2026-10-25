@@ -10,13 +10,13 @@ export function MenuCard({ session, menu }: { session: Session; menu: Menu }) {
   const sessionId = session.id;
   const advice = adviceFor(session);
   const [answers, setAnswers] = useState<MenuAnswer[]>(() => menu.questions.map(() => ({ labels: [], other: '' })));
-  const [error, submit, pending] = useActionState(async () => {
+  const [, submit, pending] = useActionState(async () => {
     try {
       await sessionAction(sessionId, 'answer-menu', { toolUseId: menu.toolUseId, answers });
-      return null;
     } catch (err) {
-      return (err as Error).message;
+      reportError(err);
     }
+    return null;
   }, null);
   const set = (i: number, next: Partial<MenuAnswer>) => setAnswers(answers.map((a, j) => (j === i ? { ...a, ...next } : a)));
   const complete = answers.every((a) => a.labels.length || a.other.trim());
@@ -67,7 +67,6 @@ export function MenuCard({ session, menu }: { session: Session; menu: Menu }) {
       <div className={styles.submit}>
         <button type="submit" data-variant="primary" disabled={pending || !complete} title="Picks your answers in Claude's terminal menu">Send answer</button>
       </div>
-      {error && <p className={styles.error}>{error}</p>}
     </form>
   );
 }

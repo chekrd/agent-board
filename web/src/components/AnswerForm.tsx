@@ -1,7 +1,7 @@
 import { useActionState, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { api, sessionAction, upload } from '../api.ts';
-import type { Advice, Command, Menu, QuestionOption, Session } from '../types.ts';
-import { adviceFor } from '../util.ts';
+import type { Advice, Command, Menu, Session } from '../types.ts';
+import { adviceFor, type DecisionView } from '../util.ts';
 import styles from './AnswerForm.module.css';
 import { Elapsed } from './Elapsed.tsx';
 
@@ -17,22 +17,25 @@ interface Attachment {
   error: string | null;
 }
 
-export function AnswerForm({ session, options = [] }: { session: Session; options?: QuestionOption[] }) {
+export function AnswerForm({ session, decision = null }: { session: Session; decision?: DecisionView | null }) {
   const q = session.question;
+  const options = decision?.options ?? [];
+  const key = decision?.key ?? null;
   const advice = adviceFor(session);
-  const [error, submit, pending] = useActionState(async (_prev: string | null, form: FormData) => {
+  // Failures go to toasts: most mean the page is behind, and catching up replaces this form.
+  const [, submit, pending] = useActionState(async (_prev: null, form: FormData) => {
     try {
       const intent = form.get('intent');
-      if (intent === 'dismiss') await sessionAction(session.id, 'dismiss');
+      if (intent === 'dismiss') await sessionAction(session.id, 'dismiss', { key });
       else {
-        await sessionAction(session.id, 'answer', { choice: form.get('choice') || undefined, text: form.get('text') || undefined, files: form.getAll('file') });
+        await sessionAction(session.id, 'answer', { key, choice: form.get('choice') || undefined, text: form.get('text') || undefined, files: form.getAll('file') });
         setDraft('');
         clearFiles();
       }
-      return null;
     } catch (err) {
-      return (err as Error).message;
+      reportError(err);
     }
+    return null;
   }, null);
   const reply = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraftState] = useState(() => drafts.get(session.id) ?? '');
@@ -204,7 +207,6 @@ export function AnswerForm({ session, options = [] }: { session: Session; option
           </button>
         )}
       </div>
-      {error && <p className={styles.error}>{error}</p>}
     </form>
   );
 }
@@ -247,14 +249,12 @@ const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >=
 // Its buttons act on their own: it sits inside the reply form, which forms cannot nest.
 export function SecondOpinion({ session, advice: a, menu, onEdit }: { session: Session; advice: Advice; menu?: Menu; onEdit: (a: Advice) => void }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const act = async (action: string) => {
     setPending(true);
-    setError(null);
     try {
-      await sessionAction(session.id, action);
+      await sessionAction(session.id, action, { key: a.key });
     } catch (err) {
-      setError((err as Error).message);
+      reportError(err);
     } finally {
       setPending(false);
     }
@@ -303,7 +303,6 @@ export function SecondOpinion({ session, advice: a, menu, onEdit }: { session: S
         <button type="button" data-variant="primary" disabled={pending} onClick={() => act('accept-advice')}>Accept &amp; send</button>
         <button type="button" data-variant="ghost" disabled={pending} onClick={() => onEdit(a)} title={menu ? 'Pick the suggested answers below to change them first' : 'Copy the suggestion into the reply box to change it first'}>Edit</button>
       </div>
-      {error && <p className={styles.error}>{error}</p>}
     </div>
   );
 }

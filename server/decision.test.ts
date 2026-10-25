@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Session } from './db.ts';
-import { openDecision } from './decision.ts';
+import { checkDecision, decisionKey, openDecision } from './decision.ts';
 
 const session = (patch: Partial<Session>): Session => ({
   id: 's', repoId: 1, worktree: '/w', cwd: '/w', pid: 1, tty: null, title: null, firstPrompt: null, status: 'idle',
@@ -40,4 +40,38 @@ test('a menu comes before an ask_human call, which comes before the end of the t
 
 test('an ended session waits on nothing', () => {
   assert.equal(openDecision(session({ question, status: 'exited' })), null);
+});
+
+test('the decision the page shows, archived and ended sessions included', () => {
+  assert.equal(decisionKey(session({ question, archived: true })), 'q:q1');
+  assert.equal(decisionKey(session({ question, status: 'exited' })), 'q:q1');
+  assert.equal(decisionKey(session({ summary: summary('t2'), question, menu })), 'm:m1');
+  assert.equal(decisionKey(session({ summary: summary('t2') })), 's:t2');
+  assert.equal(decisionKey(session({ summary: summary('t1') })), null);
+});
+
+test('acting on the decision the page showed goes through while it is still open', () => {
+  for (const s of [session({ menu }), session({ question }), session({ summary: summary('t2') }), session({})]) {
+    assert.doesNotThrow(() => checkDecision(s, decisionKey(s)));
+    assert.doesNotThrow(() => checkDecision(s, decisionKey(s), true));
+  }
+});
+
+test('a decision that was replaced, answered in the terminal or moved on from is no longer open', () => {
+  assert.throws(() => checkDecision(session({ question }), 'q:q0'), /no longer open/);
+  assert.throws(() => checkDecision(session({ status: 'working' }), 'q:q1', true), /no longer open/);
+  assert.throws(() => checkDecision(session({ summary: summary('t2'), status: 'working' }), 's:t2'), /no longer open/);
+  assert.throws(() => checkDecision(session({ summary: summary('t3'), lastTurn: 't3' }), 's:t2'), /no longer open/);
+  assert.throws(() => checkDecision(session({ question, menu }), 'q:q1'), /no longer open/);
+});
+
+test('with no decision on the page, only a typed reply may meet one read from the end of the turn', () => {
+  assert.doesNotThrow(() => checkDecision(session({ summary: summary('t2') }), null, true));
+  assert.throws(() => checkDecision(session({ question }), null, true), /asked something meanwhile/);
+  assert.throws(() => checkDecision(session({ menu }), null, true), /asked something meanwhile/);
+  assert.throws(() => checkDecision(session({ summary: summary('t2') }), null), /asked something meanwhile/);
+});
+
+test('a page from before decision keys is told to reload', () => {
+  assert.throws(() => checkDecision(session({}), undefined, true), /out of date/);
 });

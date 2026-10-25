@@ -150,10 +150,15 @@ app.get('/api/sessions/:id/artifacts/:artifact', async (c) => {
 
 app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));
 
+// These act on the decision the page showed and name it in `key`; answer and answer-menu check their own.
+const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-advice', 'elaborate']);
+
 app.post('/api/sessions/:id/:action', async (c) => {
   const id = c.req.param('id');
+  const action = c.req.param('action');
   const body = await c.req.json().catch(() => ({}));
-  switch (c.req.param('action')) {
+  if (onDecision.has(action)) S.expectDecision(id, body.key);
+  switch (action) {
     case 'answer': await S.answer(id, body); break;
     case 'dismiss': S.dismiss(id); break;
     case 'rename': await S.rename(id, body.title); break;

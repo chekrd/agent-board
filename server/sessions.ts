@@ -9,7 +9,7 @@ import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
-import { openDecision } from './decision.ts';
+import { checkDecision, openDecision } from './decision.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
@@ -230,7 +230,11 @@ async function isCommand(s: Session, text: string) {
   return !!name && (await listCommands(s.worktree)).some((c) => c.name === name);
 }
 
-export async function answer(id: string, reply: { choice?: string; text?: string; files?: string[] }, commands = true) {
+export function expectDecision(id: string, seen: string | null | undefined) {
+  checkDecision(must(id), seen);
+}
+
+export async function answer(id: string, reply: { key?: string | null; choice?: string; text?: string; files?: string[] }, commands = true) {
   const s = must(id);
   const tty = liveTty(s);
   if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
@@ -242,6 +246,7 @@ export async function answer(id: string, reply: { choice?: string; text?: string
     await terminal.send(tty, text);
     return;
   }
+  checkDecision(s, reply.key, !reply.choice);
   const parts = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', reply.text?.trim() ?? '']
     .filter(Boolean);
   await terminal.send(tty, parts.join(' — '), files);
@@ -288,7 +293,7 @@ export async function acceptAdvice(id: string) {
   const decision = openDecision(s);
   if (a?.state !== 'done' || a.key !== decision?.key) throw new Error('no advice to accept');
   if (decision.menu) await answerMenu(id, { toolUseId: decision.menu.toolUseId, answers: a.answers ?? [] });
-  else await answer(id, { choice: a.choice ?? undefined, text: a.answer }, false);
+  else await answer(id, { key: a.key, choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
 export async function openIn(id: string, app: 'finder' | 'vscode') {

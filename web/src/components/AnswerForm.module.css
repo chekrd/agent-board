@@ -85,8 +85,6 @@
     span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 
-  .error { color: var(--del); font-size: 12px; }
-
   .advice {
     display: flex;
     flex-direction: column;

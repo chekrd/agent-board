@@ -204,7 +204,7 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
   const q = session.question;
   const [open, setOpen] = useState(false);
   const explanation = session.explanation?.key === decision.key ? session.explanation : null;
-  const request = () => sessionAction(session.id, 'elaborate').catch(reportError);
+  const request = () => sessionAction(session.id, 'elaborate', { key: decision.key }).catch(reportError);
   const toggle = () => {
     if (!open && (!explanation || explanation.state === 'failed')) void request();
     setOpen(!open);
@@ -238,7 +238,7 @@ function DecisionCard({ session, decision }: { session: Session; decision: Decis
           )}
         </div>
       )}
-      <AnswerForm session={session} options={decision.options} />
+      <AnswerForm session={session} decision={decision} />
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { turnDecision } from '../../server/decision.ts';
+import { decisionKey, turnDecision } from '../../server/decision.ts';
 import type { QuestionOption, RepoView, Session } from './types.ts';
 
 export function locate(repos: RepoView[], session: Session) {
@@ -39,8 +39,7 @@ export function decisionOf(s: Session): DecisionView | null {
 
 // The advice shown with the decision or menu the session waits on now, never one left from an earlier one.
 export function adviceFor(s: Session) {
-  const key = s.menu ? `m:${s.menu.toolUseId}` : decisionOf(s)?.key;
-  return s.advice && s.advice.key === key ? s.advice : null;
+  return s.advice && s.advice.key === decisionKey(s) ? s.advice : null;
 }
 
 export type Attention = 'decide' | 'focus' | 'working' | 'idle' | 'exited';
