@@ -1,5 +1,11 @@
 import { useEffect, useEffectEvent } from 'react';
-import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action, type KeyContext, type Target } from './keys.ts';
+import { stepFile } from './components/DiffView.tsx';
+import { toggleKeys } from './components/KeysDialog.tsx';
+import { openNewTask } from './components/NewTaskForm.tsx';
+import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action, type Card, type KeyContext, type Target } from './keys.ts';
+import { queue } from './queue.ts';
+import { go, showTab, viewPath, type Route } from './router.ts';
+import { sends } from './sends.ts';
 
 const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="file"])';
 const CONTROL = 'button, a[href], input, select, summary';
@@ -90,4 +96,45 @@ export function useKeys(context: () => Omit<KeyContext, 'target' | 'modal' | 'po
       removeEventListener('pointerdown', onPointerDown, true);
     };
   }, []);
+}
+
+// The card the queue shows, with what its keys do. The queue sets it while a card is on screen.
+export interface Front {
+  card: Card;
+  act: (action: Action, e: KeyboardEvent) => void;
+}
+
+let front: Front | null = null;
+
+export function useFront(value: Front | null) {
+  useEffect(() => {
+    front = value;
+    return () => {
+      if (front === value) front = null;
+    };
+  }, [value]);
+}
+
+// The board's keys: switching views, New task, the Keys dialog, Undo and the sheet's tabs and files here, and the
+// card's keys through the front the queue sets.
+export function useBoardKeys({ route, deck, repos, artifacts }: { route: Route; deck: number; repos: boolean; artifacts: boolean }) {
+  useKeys(
+    () => ({
+      view: route.view,
+      sheet: route.sheet ? { tab: route.sheet.tab, artifacts } : null,
+      card: front?.card ?? null,
+      deck,
+      guarded: queue.guarded(),
+      repos,
+    }),
+    (action, e) => {
+      if (action.type === 'view') go(viewPath(action.to));
+      else if (action.type === 'new-task') openNewTask(route.view);
+      else if (action.type === 'keys') toggleKeys();
+      else if (action.type === 'undo') sends.undo();
+      else if (action.type === 'tab') showTab(action.tab);
+      else if (action.type === 'file') stepFile(action.step);
+      else front?.act(action, e);
+    },
+  );
 }

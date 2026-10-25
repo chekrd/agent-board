@@ -112,6 +112,7 @@ export function AnswerForm({ session, decision = null }: { session: Session; dec
       e.preventDefault();
       setPicked((i) => (i + (e.key === 'ArrowDown' ? 1 : matches.length - 1)) % matches.length);
     } else if (matches.length && e.key === 'Escape') {
+      e.preventDefault();
       setClosed(true);
     } else if (matches.length && (e.key === 'Tab' || (e.key === 'Enter' && !exact))) {
       e.preventDefault();

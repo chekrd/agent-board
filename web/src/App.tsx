@@ -1,75 +1,52 @@
 import { useEffect } from 'react';
 import styles from './App.module.css';
-import { Detail } from './components/Detail.tsx';
-import { NewTaskDialog } from './components/NewTaskDialog.tsx';
+import { AgentsDock } from './components/AgentsDock.tsx';
+import { DeleteWorktreeDialog } from './components/DeleteWorktreeDialog.tsx';
+import { KeysDialog } from './components/KeysDialog.tsx';
+import { NewTaskDialog } from './components/NewTaskForm.tsx';
+import { Queue, useDeckSync } from './components/Queue.tsx';
+import { TaskSheet } from './components/TaskSheet.tsx';
 import { Toasts } from './components/Toasts.tsx';
-import { Tile } from './components/Tile.tsx';
+import { TopBar } from './components/TopBar.tsx';
+import { Wall } from './components/Wall.tsx';
 import { WorkspaceDialog } from './components/WorkspaceDialog.tsx';
-import { orderTiles } from './order.ts';
+import { deckOf } from './deck.ts';
 import { useRoute } from './router.ts';
+import { sends, useSends } from './sends.ts';
 import { useStore } from './store.ts';
+import { useBoardKeys } from './useKeys.ts';
 import { attentionOf } from './util.ts';
 
 export function App() {
-  const { roots, repos, sessions, connected } = useStore();
+  const store = useStore();
   const route = useRoute();
-  const selected = sessions.find((s) => s.id === route.sessionId);
-  const deciding = sessions.filter((s) => !s.archived && attentionOf(s) === 'decide').length;
+  useSends();
+  const deck = deckOf(store.sessions, sends.busy());
+  const deciding = deck.filter((s) => attentionOf(s) === 'decide').length;
+  const sheetSession = route.sheet && store.sessions.find((s) => s.id === route.sheet!.id);
 
   useEffect(() => {
     document.title = deciding ? `(${deciding}) Agent Board` : 'Agent Board';
   }, [deciding]);
 
+  useEffect(() => {
+    document.documentElement.dataset.view = route.view;
+  }, [route.view]);
+
+  useDeckSync(deck, store.link !== 'connecting');
+  useBoardKeys({ route, deck: deck.length, repos: store.repos.length > 0, artifacts: !!sheetSession?.artifacts.length });
+
   return (
     <div className={styles.app}>
-      {route.sessionId ? (
-        selected ? (
-          <Detail key={selected.id} session={selected} repos={repos} tab={route.tab} item={route.item} />
-        ) : (
-          <div className={styles.placeholder}>
-            {connected ? <>This task is gone. <a href="/">All tasks</a></> : 'Connecting…'}
-          </div>
-        )
-      ) : (
-        <Board />
-      )}
-      <NewTaskDialog repos={repos} />
-      <WorkspaceDialog roots={roots} repos={repos} sessions={sessions} />
+      <TopBar route={route} deck={deck} />
+      {route.view === 'queue' ? <Queue deck={deck} /> : <Wall deck={deck} />}
+      {route.view === 'queue' && <AgentsDock />}
+      <TaskSheet route={route} />
+      <NewTaskDialog repos={store.repos} />
+      <WorkspaceDialog roots={store.roots} repos={store.repos} sessions={store.sessions} />
+      <KeysDialog />
+      <DeleteWorktreeDialog />
       <Toasts />
     </div>
-  );
-}
-
-function Board() {
-  const { repos, sessions, connected } = useStore();
-  const { active, archived } = orderTiles(sessions);
-
-  return (
-    <>
-      <header className={styles.header}>
-        <h1>Agent Board</h1>
-        <span className={styles.connection} data-connected={connected} title={connected ? 'Connected to Agent Board; the board updates live' : 'Disconnected from Agent Board; reconnecting'} />
-        <button commandfor="workspace" command="show-modal" data-variant="ghost">Repos</button>
-        <button commandfor="new-task" command="show-modal" data-variant="primary" disabled={!repos.length}>New task</button>
-      </header>
-      <main className={styles.board}>
-        <div className={styles.tiles}>
-          {active.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
-        </div>
-        {!active.length && (
-          <p className={styles.empty}>
-            {repos.length ? 'No sessions yet. Start one with New task.' : 'Add a repository or a folder of repositories under Repos to begin.'}
-          </p>
-        )}
-        {archived.length > 0 && (
-          <details className={styles.archived}>
-            <summary>Archived ({archived.length})</summary>
-            <div className={styles.tiles}>
-              {archived.map((s) => <Tile key={s.id} session={s} repos={repos} />)}
-            </div>
-          </details>
-        )}
-      </main>
-    </>
   );
 }

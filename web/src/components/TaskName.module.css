@@ -1,0 +1,46 @@
+@layer components {
+  .title {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    font-size: 25px;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: -0.012em;
+  }
+
+  .name {
+    min-width: 0;
+    margin: -2px -8px;
+    padding: 2px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+    &:hover { background: var(--hover); }
+  }
+
+  .input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 560px;
+    height: 40px;
+    margin-left: -10px;
+    padding: 0 10px;
+    border: 1.5px solid var(--accent-line);
+    border-radius: 10px;
+    font: 650 23px var(--font-display);
+    &:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+  }
+
+  @media (max-width: 760px) {
+    .title { font-size: 22px; }
+    .name { white-space: normal; }
+  }
+}

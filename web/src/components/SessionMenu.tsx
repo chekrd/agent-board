@@ -1,56 +1,88 @@
-import { api, sessionAction } from '../api.ts';
+import { useId } from 'react';
+import { sessionAction } from '../api.ts';
+import { closeSheetOf } from '../router.ts';
+import { sends } from '../sends.ts';
 import type { Session, WorktreeView } from '../types.ts';
+import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
+import { Icon } from './Icon.tsx';
 import styles from './SessionMenu.module.css';
+import { toast } from './Toasts.tsx';
 
-export function SessionMenu({ session, worktree }: { session: Session; worktree: WorktreeView | undefined }) {
-  const id = `menu-${session.id}`;
-  const act = (action: string, body?: unknown) => () => {
-    document.getElementById(id)?.hidePopover();
-    sessionAction(session.id, action, body).catch(reportError);
-  };
+// A held answer would otherwise be pasted into the terminal while someone types in it.
+export function openTerminal(id: string) {
+  sends.sendNow(id);
+  return sessionAction(id, 'focus');
+}
+
+export function archive(session: Session, name: string) {
+  sessionAction(session.id, 'archive', { archived: true }).then(() => {
+    const undo = () => void sessionAction(session.id, 'archive', { archived: false }).catch(reportError);
+    toast('undo', `Archived ${name}`, { session: session.id, action: { label: 'Undo', run: undo } });
+  }, reportError);
+}
+
+export function SessionMenu({ session, worktree, name }: { session: Session; worktree: WorktreeView | undefined; name: string }) {
+  const id = useId();
   const exited = session.status === 'exited';
-  const deleteWorktree = async () => {
+  const pick = (run: () => unknown) => () => {
     document.getElementById(id)?.hidePopover();
-    const loss = await api<Loss>('GET', `/api/sessions/${session.id}/delete-worktree`).catch((err: Error) => err);
-    if (!confirm(deleteMessage(session.worktree, loss))) return;
-    act('delete-worktree')();
+    run();
   };
+  const act = (action: string, body?: unknown) => pick(() => sessionAction(session.id, action, body).catch(reportError));
 
   return (
     <>
-      <button popoverTarget={id} data-variant="ghost" aria-label="Session actions" title="More actions">⋯</button>
+      <button type="button" className={styles.more} popoverTarget={id} aria-label="Session actions" title="More actions">
+        <Icon name="more" size={18} />
+      </button>
       <div id={id} popover="auto" className={styles.menu}>
-        <button onClick={act('focus')} title={exited ? 'Continue this conversation' : 'Show its terminal in Ghostty'}>{exited ? 'Continue' : 'Terminal'}</button>
-        <button onClick={act('finder')} title={session.worktree}>Open in Finder</button>
-        <button onClick={act('vscode')} title={session.worktree}>Open in VS Code</button>
-        {!exited && <button onClick={act('quit')} title="Stop the Claude process; the conversation can be continued later">Quit Claude</button>}
-        <button onClick={act('archive', { archived: !session.archived })}>{session.archived ? 'Unarchive' : 'Archive'}</button>
-        {exited && <button onClick={act('forget')} data-variant="danger" title="Drop the tile; the conversation and worktree stay">Remove from list</button>}
-        {worktree && !worktree.isMain && <button onClick={deleteWorktree} data-variant="danger" title="Quit Claude and delete the worktree and its local branch">Delete worktree…</button>}
+        {exited ? (
+          <Item label="Continue" note="Resume the conversation in a hidden terminal" onClick={act('focus')} />
+        ) : (
+          <Item label="Terminal" note="Show its terminal in Ghostty" onClick={pick(() => openTerminal(session.id).catch(reportError))} />
+        )}
+        <Item label="Open in Finder" note={session.worktree} onClick={act('finder')} />
+        <Item label="Open in VS Code" note={session.worktree} onClick={act('vscode')} />
+        {!exited && <Item label="Quit Claude" note="Stops the process; Continue picks it up later" onClick={act('quit')} />}
+        {session.archived ? (
+          <Item label="Unarchive" note="Back into the queue and the strip" onClick={act('archive', { archived: false })} />
+        ) : (
+          <Item label="Archive" note="Hide it; ranking, advice and summaries stop" onClick={pick(() => archive(session, name))} />
+        )}
+        {exited && (
+          <Item
+            label="Remove from list"
+            note="The conversation and worktree stay"
+            danger
+            onClick={pick(() => {
+              closeSheetOf(session.id);
+              sessionAction(session.id, 'forget').catch(reportError);
+            })}
+          />
+        )}
+        {worktree && !worktree.isMain && (
+          <Item label="Delete worktree…" note="Quits Claude, deletes the worktree and its branch" danger onClick={pick(() => askDeleteWorktree(session))} />
+        )}
       </div>
     </>
   );
 }
 
-interface Loss {
-  branch: string | null;
-  deletesBranch: boolean;
-  files: number;
-  commits: number;
+function Item({ label, note, danger = false, onClick }: { label: string; note: string; danger?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={styles.item} data-danger={danger || undefined} onClick={onClick}>
+      <span className={styles.label}>{label}</span>
+      <span className={styles.note}>{note}</span>
+    </button>
+  );
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-function deleteMessage(path: string, loss: Loss | Error) {
-  const tail = "Claude quits and the worktree's terminals close.";
-  if (loss instanceof Error) return `Delete the worktree?\n\n${path}\n\nCould not check what would be lost (${loss.message}); uncommitted changes and unpushed commits may be lost.\n\n${tail}`;
-  const what = loss.deletesBranch ? `the worktree and its local branch ${loss.branch}` : 'the worktree';
-  const lost = [
-    loss.files && plural(loss.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
-    loss.commits && `${plural(loss.commits, 'commit', 'commits')} that no other branch or remote has`,
-  ].filter(Boolean);
-  const verdict = lost.length
-    ? `This throws away:\n${lost.map((l) => `• ${l}`).join('\n')}`
-    : 'Nothing is lost: there are no uncommitted changes, and every commit is on a remote or another branch.';
-  return `Delete ${what}?\n\n${path}\n\n${verdict}\n\n${tail}`;
+export function FocusButton({ session }: { session: Session }) {
+  const exited = session.status === 'exited';
+  const open = () => (exited ? sessionAction(session.id, 'focus') : openTerminal(session.id)).catch(reportError);
+  return (
+    <button type="button" data-variant="primary" title={exited ? 'Continue this conversation' : 'Show its terminal in Ghostty'} onClick={open}>
+      {exited ? 'Continue' : 'Terminal'}
+    </button>
+  );
 }

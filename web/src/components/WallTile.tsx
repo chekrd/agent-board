@@ -1,0 +1,85 @@
+import type { MouseEvent } from 'react';
+import { openDecision } from '../../../server/decision.ts';
+import { promptOf } from '../deck.ts';
+import { openSheet, sessionPath } from '../router.ts';
+import type { RepoView, Session } from '../types.ts';
+import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, type Attention } from '../util.ts';
+import { Clock } from './Clock.tsx';
+import { SessionMenu } from './SessionMenu.tsx';
+import { StateMark } from './StateMark.tsx';
+import { PrChip, STATE_HINTS, STATE_LABELS } from './Status.tsx';
+import styles from './WallTile.module.css';
+
+function textOf(s: Session, attention: Attention) {
+  if (attention === 'decide') return decisionOf(s)?.problem ?? s.menu!.questions.map((q) => q.question).join(' · ');
+  if (attention === 'focus') return promptOf(s).headline;
+  return s.summary?.text ?? s.firstPrompt ?? 'Starting…';
+}
+
+function adviceTag(s: Session) {
+  const a = adviceFor(s);
+  if (a?.state === 'done') return `Second opinion · ${a.confidence}%`;
+  return a?.state === 'thinking' ? 'Second opinion running' : null;
+}
+
+// The whole tile opens the task, but through a click on the article rather than a link stretched over it, which
+// would sit above every label and hide its tooltip.
+export function WallTile({ session, repos }: { session: Session; repos: RepoView[] }) {
+  const { repo, worktree, branch } = locate(repos, session);
+  const name = sessionLabel(session, branch);
+  const attention = attentionOf(session);
+  const archived = session.archived;
+  const label = archived ? 'Archived' : STATE_LABELS[attention];
+  const working = !archived && attention === 'working';
+  const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
+  const tag = attention === 'decide' && !archived ? adviceTag(session) : null;
+
+  const open = (e: MouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('a, button, [popover]') || getSelection()?.toString()) return;
+    openSheet(session.id);
+  };
+  const follow = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openSheet(session.id);
+  };
+
+  return (
+    <article
+      className={styles.tile}
+      data-tile
+      data-session={session.id}
+      data-attention={attention}
+      data-archived={archived || undefined}
+      aria-label={`${name}, ${label}`}
+      onClick={open}
+    >
+      <header className={styles.head}>
+        <StateMark state={archived ? 'archived' : attention} />
+        <span className={styles.state} title={archived ? undefined : STATE_HINTS[attention]}>{label}</span>
+        <span className={styles.age} title={asked !== undefined ? undefined : session.summary ? 'When the status was last updated' : 'When the session last changed'}>
+          {asked !== undefined ? `asked ${ago(asked)}` : ago(session.summary?.at ?? session.updatedAt)}
+        </span>
+        <span className={styles.menu}>
+          <SessionMenu session={session} worktree={worktree} name={name} />
+        </span>
+      </header>
+      <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
+      <p className={styles.text}>{textOf(session, attention)}</p>
+      {working && (
+        <div className={styles.work}>
+          <code>{session.activity?.step ?? 'Starting'}</code>
+          {session.activity && <span className={styles.clock} title="How long the turn has run"><Clock since={session.activity.since} /></span>}
+        </div>
+      )}
+      {!archived && (
+        <footer className={styles.foot}>
+          <span className={styles.where}>{repo?.name} · {branch}</span>
+          {tag && <span className={styles.tag}>{tag}</span>}
+          {!!session.summary?.learnings?.length && <span className={styles.know} title="Claude found something notable; open the task to read it">Worth knowing</span>}
+          <PrChip pr={session.pr} status={session.status} />
+        </footer>
+      )}
+    </article>
+  );
+}

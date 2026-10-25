@@ -1,7 +1,8 @@
-import { sessionPath } from '../router.ts';
+import { showTab } from '../router.ts';
 import type { Session } from '../types.ts';
 import { ago } from '../util.ts';
 import styles from './Artifacts.module.css';
+import { Icon } from './Icon.tsx';
 
 export const artifactUrl = (sessionId: string, id: string) => `/api/sessions/${sessionId}/artifacts/${id}`;
 
@@ -11,27 +12,24 @@ export function Artifacts({ session, item }: { session: Session; item: string | 
   if (!shown) return <p className={styles.empty}>Claude has not made any artifacts in this session.</p>;
   return (
     <div className={styles.artifacts}>
-      <nav className={styles.bar}>
+      <div className={styles.list} role="tablist" aria-label="Artifacts" aria-orientation="vertical">
         {list.map((a) => (
-          <a key={a.id} href={sessionPath(session.id, 'artifacts', a.id)} aria-current={a.id === shown.id ? 'page' : undefined} title={`Made ${ago(a.at)}`}>
-            {a.title}
-          </a>
+          <button key={a.id} type="button" role="tab" aria-selected={a.id === shown.id} onClick={() => showTab('artifacts', a.id)}>
+            <strong>{a.title}</strong>
+            <span>made {ago(a.at)}</span>
+          </button>
         ))}
-        <a className={styles.external} href={artifactUrl(session.id, shown.id)} target="_blank" rel="noreferrer">Open in new tab ↗</a>
-      </nav>
-      <iframe key={shown.id} className={styles.frame} title={shown.title} src={artifactUrl(session.id, shown.id)} sandbox="allow-scripts" />
+      </div>
+      <div className={styles.viewer} role="tabpanel">
+        <header>
+          <strong>{shown.title}</strong>
+          <span>made {ago(shown.at)}</span>
+          <a href={artifactUrl(session.id, shown.id)} target="_blank" rel="noreferrer">
+            Open in new tab <Icon name="external" size={14} />
+          </a>
+        </header>
+        <iframe key={shown.id} className={styles.frame} title={shown.title} src={artifactUrl(session.id, shown.id)} sandbox="allow-scripts" />
+      </div>
     </div>
-  );
-}
-
-export function ArtifactLinks({ session }: { session: Session }) {
-  return (
-    <ul className={styles.links}>
-      {session.artifacts.toReversed().map((a) => (
-        <li key={a.id}>
-          <a href={sessionPath(session.id, 'artifacts', a.id)}>{a.title}</a> <span>{ago(a.at)}</span>
-        </li>
-      ))}
-    </ul>
   );
 }

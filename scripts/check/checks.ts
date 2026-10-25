@@ -59,10 +59,12 @@ const loads = (page: Page, url: string) => page.requests.filter((u) => u === url
 
 // Page functions: they run in the browser, so they use only their arguments.
 
+// The connection pill: its state, its text, and whether its dot is green (live) or warm (reconnecting).
 const connection = () => {
-  const dot = document.querySelector('[data-connected]');
+  const pill = document.querySelector<HTMLElement>('[data-link]');
+  const dot = pill?.firstElementChild;
   const [r, g] = (dot ? getComputedStyle(dot).backgroundColor.match(/\d+/g) ?? [] : []).map(Number);
-  return { connected: dot?.getAttribute('data-connected') ?? null, red: r > g, green: g > r };
+  return { link: pill?.dataset.link ?? null, text: pill?.innerText.trim() ?? null, warm: r > g, green: g > r };
 };
 
 const sidewaysScroll = () => {
@@ -147,7 +149,7 @@ export const checks: Check[] = [
       await shot('board');
 
       await page.click('[data-tile] a', 'Merge guest cart on login');
-      await page.until('the task page with its 3 options', () => location.pathname === '/s/s-cart/details' && document.querySelectorAll('button[name="choice"]').length === 3);
+      await page.until('the sheet with its 3 options', () => location.pathname === '/s/s-cart/overview' && document.querySelectorAll('button[name="choice"]').length === 3);
       await shot('task-ask');
       await page.click('button[name="choice"]', 'Keep the account cart');
       const answers = await logged(mock, 'the answer', (e) => e.action === 'answer');
@@ -155,8 +157,8 @@ export const checks: Check[] = [
       const [a] = answers;
       assert.deepEqual([a.sessionId, a.body.key, a.body.choice, a.status], ['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]);
 
-      await page.click('a[href="/"]');
-      await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile]:has(a[href="/s/s-cart/details"])')?.getAttribute('data-attention') === 'working');
+      await page.click('#task-sheet button[aria-label^="Back to"]');
+      await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'working');
       assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
       assert.equal(await page.eval(() => document.title), '(2) Agent Board');
       await shot('board-answered');
@@ -169,7 +171,7 @@ export const checks: Check[] = [
       await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
       await page.goto(`${mock.url}/`);
       await page.click('[data-tile] a', 'Retry failed webhooks');
-      await page.until('the menu with its 2 questions', () => location.pathname === '/s/s-hooks/details' && document.querySelectorAll('fieldset').length === 2);
+      await page.until('the menu with its 2 questions', () => location.pathname === '/s/s-hooks/overview' && document.querySelectorAll('fieldset').length === 2);
       await page.click('fieldset button', 'Exponential, 5 tries');
       await page.click('fieldset button', 'Email the account owner');
       await shot('task-menu');
@@ -222,39 +224,40 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P0.5 a dropped connection (/mock/drop 3 s): the dot turns red, then green',
+    name: 'P0.5 a dropped connection (/mock/drop 3 s): the pill turns Reconnecting… with a warm dot, then Live with a green one',
     expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the live dot', () => document.querySelector('[data-connected="true"]') !== null);
-      assert.deepEqual(await page.eval(connection), { connected: 'true', red: false, green: true });
+      await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
+      assert.deepEqual(await page.eval(connection), { link: 'live', text: 'Live', warm: false, green: true });
       const start = Date.now();
       await mock.post('/mock/drop', { ms: 3000 });
-      await page.until('the dot to turn red', () => document.querySelector('[data-connected="false"]') !== null);
+      await page.until('the pill to turn reconnecting', () => document.querySelector('[data-link="reconnecting"]') !== null);
       const down = Date.now() - start;
-      assert.deepEqual(await page.eval(connection), { connected: 'false', red: true, green: false });
+      assert.deepEqual(await page.eval(connection), { link: 'reconnecting', text: 'Reconnecting…', warm: true, green: false });
       await shot('connection-dropped');
-      await until('the dot to turn green again', () => page.eval(() => document.querySelector('[data-connected="true"]') !== null), 10_000);
+      await until('the pill to turn live again', () => page.eval(() => document.querySelector('[data-link="live"]') !== null), 10_000);
       const back = Date.now() - start;
-      assert.ok(down < 1500, `red after ${down} ms`);
-      assert.ok(back >= 3000, `green after ${back} ms, inside the drop`);
-      assert.deepEqual(await page.eval(connection), { connected: 'true', red: false, green: true });
+      assert.ok(down < 1500, `reconnecting after ${down} ms`);
+      assert.ok(back >= 3000, `live after ${back} ms, inside the drop`);
+      assert.deepEqual(await page.eval(connection), { link: 'live', text: 'Live', warm: false, green: true });
       await shot('connection-back');
     },
   },
   {
-    name: 'P0 narrow smoke: no sideways scroll on the board or the task page; New task and the options stay reachable',
+    name: 'P0 narrow smoke: no sideways scroll on the board or in the sheet; New task and the options stay reachable',
     narrow: true,
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
       assert.deepEqual(await page.eval(sidewaysScroll), []);
-      assert.ok(await page.eval(reachable, 'button', 'New task'), 'New task is out of reach');
+      await page.until('New task in reach', reachable, 'button', 'New task');
       await shot('narrow-board');
       await page.goto(`${mock.url}/s/s-cart/details`);
       await page.until('the options', () => document.querySelectorAll('button[name="choice"]').length === 3);
       assert.deepEqual(await page.eval(sidewaysScroll), []);
-      assert.ok(await page.eval(reachable, 'button[name="choice"]', 'Merge both carts'), 'the first option is out of reach');
+      // The sheet slides up as it opens.
+      await page.until('the first option in reach', reachable, 'button[name="choice"]', 'Merge both carts');
       await shot('narrow-task');
     },
   },
@@ -390,9 +393,9 @@ export const checks: Check[] = [
       assert.deepEqual([dismissed.sessionId, dismissed.status, dismissed.body.key], ['s-cart', 204, 'q:toolu_01Cart']);
       const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
       assert.deepEqual([s.question, s.dismissedAsk, s.status, s.answered], [null, 'toolu_01Cart', 'idle', legacy ? undefined : null]);
-      await page.click('a[href="/"]');
+      await page.click('#task-sheet button[aria-label^="Back to"]');
       await page.until('the s-cart tile to leave Decide', () =>
-        document.querySelector('[data-tile]:has(a[href="/s/s-cart/details"])')?.getAttribute('data-attention') === 'idle');
+        document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'idle');
       await shot('dismissed');
     },
   },
@@ -495,7 +498,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-gate a new build reloads the board when nothing is focused; a focused draft holds it until a click outside, the New task dialog until it closes; the page\'s own entry never reloads it, nor a build it already reloaded for',
+    name: 'P3.reload-gate a new build reloads the board when nothing is focused; a focused prompt holds it until a click outside, the New task dialog until it closes; the page\'s own entry never reloads it, nor a build it already reloaded for',
     async run({ page, mock, shot }) {
       const mark = () => page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
       const marked = () => page.eval(() => (window as unknown as { probe?: number }).probe === 1);
@@ -523,19 +526,19 @@ export const checks: Check[] = [
       await sleep(3000);
       assert.equal(await marked(), true, 'its own entry reloaded the page');
 
-      await page.goto(`${mock.url}/s/s-reviews/details`);
-      await page.click('textarea');
+      await page.goto(`${mock.url}/wall`);
+      await page.click('#new-task-inline textarea');
       await page.type('Ship it after lunch');
       await mark();
       await newBuild(2);
       await sleep(3000);
       const typing = await page.eval(() => [
-        (window as unknown as { probe?: number }).probe, document.activeElement?.tagName, document.querySelector('textarea')?.value,
+        (window as unknown as { probe?: number }).probe, document.activeElement?.tagName, document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
       ]);
       assert.deepEqual(typing, [1, 'TEXTAREA', 'Ship it after lunch']);
       await shot('draft-holds-reload');
-      await page.click('h4', 'Status');
-      await reloaded('once focus left the draft');
+      await page.click('main h1');
+      await reloaded('once focus left the prompt');
 
       await page.goto(`${mock.url}/`);
       await page.click('button', 'New task');
@@ -550,7 +553,7 @@ export const checks: Check[] = [
       await sleep(3000);
       assert.equal(await marked(), true, 'reloaded under the New task dialog');
       await shot('dialog-holds-reload');
-      await page.click('dialog#new-task button', 'Cancel');
+      await page.key('Escape');
       await reloaded('once the dialog closed');
 
       // The mock serves the same entry whatever it announces, so each reload above came back to it, as when the
@@ -563,21 +566,21 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-offline a new build waits for the server: focus leaving a draft while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
+    name: 'P3.reload-offline a new build waits for the server: focus leaving a prompt while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
     expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
-      await page.goto(`${mock.url}/s/s-reviews/details`);
-      await page.click('textarea');
+      await page.goto(`${mock.url}/wall`);
+      await page.click('#new-task-inline textarea');
       await page.type('Ship it after lunch');
       await page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
       await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
       await mock.post('/mock/drop', { ms: 4000 });
       try {
         await page.until('the server to drop the page', () => fetch('/').then(() => false, () => true));
-        await page.click('h4', 'Status');
+        await page.click('main h1');
         await sleep(1500);
         const kept = await page.eval(() => [
-          (window as unknown as { probe?: number }).probe, document.activeElement === document.body, document.querySelector('textarea')?.value,
+          (window as unknown as { probe?: number }).probe, document.activeElement === document.body, document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
         ]);
         assert.deepEqual(kept, [1, true, 'Ship it after lunch'], 'reloaded while the server could not be reached');
         await shot('offline-holds-reload');
@@ -586,9 +589,15 @@ export const checks: Check[] = [
         await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
       }
       // A server back with the new build names it to the page that reconnects; the mock names the build it serves, so
-      // the check names the new one again once the page has had time to reconnect (it retries every second).
-      await sleep(2500);
-      await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
+      // the check names the new one again once the page is live.
+      const back = await until('the page to reconnect', async () => {
+        try {
+          return await page.eval(() => ((window as unknown as { probe?: number }).probe === undefined ? 'reloaded' : document.querySelector('[data-link="live"]') ? 'live' : null));
+        } catch {
+          return null;
+        }
+      }, 10_000);
+      if (back === 'live') await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
       await until('the page to reload once the server is back', async () => {
         try {
           return await page.eval(() => (window as unknown as { probe?: number }).probe === undefined && document.readyState === 'complete');
@@ -596,7 +605,7 @@ export const checks: Check[] = [
           return false;
         }
       }, 10_000);
-      await page.until('the task page', () => document.querySelector('textarea') !== null);
+      await page.until('the Wall', () => document.querySelector('#new-task-inline textarea') !== null);
     },
   },
 ];

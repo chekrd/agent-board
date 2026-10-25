@@ -1,0 +1,207 @@
+@layer components {
+  .sheet {
+    position: fixed;
+    inset: 7vh 24px 0;
+    width: auto;
+    max-width: 1540px;
+    height: auto;
+    max-height: none;
+    margin: 0 auto;
+    border-bottom: 0;
+    border-radius: 26px 26px 0 0;
+    box-shadow: 0 -30px 80px -30px rgb(0 0 0 / 0.6);
+    overflow: hidden;
+    translate: 0 0;
+    transition: translate 0.42s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s, display 0.16s allow-discrete, overlay 0.16s allow-discrete;
+    @starting-style { translate: 0 102%; }
+    &[open] { display: flex; flex-direction: column; }
+    &:focus-visible { outline: none; }
+    &::backdrop { transition-duration: 0.3s; }
+  }
+
+  .grabber { flex: none; width: 44px; height: 4px; margin: 10px auto 0; border-radius: 2px; background: var(--line-2); }
+
+  .head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 26px 14px;
+    border-bottom: 1px solid var(--line);
+    h2 { font-size: 25px; font-weight: 650; letter-spacing: -0.012em; }
+  }
+
+  .close {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 9px;
+    background: none;
+    color: var(--text-2);
+    &:hover { background: var(--hover); color: var(--text); }
+  }
+
+  .scroll { flex: 1; min-height: 0; overflow: auto; }
+
+  .content { display: flex; flex-direction: column; gap: 18px; max-width: 1060px; margin: 0 auto; padding: 22px 28px 48px; }
+
+  .add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    input { flex: 1; min-width: 240px; height: 42px; padding: 0 12px; font-size: 14px; }
+    button { height: 42px; }
+  }
+
+  .secondary { padding: 0 16px; border-radius: 13px; background: none; font-size: 15px; }
+
+  .ink, .inkSm {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--text);
+    color: var(--ground);
+    font-size: 14px;
+    font-weight: 650;
+    &:hover:not(:disabled) { filter: brightness(1.1); }
+    &:disabled { opacity: 0.45; }
+  }
+
+  .inkSm { height: 28px; padding: 0 11px; border-radius: 8px; font-size: 12.5px; }
+
+  .tiny {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    background: none;
+    color: var(--text-2);
+    font-size: 12.5px;
+    &:hover:not(:disabled) { border-color: var(--muted); color: var(--text); }
+    &[data-danger] { color: var(--danger); }
+    &[data-danger]:hover { border-color: var(--danger); color: var(--danger); }
+    &:disabled { opacity: 0.55; }
+  }
+
+  .error { color: var(--danger); }
+
+  .none { font-size: 15px; color: var(--text-2); }
+
+  .roots {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .root {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 4px 0 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    color: var(--text-2);
+    code { font-size: 12.5px; }
+    button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); }
+    button:hover { background: var(--hover); color: var(--text); }
+  }
+
+  .repo {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--card-2);
+    > .error { padding: 0 18px 14px; }
+  }
+
+  .repoHead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 18px;
+    h3 { font-size: 19px; font-weight: 650; }
+    code { margin-right: auto; font-size: 12.5px; color: var(--muted); }
+  }
+
+  .settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+    align-items: end;
+    gap: 12px;
+    padding: 4px 18px 16px;
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--muted); }
+    input { height: 38px; padding: 0 12px; font-size: 14px; color: var(--text); }
+    button { justify-self: start; height: 38px; }
+  }
+
+  .worktree { display: flex; flex-direction: column; gap: 8px; padding: 11px 18px; border-top: 1px solid var(--line); }
+
+  .wtRow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+  .wtName {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    strong { font-size: 14.5px; }
+    code { font-size: 12px; color: var(--muted); }
+  }
+
+  .conversations {
+    font-size: 13px;
+    summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      list-style: none;
+      color: var(--muted);
+      cursor: pointer;
+      &::-webkit-details-marker { display: none; }
+      &:hover { color: var(--text); }
+      svg { transition: rotate 0.15s; }
+    }
+    &[open] summary svg { rotate: 90deg; }
+    ul { list-style: none; margin: 6px 0 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; }
+    li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+    li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    small { font-size: 12.5px; color: var(--muted); }
+  }
+
+  .confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1.5px solid var(--danger);
+    border-radius: 12px;
+    background: var(--card);
+    p { font-size: 14px; line-height: 1.5; }
+    code { font-size: 12.5px; }
+    footer { display: flex; gap: 8px; }
+  }
+
+  .checks { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; label { display: inline-flex; align-items: center; gap: 8px; } }
+
+  @media (max-width: 760px) {
+    .sheet { inset: 3vh 0 0; border-radius: 20px 20px 0 0; }
+    .head { padding: 6px 16px 12px; }
+    .head h2 { font-size: 22px; }
+    .close kbd { display: none; }
+    .content { padding: 18px 16px 40px; }
+  }
+}

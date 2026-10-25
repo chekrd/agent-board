@@ -1,0 +1,31 @@
+@layer components {
+  .dialog {
+    width: min(560px, calc(100% - 32px));
+    max-height: 90vh;
+    padding: 22px 24px;
+    border-color: var(--line-2);
+    &[open] { display: flex; flex-direction: column; gap: 14px; }
+    &:focus-visible { outline: none; }
+    header { display: flex; align-items: center; gap: 10px; }
+    h2 { flex: 1; font-size: 22px; font-weight: 650; }
+    header button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 28px;
+      padding: 0 6px 0 10px;
+      border-radius: 8px;
+      background: none;
+      color: var(--text-2);
+      font-size: 12.5px;
+    }
+  }
+
+  .rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px 16px; align-items: center; font-size: 14.5px; }
+
+  .row { display: contents; }
+
+  .row kbd { height: 24px; padding: 0 8px; font-size: 12px; }
+
+  .row dd { margin: 0; color: var(--text-2); }
+}

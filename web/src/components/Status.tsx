@@ -1,8 +1,8 @@
-import type { PrFlow, Session, SessionStatus } from '../types.ts';
-import { attentionOf, type Attention } from '../util.ts';
+import type { PrFlow, SessionStatus } from '../types.ts';
+import type { Attention } from '../util.ts';
 import styles from './Status.module.css';
 
-const labels: Record<Attention, string> = {
+export const STATE_LABELS: Record<Attention, string> = {
   decide: 'Decide',
   focus: 'Needs focus',
   working: 'In progress',
@@ -10,22 +10,13 @@ const labels: Record<Attention, string> = {
   exited: 'Ended',
 };
 
-const hints: Record<Attention, string> = {
+export const STATE_HINTS: Record<Attention, string> = {
   decide: 'Claude asked you something and waits for your decision',
   focus: 'Claude is showing a prompt in its terminal that only the terminal can answer',
   working: 'Claude is working on its turn; nothing for you to do yet',
   idle: 'Claude finished its turn and waits for your next message',
   exited: 'The Claude process has quit; Continue resumes the conversation',
 };
-
-export function AttentionChip({ session }: { session: Session }) {
-  const attention = attentionOf(session);
-  return (
-    <span className={styles.chip} data-attention={attention} title={attention === 'focus' ? `Claude is showing ${session.waitingFor ?? 'a prompt'} in its terminal; answer it there` : hints[attention]}>
-      {labels[attention]}
-    </span>
-  );
-}
 
 const prLabels: Record<string, string> = {
   RUNNING: 'checks running',
@@ -50,9 +41,6 @@ export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatu
     pr.watching ? 'pr-to-green is watching the checks' : 'Not watching right now',
   ].filter(Boolean).join('\n');
   const text = <>PR{pr.id ? ` ${pr.id}` : ''} · {label}</>;
-  return pr.url ? (
-    <a className={styles.pr} data-state={state} data-watching={pr.watching || undefined} href={pr.url} target="_blank" rel="noreferrer" title={title}>{text}</a>
-  ) : (
-    <span className={styles.pr} data-state={state} data-watching={pr.watching || undefined} title={title}>{text}</span>
-  );
+  const marks = { className: styles.pr, 'data-state': state, 'data-label': label, 'data-watching': pr.watching || undefined, title };
+  return pr.url ? <a {...marks} href={pr.url} target="_blank" rel="noreferrer">{text}</a> : <span {...marks}>{text}</span>;
 }

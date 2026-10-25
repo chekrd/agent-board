@@ -15,8 +15,6 @@ interface State {
   repos: RepoView[];
   sessions: Session[];
   link: Link;
-  // link === 'live', for today's connection dot.
-  connected: boolean;
   // The top bar offers to reload into a new build: in 15 s no moment came when reloading would lose nothing, or
   // reloading for that build already brought this tab back to the build it runs.
   newVersion: boolean;
@@ -25,7 +23,7 @@ interface State {
 const RELOAD_CAP_MS = 15_000;
 const RELOADED_FOR = 'agent-board:reloaded-for';
 
-let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', connected: false, newVersion: false };
+let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();
 let order = '';
 
@@ -138,14 +136,14 @@ async function connect() {
         sends.reconcile(next.sessions);
         sends.confirm(next.sessions);
         sends.reconnected();
-        set({ ...state, ...next, link: 'live', connected: true });
+        set({ ...state, ...next, link: 'live' });
         wakeAtNextChange();
         announced(uiEntry);
       }
     } catch {
       // reconnect below
     }
-    if (state.link === 'live') set({ ...state, link: 'reconnecting', connected: false });
+    if (state.link === 'live') set({ ...state, link: 'reconnecting' });
     await new Promise((r) => setTimeout(r, 1000));
   }
 }
