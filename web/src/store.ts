@@ -60,8 +60,11 @@ function wakeAtNextChange() {
   }));
   if (next === Infinity) return;
   wake = setTimeout(() => {
-    sends.confirm(state.sessions);
-    set({ ...state });
+    // Views redraw a session when its object changes, so one whose attention changed is replaced by a copy.
+    const at = Date.now();
+    const sessions = state.sessions.map((s) => ((attentionChangesAt(s) ?? Infinity) <= at ? { ...s } : s));
+    sends.confirm(sessions);
+    set({ ...state, sessions });
     wakeAtNextChange();
   }, next - now);
 }
