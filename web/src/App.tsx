@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import styles from './App.module.css';
 import { AgentsDock } from './components/AgentsDock.tsx';
 import { DeleteWorktreeDialog } from './components/DeleteWorktreeDialog.tsx';
 import { KeysDialog } from './components/KeysDialog.tsx';
@@ -37,7 +36,7 @@ export function App() {
   useBoardKeys({ route, deck: deck.length, repos: store.repos.length > 0, artifacts: !!sheetSession?.artifacts.length });
 
   return (
-    <div className={styles.app}>
+    <>
       <TopBar route={route} deck={deck} />
       {route.view === 'queue' ? <Queue deck={deck} /> : <Wall deck={deck} />}
       {route.view === 'queue' && <AgentsDock />}
@@ -47,6 +46,6 @@ export function App() {
       <KeysDialog />
       <DeleteWorktreeDialog />
       <Toasts />
-    </div>
+    </>
   );
 }

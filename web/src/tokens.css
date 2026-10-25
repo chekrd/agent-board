@@ -92,6 +92,11 @@
 
 @layer base {
   html, body, #root { height: 100%; }
+  #root {
+    display: flex;
+    flex-direction: column;
+    @media (max-width: 760px) { height: auto; min-height: 100%; }
+  }
   body {
     background: var(--ground);
     color: var(--text);

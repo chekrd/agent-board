@@ -1,7 +1,0 @@
-@layer components {
-  .app { display: flex; flex-direction: column; height: 100%; }
-
-  @media (max-width: 760px) {
-    .app { height: auto; min-height: 100%; }
-  }
-}
