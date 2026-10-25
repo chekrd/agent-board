@@ -34,7 +34,10 @@ function useGuarded(until: number) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const left = until - Date.now();
-    if (left <= 0) return setNow(Date.now());
+    if (left <= 0) {
+      setNow(Date.now());
+      return;
+    }
     const timer = setTimeout(() => setNow(Date.now()), left + 1);
     return () => clearTimeout(timer);
   }, [until]);
@@ -64,7 +67,7 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
   const key = decisionKey(session);
   const decision = kind === 'ask' || kind === 'turn' ? decisionOf(session) : null;
   const menu = kind === 'menu' ? session.menu : null;
-  // Read once here: the compiler would read an asserted `menu!.questions` in a callback even on cards without one.
+  // The compiler reads what a callback uses during render, so a `menu!.questions` there would throw on other cards.
   const options = decision?.options ?? [];
   const questions = menu?.questions ?? [];
   const advice = adviceFor(session);

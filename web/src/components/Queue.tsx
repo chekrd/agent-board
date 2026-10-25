@@ -66,8 +66,11 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
   };
   const onBlur = (e: FocusEvent) => {
     const to = e.relatedTarget as Element | null;
-    // The window lost focus, and the field gets it back with the window.
-    if (!to) return void (document.hasFocus() && setTyping(false));
+    // Focus went to the page, or the window lost it and the field gets it back with the window.
+    if (!to) {
+      if (document.hasFocus()) setTyping(false);
+      return;
+    }
     const inside = !!region.current?.contains(to);
     setTyping(inside && isEditable(to));
     cardFocused.current = inside && !!to.closest('[data-card]');
