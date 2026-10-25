@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { userInfo } from 'node:os';
 import { join, sep } from 'node:path';
 import { after, test } from 'node:test';
 import { artifactFile, storeArtifacts } from './artifacts.ts';
 import { SESSIONS_DIR } from './config.ts';
 import type { Session } from './db.ts';
 
-if (!SESSIONS_DIR.startsWith(tmpdir() + sep)) {
-  throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}, which is not a temporary folder: run the tests with pnpm test, which gives them a fresh HOME`);
+// The account's home from the system, not from HOME: the live board keeps its sessions there.
+if (SESSIONS_DIR.startsWith(userInfo().homedir + sep)) {
+  throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}, in your own home folder: run the tests with pnpm test, which gives them a fresh HOME`);
 }
 
 const id = `test-${randomUUID()}`;

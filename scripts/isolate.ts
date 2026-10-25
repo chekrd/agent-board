@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,9 +13,12 @@ export function refuseLive(target: string | number) {
 
 // Every state path the server uses derives from homedir() (config.ts, conversations.ts, commands.ts),
 // so a fresh HOME keeps tests and the mock away from the live state.db, sessions folder and Claude config.
+// TMPDIR moves inside it, so the folders they make with mkdtemp go with it.
 export function isolateHome() {
   const home = mkdtempSync(join(tmpdir(), 'agent-board-home-'));
   process.env.HOME = home;
+  process.env.TMPDIR = join(home, 'tmp');
+  mkdirSync(process.env.TMPDIR);
   process.on('exit', () => rmSync(home, { recursive: true, force: true }));
   return home;
 }
@@ -23,7 +26,7 @@ export function isolateHome() {
 if (import.meta.main) {
   const [command, ...args] = process.argv.slice(2);
   if (!command) {
-    console.error('usage: node scripts/isolate.ts <command> [args…]   runs it with HOME set to a fresh temporary folder');
+    console.error('usage: node scripts/isolate.ts <command> [args…]   runs it with HOME set to a fresh temporary folder, and TMPDIR inside it');
     process.exit(2);
   }
   isolateHome();
