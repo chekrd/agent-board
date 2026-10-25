@@ -1,29 +1,31 @@
 @layer components {
   .tree {
     overflow: auto;
-    border-right: 1px solid var(--border);
-    padding: 6px 0;
-    font-size: 12px;
-    line-height: 22px;
+    padding: 8px 6px;
+    background: #262626;
+    font-size: 13px;
+    line-height: 28px;
     user-select: none;
 
-    ul { list-style: none; margin: 0; padding: 0; }
-    ul ul { padding-left: 12px; }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+    ul ul { padding-left: 14px; }
 
     summary, a {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding-right: 10px;
+      gap: 8px;
+      height: 28px;
+      padding-right: 8px;
+      border-radius: 7px;
       white-space: nowrap;
       cursor: pointer;
-      &:hover { background: var(--surface-2); }
+      &:hover { background: #2e2e2e; }
     }
 
     summary {
       list-style: none;
-      padding-left: 8px;
-      color: var(--muted);
+      padding-left: 10px;
+      color: #9d9d9d;
       overflow: hidden;
       text-overflow: ellipsis;
       &::-webkit-details-marker { display: none; }
@@ -36,30 +38,41 @@
         border: solid currentColor;
         border-width: 0 1.5px 1.5px 0;
         rotate: -45deg;
-        transition: rotate 0.1s;
+        transition: rotate 0.15s;
       }
     }
     details[open] > summary::before { rotate: 45deg; }
 
     a {
-      padding-left: 22px;
+      padding-left: 30px;
+      color: #d0d0d0;
+      font-family: Menlo, var(--mono);
+      font-size: 12.5px;
       text-decoration: none;
-      &[aria-current] { background: var(--accent-soft); }
+      &[aria-current] { background: #38404c; color: #ffffff; }
+      &:focus-visible { outline-color: #e6e6e6; outline-offset: -2px; }
     }
   }
 
   .name { overflow: hidden; text-overflow: ellipsis; margin-right: auto; }
-  .add, .del { font-family: var(--mono); font-size: 11px; }
-  .add { color: var(--add); }
-  .del { color: var(--del); }
+  .add, .del { flex: none; font-variant-numeric: tabular-nums; }
+  .add { color: #87d394; }
+  .del { color: #ff9a8c; }
 
   .status {
     flex: none;
-    width: 1ch;
-    font-family: var(--mono);
-    font-weight: 600;
-    color: var(--warn);
-    &[data-type="new"] { color: var(--add); }
-    &[data-type="deleted"] { color: var(--del); }
+    width: 18px;
+    border-radius: 4px;
+    font: 600 11px/18px Menlo, var(--mono);
+    text-align: center;
+    color: #e6c07b;
+    background: rgb(230 192 123 / 0.14);
+    &[data-letter="A"] { color: #87d394; background: rgb(98 186 108 / 0.16); }
+    &[data-letter="D"] { color: #ff9a8c; background: rgb(232 96 82 / 0.16); }
+    &[data-letter="R"] { color: #8fb8ff; background: rgb(110 160 255 / 0.16); }
+  }
+
+  @media (max-width: 760px) {
+    .tree { max-height: 180px; border-bottom: 1px solid #353535; }
   }
 }
