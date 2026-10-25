@@ -10,8 +10,8 @@ export function locate(repos: RepoView[], session: Session) {
 
 export const sessionLabel = (session: Session, branch: string) => session.title || branch;
 
-export function ago(ms: number) {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+export function ago(ms: number, now = Date.now()) {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
   if (s < 60) return 'just now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;

@@ -51,7 +51,36 @@ test('the card being read is pinned by id: an arrival takes its place in the ord
   assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, 'a')), ['urgent']);
   q.jump('urgent');
   q.sync([urgent, a, b]);
-  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, 'urgent')), [], 'shown once, it is no longer new');
+  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, 'urgent')), []);
+  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, null)), ['urgent'], 'at the front, but no view has drawn it yet');
+  q.show(urgent);
+  assert.deepEqual(ids(arrivals([urgent, a, b], q.state().seen!, null)), [], 'drawn once, it is no longer new');
+});
+
+test('the view draws what it can: a card drawn late, after typing held it back, is guarded from then and new until then; drawn with another decision it is updated', () => {
+  const { q, advance } = world();
+  q.sync([]);
+  q.show(null);
+  const arrival = ask('new');
+  q.sync([arrival]);
+  assert.equal(q.state().front, 'new', 'the first arrival into an empty deck comes to the front');
+  assert.deepEqual(ids(arrivals([arrival], q.state().seen!, q.state().shown)), ['new'], 'while the view still shows nothing, it is an arrival');
+  advance(GUARD_MS * 3);
+  assert.equal(q.guarded(), false);
+  q.show(arrival);
+  assert.equal(q.state().shown, 'new');
+  assert.equal(q.guarded(), true);
+  assert.deepEqual(ids(arrivals([arrival], q.state().seen!, null)), []);
+  assert.equal(q.state().updated.has('new'), false);
+
+  advance(GUARD_MS);
+  q.show(arrival);
+  assert.equal(q.guarded(), false, 'drawn again as it was');
+  q.show(ask('new', { question: question('q-new-2') }));
+  assert.equal(q.guarded(), true);
+  assert.equal(q.state().updated.get('new'), q.state().guardUntil - GUARD_MS + UPDATED_MS);
+  q.show(null);
+  assert.equal(q.state().shown, null);
 });
 
 test('when the card being read leaves for an outside reason the one after it comes up, with word that it no longer waits; the page\'s own send says nothing', () => {

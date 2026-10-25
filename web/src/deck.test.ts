@@ -139,6 +139,17 @@ test('a second opinion that finishes fills a frozen nothing, as a late suggestio
   assert.equal(refreeze(freeze(m)!, { ...m, advice: advice('m:m1', { answers: [{ labels: ['Linear'], other: '' }, { labels: ['Log'], other: '' }] }) }), null);
 });
 
+test('a late suggestion relabels the primary, which was "Pick an option", to say it is ready and that ⏎ accepts it', () => {
+  const s = session('s', { question: question('q1'), advice: advice('q:q1', { choice: 'Merge', at: 9 }) });
+  const accept = { action: 'accept-advice', body: { key: 'q:q1', adviceAt: 9 }, label: 'Merge' };
+  assert.deepEqual(primary(s, { via: 'advice', label: 'Merge', adviceAt: 9, late: true }), { label: 'Suggestion ready · Accept', disabled: false, press: accept });
+  assert.equal(primary(s, { via: 'advice', label: 'Merge', adviceAt: 9 }).label, 'Accept suggestion', 'done when the card was first shown');
+  const free = { ...s, advice: advice('q:q1', { choice: null, answer: 'Do both', at: 9 }) };
+  assert.equal(primary(free, { via: 'advice', label: null, adviceAt: 9, late: true }).label, 'Suggestion ready · Accept');
+  assert.equal(primary(s, { via: 'advice', label: 'Merge', adviceAt: 9, late: true }, { composer: { open: true, text: 'why not', files: [] } }).label,
+    'Send “Merge” + your note');
+});
+
 test('a rewrite of the decision that drops the frozen option freezes it again', () => {
   const rewritten = ended('s', { summary: turn('t1', options('Ship now', 'Wait')) });
   assert.deepEqual(refreeze({ via: 'advice', label: 'Ship', adviceAt: 7 }, rewritten), { frozen: { via: 'none', label: null }, why: 'rewritten' });

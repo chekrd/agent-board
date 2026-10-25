@@ -197,11 +197,13 @@ export function primary(s: Session, frozen: Frozen | null, input: { composer?: C
   const a = adviceFor(s);
   const unchanged = f.via === 'advice' && a?.state === 'done' && a.at === f.adviceAt;
   const note = noteOf(input.composer);
+  // A suggestion that came in while ⏎ had nothing to send says so, since the button the reader saw was disabled.
+  const accept = f.via === 'advice' && f.late ? 'Suggestion ready · Accept' : 'Accept suggestion';
   if (f.via === 'advice' && f.label === null) {
-    return unchanged ? { label: 'Accept suggestion', disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: a!.answer } } : reply;
+    return unchanged ? { label: accept, disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: a!.answer } } : reply;
   }
   if (f.label === null) return decisionOf(s)!.options.length ? { label: 'Pick an option', disabled: true, press: null } : reply;
-  if (unchanged && !note) return { label: 'Accept suggestion', disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: f.label } };
+  if (unchanged && !note) return { label: accept, disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: f.label } };
   return {
     label: note ? `Send “${f.label}” + your note` : `Send “${f.label}”`,
     disabled: !!note && !!input.composer?.uploading,
@@ -225,6 +227,13 @@ export function choose(s: Session, label: string, composer?: Composer): Request 
   const note = noteOf(composer);
   if (a?.state === 'done' && a.choice === label && !note) return { action: 'accept-advice', body: { key, adviceAt: a.at }, label };
   return { action: 'answer', body: { key, choice: label, ...note }, label };
+}
+
+// The Accept on a suggestion shown apart from the options: what the second opinion would answer, as it was shown.
+export function acceptance(s: Session): Request | null {
+  const a = adviceFor(s);
+  if (a?.state !== 'done') return null;
+  return { action: 'accept-advice', body: { key: decisionKey(s)!, adviceAt: a.at }, label: a.choice ?? a.answer };
 }
 
 // As the server tells a command from an answer: a `!` line, or a `/name` from its command list. Until that list has

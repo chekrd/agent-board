@@ -24,9 +24,11 @@ export interface NotSent {
 
 export interface QueueState {
   front: string | null;
+  // The card the queue view draws, which lags the front while the reader types in what would go away.
+  shown: string | null;
   // The deck as last shown, front first, which tells who follows a card that leaves.
   order: readonly string[];
-  // Decision keys there when the page loaded or shown at the front since; null before the first snapshot.
+  // Decision keys there when the page loaded or drawn at the front since; null before the first snapshot.
   seen: ReadonlySet<string> | null;
   frozen: ReadonlyMap<string, Frozen>;
   guardUntil: number;
@@ -64,6 +66,9 @@ export function arrange(deck: readonly Session[], q: QueueState) {
   return rotate(deck, front, waiting(q.notSent));
 }
 
+// What a card asks of the reader: a change of it is an update of the card being read.
+export const signature = (s: Session, now: number) => `${kindOf(s, now)}:${decisionKey(s)}`;
+
 export function createQueue({ now = Date.now, storage = null, transition = (change) => change(), later = (fn, ms) => void setTimeout(fn, ms) }: QueueDeps = {}) {
   const read = <T>(key: string, parse: (raw: string) => T, fallback: T) => {
     try {
@@ -84,6 +89,7 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
   let state: QueueState = {
     front: read<string | null>(FRONT_KEY, (raw) => raw, null),
+    shown: null,
     order: [],
     seen: null,
     frozen: read(FROZEN_KEY, (raw) => new Map<string, Frozen>(JSON.parse(raw)), new Map()),
@@ -96,7 +102,9 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   // Fronts leaving through this page's own send, archive or quit, which need no "no longer waits".
   const own = new Set<string>();
   // The front card as last arranged, to tell an outside change of it.
-  let shown: { id: string; sig: string; target: string } | null = null;
+  let arranged: { id: string; sig: string; target: string } | null = null;
+  // The card as the view last drew it.
+  let drawn: { id: string; sig: string } | null = null;
   // The deck of the last sync, which a move arranges again around its new front.
   let deck: readonly Session[] = [];
 
@@ -120,13 +128,18 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     return now() + GUARD_MS;
   };
 
+  const markUpdated = (updated: ReadonlyMap<string, number>, id: string) => {
+    expire(UPDATED_MS);
+    return new Map(updated).set(id, now() + UPDATED_MS);
+  };
+
   // Arranges the deck around `pinned`, the card wanted at the front: it keeps the pin, or moves it to the card that
   // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes.
   function arrangeAround(pinned: string | null): Left[] {
     const at = now();
     const events: Left[] = [];
     let { guardUntil, updated, frozen, notSent } = state;
-    let seen = state.seen ?? new Set(deck.flatMap((s) => decisionKey(s) ?? []));
+    const seen = state.seen ?? new Set(deck.flatMap((s) => decisionKey(s) ?? []));
     const front = resolveFront(deck, pinned, state.order);
     if (pinned && front !== pinned && !own.has(pinned)) events.push({ type: 'left', id: pinned });
     for (const id of own) if (!deck.some((s) => s.id === id)) own.delete(id);
@@ -134,8 +147,7 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     const card = deck.find((s) => s.id === front) ?? null;
     const key = card && decisionKey(card);
     const update = (id: string) => {
-      updated = new Map(updated).set(id, at + UPDATED_MS);
-      expire(UPDATED_MS);
+      updated = markUpdated(updated, id);
       guardUntil = guard();
     };
     if (card && key) {
@@ -146,15 +158,14 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
         if (re.why === 'rewritten') update(card.id);
         else guardUntil = guard();
       }
-      if (!seen.has(key)) seen = new Set(seen).add(key);
     }
-    const before = shown?.id ?? null;
-    const sig = card ? `${kindOf(card, at)}:${key}` : '';
+    const before = arranged?.id ?? null;
+    const sig = card ? signature(card, at) : '';
     const target = card ? targetOf(card, (key && frozen.get(key)) || null, at) : '';
     if (card && before !== card.id) guardUntil = guard();
-    else if (card && shown!.sig !== sig) update(card.id);
-    else if (card && shown!.target !== target) guardUntil = guard();
-    shown = card ? { id: card.id, sig, target } : null;
+    else if (card && arranged!.sig !== sig) update(card.id);
+    else if (card && arranged!.target !== target) guardUntil = guard();
+    arranged = card ? { id: card.id, sig, target } : null;
 
     const pending = front ? notSent.get(front) : undefined;
     if (front && pending?.shown === false) notSent = new Map(notSent).set(front, { ...pending, shown: true });
@@ -194,6 +205,21 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
       if (id !== state.front && deck.some((s) => s.id === id)) move(id, 'enter');
     },
 
+    // The view draws this card at the front, or none. Only a card the reader has seen stops being an arrival, and
+    // one drawn late, after typing held it back, still starts the guard and shows as updated when it is.
+    show(card: Session | null) {
+      const sig = card ? signature(card, now()) : '';
+      if (card?.id === drawn?.id && sig === (drawn?.sig ?? '')) return;
+      const before = drawn;
+      drawn = card ? { id: card.id, sig } : null;
+      let { seen, guardUntil, updated } = state;
+      const key = card && decisionKey(card);
+      if (key && seen && !seen.has(key)) seen = new Set(seen).add(key);
+      if (card) guardUntil = guard();
+      if (card && before?.id === card.id) updated = markUpdated(updated, card.id);
+      commit({ ...state, shown: card?.id ?? null, seen, guardUntil, updated });
+    },
+
     // Applies a change that takes the front card away (a send, dismissal, archive) as one deal. The guard starts
     // at once, so a second press before the next card is up cannot answer it.
     deal(deal: Deal, change: () => void) {
@@ -225,14 +251,22 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
 export type Queue = ReturnType<typeof createQueue>;
 
+let dealt = 0;
+
+// Only the card moves: the page under it updates live. Off the queue, or under a dialog the transition would draw
+// over, the change just happens.
 function viewTransition(change: () => void, deal: Deal) {
-  if (!document.startViewTransition) return change();
   const root = document.documentElement;
+  if (!document.startViewTransition || root.dataset.view !== 'queue' || document.querySelector('dialog:modal')) return change();
+  const token = ++dealt;
   root.dataset.deal = deal;
   const done = () => {
-    if (root.dataset.deal === deal) delete root.dataset.deal;
+    if (dealt === token) delete root.dataset.deal;
   };
-  document.startViewTransition(() => flushSync(change)).finished.then(done, done);
+  // A deal that starts while one runs skips it, which rejects the skipped one's ready.
+  const t = document.startViewTransition(() => flushSync(change));
+  t.ready.catch(() => {});
+  t.finished.then(done, done);
 }
 
 function sessionStorageOrNull() {
