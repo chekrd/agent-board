@@ -201,7 +201,7 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
       },
       async key(key: string) {
         const k = KEYS[key] ?? { code: /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, keyCode: key.toUpperCase().charCodeAt(0), text: key };
-        const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode };
+        const base = { key, code: k.code, windowsVirtualKeyCode: k.keyCode };
         await cdp('Input.dispatchKeyEvent', { type: k.text ? 'keyDown' : 'rawKeyDown', ...base, ...(k.text && { text: k.text, unmodifiedText: k.text }) });
         await cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
       },
