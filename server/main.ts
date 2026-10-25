@@ -17,6 +17,7 @@ import { elaborate } from './explain.ts';
 import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
+import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { notify, onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
 
@@ -214,15 +215,21 @@ app.get('/api/diff', async (c) => {
   return c.json(diff);
 });
 
-const uiEntry = async () =>
-  (await readFile(join(WEB_DIST, 'index.html'), 'utf8').catch(() => '')).match(/src="([^"]+\.js)"/)?.[1] ?? null;
+// Every snapshot names the UI build, so a page from an older one reloads, also after a `pnpm build` alone.
+let uiEntry: string | null = null;
+watchEntry(() => readEntry(join(WEB_DIST, 'index.html')), (entry) => {
+  uiEntry = entry;
+  notify();
+});
+
+const message = () => JSON.stringify({ ...snapshot(), uiEntry });
 
 app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;
   return {
-    async onOpen(_evt, ws) {
-      off = onChange(() => ws.send(JSON.stringify(snapshot())));
-      ws.send(JSON.stringify({ ...snapshot(), uiEntry: await uiEntry() }));
+    onOpen(_evt, ws) {
+      off = onChange(() => ws.send(message()));
+      ws.send(message());
     },
     onClose() {
       off?.();
