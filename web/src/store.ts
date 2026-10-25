@@ -119,7 +119,8 @@ function check() {
   checking = setTimeout(check, 250);
 }
 
-// The gate's reload and the top bar's Reload both note the build they reload for.
+// A reload into a new build notes the build, so a tab that comes back on the same entry offers it in the top bar
+// instead of reloading for it again.
 export function reloadNow() {
   if (armedFor) {
     try {
