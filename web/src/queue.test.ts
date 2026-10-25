@@ -214,6 +214,42 @@ test('a send that failed waits right after the card being read until it has been
   assert.deepEqual(q.state().order, ['a', 'b', 'c'], 'back in its own place');
 });
 
+test('a failed send whose session left the deck leaves no mark for a later decision of it', () => {
+  const { q } = world();
+  q.sync([a, b]);
+  q.notSent('c', 'this question is no longer open');
+  q.sync([a, b]);
+  assert.equal(q.state().notSent.has('c'), false);
+  q.sync([a, b, c]);
+  assert.deepEqual(q.state().order, ['a', 'b', 'c']);
+});
+
+test('a deal taken back brings its card to the front again once the deck has it, with the guard', () => {
+  const { q, deals, advance } = world();
+  q.sync([a, b, c]);
+  q.deal('down', () => {});
+  q.sync([b, c]);
+  assert.equal(q.state().front, 'b');
+  advance(GUARD_MS);
+  q.restore('a', () => true);
+  q.sync([a, b, c]);
+  assert.equal(q.state().front, 'a');
+  assert.equal(q.guarded(), true);
+  q.restore('b', () => false);
+  assert.equal(q.state().front, 'a', 'nothing came back');
+  assert.deepEqual(deals, ['down', 'enter-back', 'enter-back']);
+});
+
+test('a menu\'s picks are kept by decision, a reload too, so its card comes back with them', () => {
+  const first = world();
+  const picks = [{ labels: ['Linear'], other: '' }, { labels: [], other: 'Page the on-call' }];
+  first.q.pick('m:m1', picks);
+  picks[0].labels.push('changed after');
+  assert.deepEqual(first.q.picksOf('m:m1'), [{ labels: ['Linear'], other: '' }, { labels: [], other: 'Page the on-call' }]);
+  assert.equal(first.q.picksOf('m:m2'), null);
+  assert.deepEqual(world(first.storage).q.picksOf('m:m1'), first.q.picksOf('m:m1'));
+});
+
 test('the pin and the frozen choices live in sessionStorage too, so a reload restores both', () => {
   const first = world();
   first.q.sync([a, b]);

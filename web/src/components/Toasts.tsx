@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
+import { useNow } from '../now.ts';
 import { Icon } from './Icon.tsx';
 import styles from './Toasts.module.css';
 
@@ -7,6 +8,8 @@ export type ToastKind = 'info' | 'error' | 'undo';
 
 export interface ToastAction {
   label: string;
+  // The key that does the same.
+  kbd?: string;
   run: () => void;
 }
 
@@ -16,6 +19,9 @@ interface Toast {
   message: string;
   session?: string;
   action?: ToastAction;
+  // When what it announces happens, counted down in seconds from `at`, when the toast came.
+  until?: number;
+  at: number;
 }
 
 const LASTS_MS: Record<ToastKind, number> = { info: 4200, error: 8000, undo: 8000 };
@@ -34,11 +40,17 @@ export function dismissToast(id: number) {
   if (toasts.some((t) => t.id === id)) change(toasts.filter((t) => t.id !== id));
 }
 
-export function toast(kind: ToastKind, message: string, o: { session?: string; action?: ToastAction; lasts?: number } = {}) {
-  const t: Toast = { id: ++nextId, kind, message, session: o.session, action: o.action };
+export function toast(kind: ToastKind, message: string, o: { session?: string; action?: ToastAction; lasts?: number; until?: number } = {}) {
+  const t: Toast = { id: ++nextId, kind, message, session: o.session, action: o.action, until: o.until, at: Date.now() };
   change([...toasts, t].slice(-SHOWN));
   setTimeout(() => dismissToast(t.id), o.lasts ?? LASTS_MS[kind]);
   return t.id;
+}
+
+// The shared clock ticks once a second from its own start, so until its next tick it may lag the toast's arrival.
+function Countdown({ until, from }: { until: number; from: number }) {
+  const left = Math.max(0, Math.ceil((until - Math.max(useNow(), from)) / 1000));
+  return <span className={styles.count}>· {left} s</span>;
 }
 
 const subscribe = (fn: () => void) => {
@@ -96,7 +108,10 @@ export function Toasts() {
       {list.map((t) => (
         <div key={t.id} className={styles.toast} data-toast data-kind={t.kind} data-session={t.session} role={t.kind === 'error' ? 'alert' : 'status'}>
           <span className={styles.mark} aria-hidden />
-          <span className={styles.message}>{t.message}</span>
+          <span className={styles.message}>
+            {t.message}
+            {t.until !== undefined && <> <Countdown until={t.until} from={t.at} /></>}
+          </span>
           {t.action && (
             <button
               type="button"
@@ -107,6 +122,7 @@ export function Toasts() {
               }}
             >
               {t.action.label}
+              {t.action.kbd && <kbd>{t.action.kbd}</kbd>}
             </button>
           )}
           <button type="button" className={styles.close} aria-label="Dismiss" onClick={() => dismissToast(t.id)}>

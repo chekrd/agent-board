@@ -289,8 +289,10 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
     },
 
     // Posts a session's held items now, in press order, as when its terminal opens and a paste would land there.
-    sendNow(sessionId: string) {
+    // Resolves once every post of that session has an answer.
+    sendNow(sessionId: string): Promise<void> {
       for (const i of items) if (i.sessionId === sessionId && i.state === 'held') send(i.id);
+      return chains.get(sessionId) ?? Promise.resolve();
     },
 
     // The page is going away: hands every item not posted yet to `send` once, a session's notes folded in. That

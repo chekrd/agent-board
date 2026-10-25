@@ -11,7 +11,7 @@ import { Wall } from './components/Wall.tsx';
 import { WorkspaceDialog } from './components/WorkspaceDialog.tsx';
 import { deckOf } from './deck.ts';
 import { useRoute } from './router.ts';
-import { sends, useSends } from './sends.ts';
+import { useBusy } from './sends.ts';
 import { useStore } from './store.ts';
 import { useBoardKeys } from './useKeys.ts';
 import { attentionOf } from './util.ts';
@@ -19,8 +19,7 @@ import { attentionOf } from './util.ts';
 export function App() {
   const store = useStore();
   const route = useRoute();
-  useSends();
-  const deck = deckOf(store.sessions, sends.busy());
+  const deck = deckOf(store.sessions, useBusy());
   const deciding = deck.filter((s) => attentionOf(s) === 'decide').length;
   const sheetSession = route.sheet && store.sessions.find((s) => s.id === route.sheet!.id);
 

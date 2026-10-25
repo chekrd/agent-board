@@ -14,6 +14,7 @@ import { WhyPanel } from './WhyPanel.tsx';
 
 export interface ComposerHooks {
   focus: number;
+  note: string | null;
   onSend: (request: Request) => void;
   onEscape: () => void;
 }

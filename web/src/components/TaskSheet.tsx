@@ -94,7 +94,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
         ))}
       </nav>
       <div className={styles.panel} role="tabpanel">
-        {current === 'overview' && <Overview session={session} />}
+        {current === 'overview' && <Overview session={session} name={name} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
         {current === 'artifacts' && <Artifacts session={session} item={item} />}
       </div>

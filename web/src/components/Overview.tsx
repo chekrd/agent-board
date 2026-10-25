@@ -1,17 +1,45 @@
-import { showTab } from '../router.ts';
+import { queue } from '../queue.ts';
+import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
+import { hold, useBusy } from '../sends.ts';
 import type { Session } from '../types.ts';
-import { ago, decisionOf } from '../util.ts';
-import { AnswerForm } from './AnswerForm.tsx';
+import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
-import { DecisionCard } from './Detail.tsx';
+import { Composer } from './Composer.tsx';
 import { LatestReply } from './LatestReply.tsx';
-import { MenuCard } from './MenuCard.tsx';
 import styles from './Overview.module.css';
 import { FocusButton } from './SessionMenu.tsx';
 
-export function Overview({ session }: { session: Session }) {
+function opinionOf(s: Session) {
+  const a = adviceFor(s);
+  if (a?.state === 'thinking') return 'The second opinion is still running.';
+  if (a?.state !== 'done') return null;
+  const picked = a.choice ?? (s.menu ? (a.answers ?? []).map((x) => x.other || x.labels.join(', ')).join(' · ') : a.answer);
+  return `Second opinion: ${picked} · ${a.confidence}%`;
+}
+
+// A decision is answered on its card, never in the sheet: the box says what waits and takes the reader there.
+function Queued({ session }: { session: Session }) {
+  const problem = session.menu ? session.menu.questions.map((q) => q.question).join(' · ') : decisionOf(session)?.problem;
+  const opinion = opinionOf(session);
+  const answer = () => {
+    queue.jump(session.id);
+    closeSheetToQueue();
+  };
+  return (
+    <section className={styles.queued} data-queued>
+      <span className={styles.kicker}>In your queue · {session.menu ? 'Asked in the terminal' : 'Decision'}</span>
+      <h3>{problem}</h3>
+      {opinion && <p>{opinion}</p>}
+      <button type="button" data-variant="primary" onClick={answer}>Answer it on its card</button>
+    </section>
+  );
+}
+
+export function Overview({ session, name }: { session: Session; name: string }) {
+  const busy = useBusy();
   const { summary, activity } = session;
-  const decision = decisionOf(session);
+  const attention = attentionOf(session);
+  const { archived } = session;
   const working = session.status === 'working';
   const learnings = summary?.learnings ?? [];
   const artifacts = session.artifacts.toReversed();
@@ -35,22 +63,23 @@ export function Overview({ session }: { session: Session }) {
               {learnings.map((k) => <p key={k}>{k}</p>)}
             </section>
           )}
-          {session.menu ? (
-            <MenuCard key={session.menu.toolUseId} session={session} menu={session.menu} />
-          ) : decision ? (
-            <DecisionCard key={decision.key} session={session} decision={decision} />
-          ) : session.status === 'waiting' ? (
+          {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} />}
+          {!archived && attention === 'focus' && (
             <section className={styles.blocked}>
               <p>Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>
               <FocusButton session={session} />
             </section>
-          ) : (
-            !session.archived && session.status !== 'exited' && (
-              <section className={styles.message}>
-                <h3 className={styles.label}>Message Claude</h3>
-                <AnswerForm session={session} />
-              </section>
-            )
+          )}
+          {!archived && (attention === 'working' || attention === 'idle') && (
+            <Composer
+              session={session}
+              decision={null}
+              label="Message Claude"
+              placeholder="Reply, / for commands, paste or drop files…"
+              focus={0}
+              onSend={(r) => void hold(session, r, name)}
+              onEscape={closeSheet}
+            />
           )}
           <section className={styles.status}>
             <h3 className={styles.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { decisionKey } from '../../server/decision.ts';
 import { kindOf, refreeze, resolveFront, rotate, targetOf, type Frozen } from './deck.ts';
-import type { Session } from './types.ts';
+import type { MenuAnswer, Session } from './types.ts';
 
 // The queue's own state, which no snapshot carries: the card being read, what ⏎ sends on each decision, the key
 // guard, and the markers the cards show.
@@ -10,11 +10,13 @@ import type { Session } from './types.ts';
 export const GUARD_MS = 900;
 export const UPDATED_MS = 10_000;
 export const FRESH_MS = 2600;
-const FROZEN_KEPT = 100;
+const KEPT = 100;
 const FRONT_KEY = 'agent-board:front';
 const FROZEN_KEY = 'agent-board:frozen';
+const PICKS_KEY = 'agent-board:picks';
 
-// How a card change moves: an answer drops down, a dismissal or archive goes sideways, a skip goes back.
+// How a card change moves: an answer drops down, a dismissal or archive goes sideways, a skip goes back, and a send
+// taken back comes back.
 export type Deal = 'down' | 'side' | 'back' | 'enter' | 'enter-back';
 
 export interface NotSent {
@@ -35,7 +37,8 @@ export interface QueueState {
   // Session ids, each with the time its "Updated just now" or its fresh ring ends.
   updated: ReadonlyMap<string, number>;
   fresh: ReadonlyMap<string, number>;
-  // A send that failed: its card waits right after the front until it has been there once, with this message.
+  // A send that failed: while its card is in the deck it waits right after the front until it has been there once,
+  // with this message.
   notSent: ReadonlyMap<string, NotSent>;
 }
 
@@ -97,6 +100,13 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     updated: new Map(),
     fresh: new Map(),
     notSent: new Map(),
+  };
+  // A menu's picks, by decision. They are a draft, as a reply box's text is: the card that comes back, after a skip,
+  // an Undo or a reload, shows them as they were.
+  let picks = read(PICKS_KEY, (raw) => new Map<string, MenuAnswer[]>(JSON.parse(raw)), new Map());
+  const keep = <T>(map: Map<string, T>) => {
+    for (const old of map.keys()) if (map.size > KEPT) map.delete(old);
+    return map;
   };
   const subscribers = new Set<() => void>();
   // Fronts leaving through this page's own send, archive or quit, which need no "no longer waits".
@@ -170,6 +180,8 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     const pending = front ? notSent.get(front) : undefined;
     if (front && pending?.shown === false) notSent = new Map(notSent).set(front, { ...pending, shown: true });
     if (before && front !== before && notSent.get(before)?.shown) notSent = new Map([...notSent].filter(([id]) => id !== before));
+    const inDeck = (id: string) => deck.some((s) => s.id === id);
+    if ([...notSent.keys()].some((id) => !inDeck(id))) notSent = new Map([...notSent].filter(([id]) => inDeck(id)));
     const order = rotate(deck, front, waiting(notSent)).map((s) => s.id);
     const same = front === state.front && order.join() === state.order.join() && seen === state.seen && frozen === state.frozen &&
       updated === state.updated && notSent === state.notSent && guardUntil === state.guardUntil;
@@ -231,13 +243,22 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     own(id: string) {
       own.add(id);
     },
+    // Takes a deal back: when `change` puts the card in the deck again, it comes back to the front.
+    restore(id: string, change: () => boolean) {
+      transition(() => {
+        if (change()) commit({ ...state, front: id });
+      }, 'enter-back');
+    },
 
     // Written from the render that first showed the card, with the value it drew.
     freeze(key: string, value: Frozen) {
       if (state.frozen.has(key)) return;
-      const frozen = new Map(state.frozen).set(key, value);
-      for (const old of frozen.keys()) if (frozen.size > FROZEN_KEPT) frozen.delete(old);
-      commit({ ...state, frozen });
+      commit({ ...state, frozen: keep(new Map(state.frozen).set(key, value)) });
+    },
+    picksOf: (key: string) => picks.get(key) ?? null,
+    pick(key: string, value: readonly MenuAnswer[]) {
+      picks = keep(new Map(picks).set(key, value.map((p) => ({ labels: [...p.labels], other: p.other }))));
+      write(PICKS_KEY, JSON.stringify([...picks]));
     },
     notSent(id: string, message: string) {
       commit({ ...state, notSent: new Map(state.notSent).set(id, { message, shown: false }) });

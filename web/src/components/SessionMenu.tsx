@@ -3,25 +3,45 @@ import { sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
+import { patchSession } from '../store.ts';
 import type { Session, WorktreeView } from '../types.ts';
 import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
 import { Icon } from './Icon.tsx';
 import styles from './SessionMenu.module.css';
 import { toast } from './Toasts.tsx';
 
-// A held answer would otherwise be pasted into the terminal while someone types in it.
-export function openTerminal(id: string) {
-  sends.sendNow(id);
+const TYPED_MS = 2000;
+
+// A held answer goes out first, and the terminal comes up once it is typed (or 2 s on), so it is never pasted into a
+// terminal someone types in.
+export async function openTerminal(id: string) {
+  await Promise.race([sends.sendNow(id), new Promise((done) => setTimeout(done, TYPED_MS))]);
   return sessionAction(id, 'focus');
 }
 
+// The session leaves the queue at once, its card sideways when it is the one being read, and Undo brings it back.
 // Taking a card out of the queue from this page needs no word that it no longer waits.
 export function archive(session: Session, name: string) {
-  queue.own(session.id);
-  sessionAction(session.id, 'archive', { archived: true }).then(() => {
-    const undo = () => void sessionAction(session.id, 'archive', { archived: false }).catch(reportError);
-    toast('undo', `Archived ${name}`, { session: session.id, action: { label: 'Undo', run: undo } });
-  }, reportError);
+  const { id } = session;
+  const front = queue.state().front === id;
+  const shelve = (archived: boolean) => {
+    patchSession(id, { archived });
+    return true;
+  };
+  queue.own(id);
+  if (front) queue.deal('side', () => shelve(true));
+  else shelve(true);
+  sessionAction(id, 'archive', { archived: true }).then(() => {
+    const undo = () => {
+      if (front) queue.restore(id, () => shelve(false));
+      else shelve(false);
+      sessionAction(id, 'archive', { archived: false }).catch(reportError);
+    };
+    toast('undo', `Archived ${name}`, { session: id, action: { label: 'Undo', run: undo } });
+  }, (err) => {
+    shelve(false);
+    reportError(err);
+  });
 }
 
 export function SessionMenu({ session, worktree, name }: { session: Session; worktree: WorktreeView | undefined; name: string }) {

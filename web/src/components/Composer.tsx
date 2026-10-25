@@ -58,6 +58,25 @@ export function editDraft(id: string, edit: (d: Draft) => Draft) {
   for (const fn of subscribers) fn();
 }
 
+// A send takes the text and the files that finished uploading; one still uploading stays, and one that failed goes.
+export function takeDraft(id: string): Draft | null {
+  const d = draftOf(id);
+  const ready = d.files.filter((f) => f.path);
+  if (!d.text && !ready.length) return null;
+  release({ text: '', files: d.files.filter((f) => f.error) });
+  editDraft(id, () => ({ text: '', files: d.files.filter((f) => !f.path && !f.error) }));
+  return { text: d.text, files: ready };
+}
+
+// A send taken back or refused gives back what it took, ahead of anything written since.
+export function putBack(id: string, sent: Draft) {
+  editDraft(id, (d) => ({ text: [sent.text, d.text].filter(Boolean).join('\n\n'), files: [...sent.files, ...d.files] }));
+}
+
+export function release(d: Draft) {
+  for (const f of d.files) if (f.preview) URL.revokeObjectURL(f.preview);
+}
+
 const subscribe = (fn: () => void) => {
   subscribers.add(fn);
   return () => void subscribers.delete(fn);
@@ -113,7 +132,7 @@ export function attach(id: string, list: readonly File[]) {
 }
 
 function detach(id: string, a: Attachment) {
-  if (a.preview) URL.revokeObjectURL(a.preview);
+  release({ text: '', files: [a] });
   editDraft(id, (d) => ({ ...d, files: d.files.filter((f) => f.id !== a.id) }));
 }
 

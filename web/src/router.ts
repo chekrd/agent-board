@@ -84,3 +84,9 @@ export function closeSheet() {
 export function closeSheetOf(id: string) {
   if (current().sheet?.id === id) closeSheet();
 }
+
+// Closes the sheet onto the queue, also when it was opened over the Wall; Back then goes to the Wall.
+export function closeSheetToQueue() {
+  if (current().view === 'queue') closeSheet();
+  else go(viewPath('queue'), { history: 'replace' });
+}

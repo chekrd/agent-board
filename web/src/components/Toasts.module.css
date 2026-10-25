@@ -50,8 +50,13 @@
 
   .message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+  .count { font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0.75; }
+
   .action {
     flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     height: 30px;
     padding: 0 12px;
     border: 1px solid color-mix(in srgb, var(--ground) 40%, transparent);
@@ -60,6 +65,7 @@
     color: inherit;
     font-weight: 700;
     &:hover { border-color: var(--ground); }
+    kbd { border-color: color-mix(in srgb, var(--ground) 40%, transparent); background: color-mix(in srgb, var(--ground) 12%, transparent); }
   }
 
   .close {

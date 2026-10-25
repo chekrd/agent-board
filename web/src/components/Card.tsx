@@ -5,6 +5,7 @@ import type { Action, Card as Keys } from '../keys.ts';
 import type { Request } from '../outbox.ts';
 import { queue, useQueue } from '../queue.ts';
 import { openSheet } from '../router.ts';
+import { hold } from '../sends.ts';
 import type { MenuAnswer, RepoView, Session } from '../types.ts';
 import { useFront } from '../useKeys.ts';
 import { adviceFor, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
@@ -51,12 +52,13 @@ export interface CardProps {
   deck: number;
   // Drawn after the reader saw another card, so it comes in rather than being there at once.
   enter: boolean;
-  send: (session: Session, request: Request) => void;
 }
+
+const NOTE_MS = 5000;
 
 const metaChip = (text: string, title?: string) => <span className={styles.chip} title={title}>{text}</span>;
 
-export function Card({ session, repos, deck, enter, send }: CardProps) {
+export function Card({ session, repos, deck, enter }: CardProps) {
   const q = useQueue();
   const article = useRef<HTMLElement>(null);
   const why = useRef<HTMLElement>(null);
@@ -74,17 +76,36 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
   const done = advice?.state === 'done' ? advice : null;
   const frozen = key ? (q.frozen.get(key) ?? freeze(session)) : null;
   const draft = useDraft(session.id);
+  const filled = !!draft.text || draft.files.length > 0;
   const guarded = useGuarded(q.guardUntil);
+  const notSent = q.notSent.get(session.id);
 
-  const [composing, setComposing] = useState(() => decision?.options.length === 0 && !done);
+  const [composing, setComposing] = useState(() => (decision?.options.length === 0 && !done) || filled);
   const [focusAsk, setFocusAsk] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
   const [hidden, setHidden] = useKeyed(key, () => false);
   const [whyOpen, setWhyOpen] = useKeyed(key, () => false);
-  const [picks, setPicks] = useKeyed<MenuAnswer[]>(key, () => (frozen?.via === 'menu' ? frozen.picks.map((p) => ({ ...p, labels: [...p.labels] })) : []));
+  const [picks, showPicks] = useKeyed<MenuAnswer[]>(key, () =>
+    (key && queue.picksOf(key)) || (frozen?.via === 'menu' ? frozen.picks.map((p) => ({ ...p, labels: [...p.labels] })) : []));
+  const setPicks = (value: MenuAnswer[]) => {
+    showPicks(value);
+    if (key) queue.pick(key, value);
+  };
 
   useEffect(() => {
     if (key && frozen) queue.freeze(key, frozen);
   }, [key, frozen]);
+
+  // A draft that comes back, from a send taken back or refused, shows in the reply box.
+  useEffect(() => {
+    if (filled && decision) setComposing(true);
+  }, [filled]);
+
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => setNote(null), NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [note]);
 
   // An outside change brings the card in; a deal runs its own transition.
   useLayoutEffect(() => {
@@ -96,8 +117,8 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
   }, [whyOpen]);
 
   const open = kind === 'idle' || (decision !== null && composing);
-  const note: Note = { open: decision !== null && composing, text: draft.text, files: readyPaths(draft), uploading: uploading(draft) };
-  const primary = primaryOf(session, frozen, { composer: note, picks: menu ? picks : undefined });
+  const box: Note = { open: decision !== null && composing, text: draft.text, files: readyPaths(draft), uploading: uploading(draft) };
+  const primary = primaryOf(session, frozen, { composer: box, picks: menu ? picks : undefined });
 
   const focusCard = () => article.current?.focus({ preventScroll: true });
   const compose = () => {
@@ -108,9 +129,22 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
     setComposing(false);
     focusCard();
   };
+  // A press holds its request for 5 s, and the card leaves with it: sideways for a dismissal, down otherwise. Focus
+  // in a field the card takes along would be left on the page, so the card takes it first. A command answers
+  // nothing, so its card stays.
+  const send = (r: Request) => {
+    if (r.command) {
+      hold(session, r, name);
+      if (decision) setNote(`${r.label.split(/\s/)[0]} goes to the terminal as typed; the question stays open.`);
+      return;
+    }
+    if (article.current?.contains(document.activeElement)) focusCard();
+    queue.own(session.id);
+    queue.deal(r.action === 'dismiss' ? 'side' : 'down', () => void hold(session, r, name));
+  };
   const press = (p: Request | Intent | null) => {
     if (!p) return;
-    if (!('intent' in p)) send(session, p);
+    if (!('intent' in p)) send(p);
     else if (p.intent === 'terminal') openTerminal(session.id).catch(reportError);
     else compose();
   };
@@ -118,7 +152,7 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
     if (!primary.disabled && !queue.guarded()) press(primary.press);
   };
   const pick = (label: string) => {
-    if (!queue.guarded()) send(session, choose(session, label, note));
+    if (!queue.guarded()) send(choose(session, label, box));
   };
   const edit = () => {
     if (!done) return;
@@ -149,14 +183,14 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
     if (queue.guarded()) return;
     const only = [{ labels: [label], other: '' }];
     setPicks(only);
-    send(session, menuAnswer(session, only));
+    send(menuAnswer(session, only));
   };
   const dismiss = () => {
-    if (!queue.guarded()) send(session, dismissal(session));
+    if (!queue.guarded()) send(dismissal(session));
   };
   const accept = () => {
     const r = acceptance(session);
-    if (r && !queue.guarded()) send(session, r);
+    if (r && !queue.guarded()) send(r);
   };
   const archiveIt = () => archive(session, name);
 
@@ -204,7 +238,8 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
 
   const composer = {
     focus: focusAsk,
-    onSend: (r: Request) => send(session, r),
+    note,
+    onSend: send,
     onEscape: () => (decision ? closeComposer() : focusCard()),
   };
 
@@ -239,6 +274,7 @@ export function Card({ session, repos, deck, enter, send }: CardProps) {
         </div>
         <div className={styles.meta}>{meta}</div>
       </header>
+      {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
       {learnings.length > 0 && (
         <div className={styles.know} data-know>
           <span className={styles.knowLabel}>Worth knowing</span>

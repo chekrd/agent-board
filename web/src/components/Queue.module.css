@@ -74,12 +74,13 @@
     &[data-attention="decide"], &[data-attention="new"] { color: var(--accent-ink); }
     &[data-attention="focus"] { color: var(--prompt); }
     &[data-attention="idle"] { color: var(--idle); }
+    &[data-attention="not-sent"] { color: var(--danger); }
   }
 
   @media (max-width: 760px) {
     .stage { flex: none; padding: 36px 16px 14px; }
     .side, .sliver, .peek[data-peek="2"] { display: none; }
     .peek[data-peek="1"] { left: 14px; right: 14px; }
-    .kind { display: none; }
+    .kind:not([data-attention="not-sent"]) { display: none; }
   }
 }

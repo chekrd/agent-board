@@ -363,6 +363,21 @@ test('sendNow posts a session\'s held items at once, one after the other in pres
   assert.equal(posts.length, 3);
 });
 
+test('sendNow resolves once every post of the session has an answer, a refusal too, and at once when it holds nothing', async (t) => {
+  const { box, posts } = outbox(t);
+  let typed = false;
+  await box.sendNow('group');
+  box.hold(group, answer('s:t1', { choice: 'Ship' }), '');
+  box.hold(group, note('Tag it too'), '');
+  void box.sendNow('group').then(() => (typed = true));
+  posts[0].ok();
+  await settle();
+  assert.equal(typed, false, 'the note is still out');
+  posts[1].fail(refusal('this question is no longer open', 'stale'));
+  await settle();
+  assert.equal(typed, true);
+});
+
 test('every change is reported, so a view of the items can re-render', (t) => {
   const { box, changes } = outbox(t);
   box.hold(cart, answer('q:q1', { choice: 'Keep' }), '');

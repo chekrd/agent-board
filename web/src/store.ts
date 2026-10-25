@@ -46,6 +46,11 @@ function set(next: State) {
   else notify();
 }
 
+// This page's own change to a session, shown before the snapshot that carries it.
+export function patchSession(id: string, patch: Partial<Session>) {
+  set({ ...state, sessions: state.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
+}
+
 let wake: ReturnType<typeof setTimeout> | undefined;
 
 // A menu answered from the board turns from working to Needs focus by the clock alone, with no snapshot to say so;

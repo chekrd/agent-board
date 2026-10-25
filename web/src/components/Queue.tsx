@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react';
 import { arrivals, kindOf, promptOf } from '../deck.ts';
-import type { Request } from '../outbox.ts';
 import { arrange, queue, signature, useQueue } from '../queue.ts';
-import { openSheet } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { isEditable } from '../useKeys.ts';
@@ -25,9 +23,6 @@ function peekText(s: Session) {
 
 // Another card, or another decision on it: what must not replace a field the reader is typing in.
 const differs = (a: Session | null, b: Session | null) => a?.id !== b?.id || (!!a && !!b && signature(a, Date.now()) !== signature(b, Date.now()));
-
-// Answering from the card comes with the held sends; until then a press opens the task, where answering is.
-const send = (session: Session, _request: Request) => openSheet(session.id, 'overview');
 
 // The front card of the deck with the next two peeking out behind it, or the Wall when nothing waits. While the reader
 // types in a field that a change would take away (the card's reply box, or New task on the resting Wall), the
@@ -85,9 +80,16 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
           <div className={styles.deck}>
             {arranged.length > 3 && <div className={styles.sliver} data-sliver aria-hidden />}
             {rest.slice(0, 2).map((s, i) => (
-              <Peek key={peeking[i]} session={s} slot={i + 1} repos={repos} arrived={arrived.has(s.id)} enter={!!first && !first.peeks.includes(peeking[i])} />
+              <Peek
+                key={peeking[i]}
+                session={s}
+                slot={i + 1}
+                repos={repos}
+                mark={q.notSent.get(s.id)?.shown === false ? 'not-sent' : arrived.has(s.id) ? 'new' : null}
+                enter={!!first && !first.peeks.includes(peeking[i])}
+              />
             ))}
-            <Card key={shown.id} session={shown} repos={repos} deck={arranged.length} enter={!!first && shown.id !== first.card} send={send} />
+            <Card key={shown.id} session={shown} repos={repos} deck={arranged.length} enter={!!first && shown.id !== first.card} />
           </div>
           <Side direction="next" disabled={arranged.length < 2} />
         </main>
@@ -116,7 +118,10 @@ function Side({ direction, disabled }: { direction: 'previous' | 'next'; disable
   );
 }
 
-function Peek({ session, slot, repos, arrived, enter }: { session: Session; slot: number; repos: RepoView[]; arrived: boolean; enter: boolean }) {
+const MARKS = { 'not-sent': 'Not sent', new: 'Just in' } as const;
+
+// A peek names the card's state, or that it just came in, or that its send failed and it waits to be read again.
+function Peek({ session, slot, repos, mark, enter }: { session: Session; slot: number; repos: RepoView[]; mark: keyof typeof MARKS | null; enter: boolean }) {
   const attention = attentionOf(session);
   return (
     <button
@@ -131,7 +136,7 @@ function Peek({ session, slot, repos, arrived, enter }: { session: Session; slot
         <StateMark state={attention} size={8} />
         <span className={styles.peekName}>{sessionLabel(session, locate(repos, session).branch)}</span>
         <span className={styles.peekText}>{peekText(session)}</span>
-        <span className={styles.kind} data-attention={arrived ? 'new' : attention}>{arrived ? 'Just in' : STATE_LABELS[attention]}</span>
+        <span className={styles.kind} data-attention={mark ?? attention}>{mark ? MARKS[mark] : STATE_LABELS[attention]}</span>
       </span>
     </button>
   );
