@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
 import { after, test } from 'node:test';
 import { artifactFile, storeArtifacts } from './artifacts.ts';
 import { SESSIONS_DIR } from './config.ts';
 import type { Session } from './db.ts';
+
+if (!SESSIONS_DIR.startsWith(tmpdir() + sep)) {
+  throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}, which is not a temporary folder: run the tests with pnpm test, which gives them a fresh HOME`);
+}
 
 const id = `test-${randomUUID()}`;
 after(() => rm(join(SESSIONS_DIR, id), { recursive: true, force: true }));
