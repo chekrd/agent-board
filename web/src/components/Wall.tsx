@@ -18,6 +18,7 @@ export function Wall({ deck }: { deck: readonly Session[] }) {
     );
   }
   const { active, archived } = orderTiles(sessions);
+  const queued = new Set(deck.map((s) => s.id));
   const working = active.filter((s) => attentionOf(s) === 'working').length;
   const title = !sessions.length ? (repos.length ? 'No sessions yet.' : 'No repositories yet.') : deck.length ? 'Every agent, in priority order' : 'Nothing needs you.';
   const sub = !sessions.length ? null
@@ -46,13 +47,13 @@ export function Wall({ deck }: { deck: readonly Session[] }) {
         </div>
       )}
       <div className={styles.tiles}>
-        {active.map((s) => <WallTile key={s.id} session={s} repos={repos} />)}
+        {active.map((s) => <WallTile key={s.id} session={s} repos={repos} queued={queued.has(s.id)} />)}
       </div>
       {archived.length > 0 && (
         <details className={styles.archived}>
           <summary><Icon name="chevron-right" size={14} />Archived ({archived.length})</summary>
           <div className={styles.tiles}>
-            {archived.map((s) => <WallTile key={s.id} session={s} repos={repos} />)}
+            {archived.map((s) => <WallTile key={s.id} session={s} repos={repos} queued={false} />)}
           </div>
         </details>
       )}
