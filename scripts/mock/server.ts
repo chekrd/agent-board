@@ -104,10 +104,9 @@ function shown(s: Session) {
 
 const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
 
-// As in server/main.ts, every push names the UI build; the server before named it only when a socket opened.
-let uiEntry: string | null = null;
-watchEntry(() => readEntry(join(DIST, 'index.html')), (entry) => {
-  uiEntry = entry;
+// As in server/main.ts, a socket that opens gets the entry index.html names now and every push the one the polls took;
+// the server before named it only when a socket opened.
+const ui = watchEntry(() => readEntry(join(DIST, 'index.html')), () => {
   if (!args.legacy) push();
 });
 
@@ -116,7 +115,7 @@ function push() {
   pushing = true;
   queueMicrotask(() => {
     pushing = false;
-    const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry }) });
+    const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry: ui.settled() }) });
     for (const ws of clients) ws.send(message);
   });
 }
@@ -762,7 +761,9 @@ const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
   if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws/events' || !allowed(req)) return socket.destroy();
-  wss.handleUpgrade(req, socket, head, (ws) => {
+  wss.handleUpgrade(req, socket, head, async (ws) => {
+    const uiEntry = await ui.fresh();
+    if (ws.readyState !== ws.OPEN) return;
     clients.add(ws);
     ws.on('close', () => clients.delete(ws));
     ws.send(JSON.stringify({ ...snapshot(), uiEntry }));
