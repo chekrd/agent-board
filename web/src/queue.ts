@@ -96,8 +96,10 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   const subscribers = new Set<() => void>();
   // Fronts leaving through this page's own send, archive or quit, which need no "no longer waits".
   const own = new Set<string>();
-  // The front card at the last sync, to tell an outside change of it.
+  // The front card as last arranged, to tell an outside change of it.
   let shown: { id: string; sig: string; target: string } | null = null;
+  // The deck of the last sync, which a move arranges again around its new front.
+  let deck: readonly Session[] = [];
 
   function commit(next: QueueState) {
     if (next.front !== state.front) write(FRONT_KEY, next.front);
@@ -119,10 +121,53 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     return now() + GUARD_MS;
   };
 
-  function move(front: string | null, deal: Deal) {
-    const guardUntil = guard();
-    transition(() => commit({ ...state, front, guardUntil }), deal);
+  // Arranges the deck around `pinned`, the card wanted at the front: it keeps the pin, or moves it to the card that
+  // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes.
+  function arrangeAround(pinned: string | null): Left[] {
+    const at = now();
+    const events: Left[] = [];
+    let { guardUntil, updated, frozen, notSent } = state;
+    let seen = state.seen ?? new Set(deck.flatMap((s) => decisionKey(s) ?? []));
+    const front = resolveFront(deck, pinned, state.order);
+    if (pinned && front !== pinned && !own.has(pinned)) events.push({ type: 'left', id: pinned });
+    for (const id of own) if (!deck.some((s) => s.id === id)) own.delete(id);
+
+    const card = deck.find((s) => s.id === front) ?? null;
+    const key = card && decisionKey(card);
+    const update = (id: string) => {
+      updated = new Map(updated).set(id, at + UPDATED_MS);
+      expire(UPDATED_MS);
+      guardUntil = guard();
+    };
+    if (card && key) {
+      const was = frozen.get(key);
+      const re = was && refreeze(was, card);
+      if (re) {
+        frozen = new Map(frozen).set(key, re.frozen);
+        if (re.why === 'rewritten') update(card.id);
+        else guardUntil = guard();
+      }
+      if (!seen.has(key)) seen = new Set(seen).add(key);
+    }
+    const before = shown?.id ?? null;
+    const sig = card ? `${kindOf(card, at)}:${key}` : '';
+    const target = card ? targetOf(card, (key && frozen.get(key)) || null, at) : '';
+    if (card && before !== card.id) guardUntil = guard();
+    else if (card && shown!.sig !== sig) update(card.id);
+    else if (card && shown!.target !== target) guardUntil = guard();
+    shown = card ? { id: card.id, sig, target } : null;
+
+    const pending = front ? notSent.get(front) : undefined;
+    if (front && pending?.shown === false) notSent = new Map(notSent).set(front, { ...pending, shown: true });
+    if (before && front !== before && notSent.get(before)?.shown) notSent = new Map([...notSent].filter(([id]) => id !== before));
+    const order = rotate(deck, front, waiting(notSent)).map((s) => s.id);
+    const same = front === state.front && order.join() === state.order.join() && seen === state.seen && frozen === state.frozen &&
+      updated === state.updated && notSent === state.notSent && guardUntil === state.guardUntil;
+    if (!same) commit({ ...state, front, order, seen, frozen, updated, notSent, guardUntil });
+    return events;
   }
+
+  const move = (front: string, deal: Deal) => transition(() => void arrangeAround(front), deal);
 
   return {
     state: () => state,
@@ -132,50 +177,10 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     },
     guarded: () => now() < state.guardUntil,
 
-    // Call with every new deck once the first snapshot is in. It keeps the pin, or moves it to the card that
-    // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes.
-    sync(deck: readonly Session[]): Left[] {
-      const at = now();
-      const events: Left[] = [];
-      let { guardUntil, updated, frozen, notSent } = state;
-      let seen = state.seen ?? new Set(deck.flatMap((s) => decisionKey(s) ?? []));
-      const front = resolveFront(deck, state.front, state.order);
-      if (state.front && front !== state.front && !own.has(state.front)) events.push({ type: 'left', id: state.front });
-      for (const id of own) if (!deck.some((s) => s.id === id)) own.delete(id);
-
-      const card = deck.find((s) => s.id === front) ?? null;
-      const key = card && decisionKey(card);
-      const update = (id: string) => {
-        updated = new Map(updated).set(id, at + UPDATED_MS);
-        expire(UPDATED_MS);
-        guardUntil = guard();
-      };
-      if (card && key) {
-        const was = frozen.get(key);
-        const re = was && refreeze(was, card);
-        if (re) {
-          frozen = new Map(frozen).set(key, re.frozen);
-          if (re.why === 'rewritten') update(card.id);
-          else guardUntil = guard();
-        }
-        if (!seen.has(key)) seen = new Set(seen).add(key);
-      }
-      const before = shown?.id ?? null;
-      const sig = card ? `${kindOf(card, at)}:${key}` : '';
-      const target = card ? targetOf(card, (key && frozen.get(key)) || null, at) : '';
-      if (card && before !== card.id) guardUntil = guard();
-      else if (card && shown!.sig !== sig) update(card.id);
-      else if (card && shown!.target !== target) guardUntil = guard();
-      shown = card ? { id: card.id, sig, target } : null;
-
-      const pending = front ? notSent.get(front) : undefined;
-      if (front && pending?.shown === false) notSent = new Map(notSent).set(front, { ...pending, shown: true });
-      if (before && front !== before && notSent.get(before)?.shown) notSent = new Map([...notSent].filter(([id]) => id !== before));
-      const order = rotate(deck, front, waiting(notSent)).map((s) => s.id);
-      const same = front === state.front && order.join() === state.order.join() && seen === state.seen && frozen === state.frozen &&
-        updated === state.updated && notSent === state.notSent && guardUntil === state.guardUntil;
-      if (!same) commit({ ...state, front, order, seen, frozen, updated, notSent, guardUntil });
-      return events;
+    // Call with every new deck once the first snapshot is in.
+    sync(next: readonly Session[]): Left[] {
+      deck = next;
+      return arrangeAround(state.front);
     },
 
     skip() {
@@ -187,7 +192,7 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
       if (last && last !== state.front) move(last, 'enter-back');
     },
     jump(id: string) {
-      if (id !== state.front) move(id, 'enter');
+      if (id !== state.front && deck.some((s) => s.id === id)) move(id, 'enter');
     },
 
     // Applies a change that takes the front card away (a send, dismissal, archive) as one deal. The guard starts

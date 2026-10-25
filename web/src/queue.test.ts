@@ -149,6 +149,26 @@ test('skip, previous and jump move the front, each in a transition of its own', 
   assert.deepEqual(deals, ['back', 'enter-back', 'enter']);
 });
 
+test('skip and previous go by the order as the last move left it, with no new deck in between; a jump needs a card the deck has', () => {
+  const { q, deals } = world();
+  const d = ask('d', { rank: 5 });
+  q.sync([a, b, c, d]);
+  q.skip();
+  q.previous();
+  assert.equal(q.state().front, 'a');
+  q.skip();
+  q.skip();
+  assert.equal(q.state().front, 'c');
+  assert.deepEqual(q.state().order, ['c', 'd', 'a', 'b']);
+  q.previous();
+  q.previous();
+  q.previous();
+  assert.equal(q.state().front, 'd');
+  q.jump('elsewhere');
+  assert.equal(q.state().front, 'd');
+  assert.deepEqual(deals, ['back', 'enter-back', 'back', 'back', 'enter-back', 'enter-back', 'enter-back']);
+});
+
 test('a send that failed waits right after the card being read until it has been at the front, which shows its message once', () => {
   const { q } = world();
   q.sync([a, b, c]);
