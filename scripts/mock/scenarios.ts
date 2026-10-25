@@ -1,8 +1,8 @@
 import type { Session } from '../../server/db.ts';
+import { menuAnswerText } from '../../server/decision.ts';
 import type { RepoView } from '../../server/workspace.ts';
 import { addFromTemplate, queue, repos, ROOTS, session, titleOf, type Template } from './fixtures.ts';
 
-// Behaviour the real server shows only when something goes wrong.
 export type Flag = 'explainFails' | 'lossFails';
 
 export interface Scenario {
@@ -25,8 +25,6 @@ const kindOf = (s: Session) =>
 
 const DECIDING = ['ask', 'turn', 'menu'] as const;
 
-// The queue's sessions, then made-up ones until each kind has its count. Made-up decisions take turns being an
-// ask_human question, an end-of-turn decision and a menu; every seventh is unranked.
 function crowd(now: number, counts: { decide: number; prompt: number; idle: number; working: number; exited: number }): Scenario {
   const scenario = base(now, []);
   const known = queue(now);
@@ -113,6 +111,10 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
         { label: 'Decide per product', description: 'A dialog lists each conflicting product with both quantities' },
       ],
     },
+  }))),
+
+  'menu-stuck': (now) => base(now, queue(now).map((s) => (s.id !== 's-hooks' || !s.menu ? s : {
+    ...s, answered: { key: `m:${s.menu.toolUseId}`, text: menuAnswerText(s.menu, s.advice!.answers!), at: now - MIN },
   }))),
 
   'ended-question': (now) => base(now, [...queue(now), session({

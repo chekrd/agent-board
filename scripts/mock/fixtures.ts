@@ -4,9 +4,6 @@ import type { Conversation } from '../../server/conversations.ts';
 import type { Session } from '../../server/db.ts';
 import type { RepoView, WorktreeView } from '../../server/workspace.ts';
 
-// The Focus Queue prototype's mock data in the real types. Times are relative to `now`, so a
-// scenario loaded later still reads "3m ago".
-
 const SEC = 1000;
 const MIN = 60 * SEC;
 const HOUR = 60 * MIN;
@@ -307,7 +304,6 @@ export const COMMANDS: Command[] = [
   { name: 'model', description: 'Switch the model' },
 ];
 
-// What Delete worktree would throw away (GET /api/sessions/:id/delete-worktree), for every worktree.
 export const DELETE_LOSS = { files: 3, commits: 2 };
 
 const escape = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -334,11 +330,9 @@ export const artifactPage = (title: string) => `<!doctype html>
 </body></html>
 `;
 
-// Elaborate's answer for any decision the fixtures do not explain themselves.
 export const explanationOf = (title: string) =>
   `**Background.** The decision "${title}" comes from the code Claude changed in this worktree; the files involved are listed in the Diff tab.\n\n**Each choice** changes how much code moves now and how much is left for later. Claude assumed the tests cover the current behaviour; check that before deciding.`;
 
-// Sessions made to order, for /mock/add and the scenarios with many agents.
 export const TEMPLATES = ['ask', 'turn', 'menu', 'prompt', 'idle', 'working', 'exited'] as const;
 export type Template = (typeof TEMPLATES)[number];
 
@@ -421,7 +415,6 @@ function templateFields(template: Template, o: { toolUseId: string; now: number;
   }
 }
 
-// A session of that kind with its own worktree, which is added to `repo`.
 export function addFromTemplate(repo: RepoView, template: Template, o: { id: string; title?: string; now: number; rank?: number | null }): Session {
   const { id, title = TEMPLATE_TITLES[template], now } = o;
   const pathOf = (branch: string) => `${repo.defaultWorktreeRoot}/${branch}/${repo.name}`;

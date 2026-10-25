@@ -7,19 +7,17 @@ import { homedir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { answering, liveTty, type Reply } from '../../server/answering.ts';
 import type { FullDiff } from '../../server/git.ts';
 import type { Session } from '../../server/db.ts';
-import { checkDecision, decisionKey, openDecision } from '../../server/decision.ts';
+import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
 import type { RepoView } from '../../server/workspace.ts';
 import { isolateHome, refuseLive } from '../isolate.ts';
 import { addFromTemplate, artifactPage, COMMANDS, DELETE_LOSS, explanationOf, TEMPLATES, worktreeRootOf, type Template } from './fixtures.ts';
 import { scenarios, type Flag, type Scenario } from './scenarios.ts';
 
-// Serves a build of the UI against made-up sessions with the contract of server/main.ts, so a page can be driven
-// without a real Claude, tmux, Ghostty or the live board:
-//   node scripts/mock/server.ts [--port 7421] [--dist web/dist] [--scenario queue]
-// The routes under /mock control it; GET /mock lists the scenarios and templates.
+// The contract of server/main.ts over made-up sessions, without a Claude, tmux, Ghostty or the live board behind it.
 
 isolateHome();
 
@@ -29,6 +27,7 @@ const { values: args } = parseArgs({
     port: { type: 'string', default: '7421' },
     dist: { type: 'string', default: join(ROOT, 'web', 'dist') },
     scenario: { type: 'string', default: 'queue' },
+    legacy: { type: 'boolean', default: false },
   },
 });
 refuseLive(Number(args.port));
@@ -47,8 +46,10 @@ const ARTIFACT_CSP = [
   'sandbox allow-scripts',
 ].join('; ');
 
+const TYPING_MS = 300;
+
 const run = promisify(execFile);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 class HttpError extends Error {
   status: number;
@@ -94,7 +95,13 @@ let dropUntil = 0;
 const clients = new Set<WebSocket>();
 let pushing = false;
 
-const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt) });
+function shown(s: Session) {
+  if (!args.legacy) return s;
+  const { answered: _, ...old } = s;
+  return old;
+}
+
+const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
 
 function push() {
   if (pushing) return;
@@ -118,6 +125,7 @@ function load(name: string) {
   delayMs = 0;
   dropUntil = 0;
   state = make(Date.now());
+  if (args.legacy) for (const s of state.sessions) s.answered = null;
   scenarioName = name;
   push();
 }
@@ -155,22 +163,14 @@ function mustRepo(id: number) {
   return repo;
 }
 
-// Claude's side of an answer: it starts working on it.
 function claudeWorks(id: string) {
   later(600, () => {
     const since = Date.now();
-    update(id, { status: 'working', menu: null, waitingFor: null, lastTurn: `t-${since.toString(36)}`, activity: { step: 'Thinking', since } });
+    update(id, { status: 'working', menu: null, waitingFor: null, lastTurn: `t-${since.toString(36)}`, activity: { step: args.legacy ? 'Thinking' : null, since } });
     later(1500, () => {
       if (find(id)?.status === 'working') update(id, { activity: { step: 'Bash: pnpm test', since } });
     });
   });
-}
-
-// The rules of server/sessions.ts at 0ebbac6, without a terminal behind them.
-
-function liveTty(s: Session) {
-  if (s.status === 'exited') throw new Error('this session has ended; continue it first');
-  if (!s.tty) throw new Error('this session has no terminal yet');
 }
 
 function checkUploads(paths: unknown) {
@@ -185,11 +185,25 @@ function checkUploads(paths: unknown) {
 
 const isCommand = (text: string) => text.startsWith('!') || COMMANDS.some((c) => c.name === text.match(/^\/(\S+)/)?.[1]);
 
-function closeQuestion(s: Session) {
-  if (s.question) update(s.id, { question: null, dismissedAsk: s.question.toolUseId });
+function closeQuestion(id: string) {
+  const question = find(id)?.question;
+  if (question) update(id, { question: null, dismissedAsk: question.toolUseId });
 }
 
-function answer(s: Session, reply: { key?: string | null; choice?: string; text?: string; files?: unknown }, commands = true) {
+const answers = answering({
+  store: { get: find, update },
+  send: () => sleep(TYPING_MS),
+  keys: () => sleep(TYPING_MS),
+  notify: push,
+  decided: (id) => {
+    closeQuestion(id);
+    claudeWorks(id);
+  },
+  isCommand: async (_s, text) => isCommand(text),
+  checkUploads: async (files) => checkUploads(files),
+});
+
+function legacyAnswer(s: Session, reply: Reply, commands = true) {
   liveTty(s);
   if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
   const text = reply.text?.trim() ?? '';
@@ -197,11 +211,11 @@ function answer(s: Session, reply: { key?: string | null; choice?: string; text?
   if (!reply.choice && !text && !files.length) throw new Error('empty answer');
   if (commands && !reply.choice && !files.length && isCommand(text)) return;
   checkDecision(s, reply.key, !reply.choice);
-  closeQuestion(s);
+  closeQuestion(s.id);
   claudeWorks(s.id);
 }
 
-function answerMenu(s: Session, body: { toolUseId?: string; answers?: MenuAnswer[] }) {
+function legacyAnswerMenu(s: Session, body: { toolUseId?: string; answers?: MenuAnswer[] }) {
   liveTty(s);
   const menu = s.menu;
   if (!menu || menu.toolUseId !== body.toolUseId) throw new Error('this question is no longer open');
@@ -209,12 +223,12 @@ function answerMenu(s: Session, body: { toolUseId?: string; answers?: MenuAnswer
   claudeWorks(s.id);
 }
 
-function acceptAdvice(s: Session) {
+function legacyAcceptAdvice(s: Session) {
   const a = s.advice;
   const decision = openDecision(s);
   if (a?.state !== 'done' || a.key !== decision?.key) throw new Error('no advice to accept');
-  if (decision.menu) answerMenu(s, { toolUseId: decision.menu.toolUseId, answers: a.answers ?? [] });
-  else answer(s, { key: a.key, choice: a.choice ?? undefined, text: a.answer }, false);
+  if (decision.menu) legacyAnswerMenu(s, { toolUseId: decision.menu.toolUseId, answers: a.answers ?? [] });
+  else legacyAnswer(s, { key: a.key, choice: a.choice ?? undefined, text: a.answer }, false);
 }
 
 function elaborate(s: Session) {
@@ -267,12 +281,13 @@ function removeWorktree(repo: RepoView, path: string) {
 
 const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-advice', 'elaborate']);
 
-const actions: Record<string, (s: Session, body: any) => void> = {
-  answer: (s, body) => answer(s, body),
-  dismiss: (s) => closeQuestion(s),
+const actions: Record<string, (s: Session, body: any) => void | Promise<void>> = {
+  answer: (s, body) => (args.legacy ? legacyAnswer(s, body) : answers.answer(s.id, body)),
+  dismiss: (s) => closeQuestion(s.id),
   rename: (s, body) => rename(s, body.title),
-  'answer-menu': (s, body) => answerMenu(s, body),
-  'accept-advice': (s) => acceptAdvice(s),
+  'answer-menu': (s, body) => (args.legacy ? legacyAnswerMenu(s, body) : answers.answerMenu(s.id, body)),
+  'accept-advice': (s, body) =>
+    args.legacy ? legacyAcceptAdvice(s) : answers.acceptAdvice(s.id, typeof body.adviceAt === 'number' ? body.adviceAt : undefined),
   'retry-advice': (s) => retryAdvice(s),
   'stop-advice': (s) => stopAdvice(s),
   elaborate: (s) => elaborate(s),
@@ -300,7 +315,7 @@ async function sessionAction(id: string, action: string, body: any) {
   if (!act) throw new HttpError(404, 'unknown action');
   const s = must(id);
   if (onDecision.has(action)) checkDecision(s, body.key);
-  act(s, body);
+  await act(s, body);
 }
 
 const longLived = (repo: RepoView, branch: string) =>
@@ -534,8 +549,7 @@ route('GET', '/api/diff', async ({ url }) => {
   return diff;
 });
 
-// The controls. A page under test can call them too: they share its origin.
-route('GET', '/mock', () => ({ scenario: scenarioName, scenarios: Object.keys(scenarios), templates: TEMPLATES }));
+route('GET', '/mock', () => ({ scenario: scenarioName, scenarios: Object.keys(scenarios), templates: TEMPLATES, legacy: args.legacy }));
 route('POST', '/mock/scenario/:name', ({ params }) => {
   load(params[0]);
   return { scenario: scenarioName };
@@ -685,7 +699,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const status = err instanceof HttpError ? err.status : 400;
     const message = err instanceof Error ? err.message : String(err);
     if (status === 404) return reply(404, message);
-    reply(status, { error: message, ...(err instanceof HttpError && err.code && { code: err.code }) });
+    const code = err instanceof HttpError ? err.code : err instanceof Refusal && !args.legacy ? err.code : undefined;
+    reply(status, { error: message, ...(code && { code }) });
   }
 }
 
@@ -726,5 +741,5 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => pr
 load(args.scenario);
 server.listen(Number(args.port), '127.0.0.1', () => {
   port = (server.address() as AddressInfo).port;
-  console.log(`agent-board mock on http://127.0.0.1:${port} · scenario ${scenarioName} · ${DIST}`);
+  console.log(`agent-board mock on http://127.0.0.1:${port} · scenario ${scenarioName} · ${DIST}${args.legacy ? ' · legacy' : ''}`);
 });
