@@ -6,7 +6,7 @@ import { test, type TestContext } from 'node:test';
 import { setImmediate as flush } from 'node:timers/promises';
 import { readEntry, watchEntry } from './uiEntry.ts';
 
-// A read per poll, in order; the last one repeats.
+// A read per call, in order; the last one repeats.
 function reads(...values: (string | null | Error)[]) {
   let n = 0;
   const read = async () => {
@@ -17,21 +17,21 @@ function reads(...values: (string | null | Error)[]) {
   return { read, count: () => n };
 }
 
-function watch(t: TestContext, ...values: (string | null | Error)[]) {
+function watch(t: TestContext, read: () => Promise<string | null>) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { read, count } = reads(...values);
   const reported: string[] = [];
-  const stop = watchEntry(read, (entry) => void reported.push(entry), 2000);
-  t.after(stop);
+  const ui = watchEntry(read, (entry) => void reported.push(entry), 2000);
+  t.after(ui.stop);
   const poll = async () => {
     t.mock.timers.tick(2000);
     await flush();
   };
-  return { reported, count, stop, poll };
+  return { reported, ui, poll };
 }
 
 test('the entry found at the start is reported at once; a new one once two reads in a row agree, and only once', async (t) => {
-  const w = watch(t, 'a.js', 'a.js', 'b.js', 'b.js', 'b.js', 'b.js');
+  const r = reads('a.js', 'a.js', 'b.js', 'b.js', 'b.js', 'b.js');
+  const w = watch(t, r.read);
   await flush();
   assert.deepEqual(w.reported, ['a.js']);
   await w.poll();
@@ -41,11 +41,11 @@ test('the entry found at the start is reported at once; a new one once two reads
   assert.deepEqual(w.reported, ['a.js', 'b.js']);
   await w.poll();
   await w.poll();
-  assert.deepEqual([w.reported, w.count()], [['a.js', 'b.js'], 6]);
+  assert.deepEqual([w.reported, r.count()], [['a.js', 'b.js'], 6]);
 });
 
 test('a read that finds no entry, or fails, is never reported, and neither is an entry that flaps', async (t) => {
-  const w = watch(t, null, null, new Error('EBUSY'), 'a.js', null, 'a.js', 'b.js', 'a.js', 'b.js', 'b.js');
+  const w = watch(t, reads(null, null, new Error('EBUSY'), 'a.js', null, 'a.js', 'b.js', 'a.js', 'b.js', 'b.js').read);
   await flush();
   for (let i = 0; i < 8; i++) await w.poll();
   assert.deepEqual(w.reported, [], 'no two reads in a row agreed yet');
@@ -54,13 +54,55 @@ test('a read that finds no entry, or fails, is never reported, and neither is an
 });
 
 test('a build that leaves the entry as it was reports nothing new; stop ends the polling', async (t) => {
-  const w = watch(t, 'a.js', null, null, 'a.js', 'a.js');
+  const r = reads('a.js', null, null, 'a.js', 'a.js');
+  const w = watch(t, r.read);
   await flush();
   for (let i = 0; i < 4; i++) await w.poll();
   assert.deepEqual(w.reported, ['a.js']);
-  w.stop();
+  w.ui.stop();
   await w.poll();
-  assert.equal(w.count(), 5);
+  assert.equal(r.count(), 5);
+});
+
+test('settled() names the entry reported only while the polls still find it', async (t) => {
+  const w = watch(t, reads(null, 'a.js', 'a.js', 'b.js', 'a.js', null, 'b.js', 'b.js').read);
+  const settled: (string | null)[] = [];
+  await flush();
+  settled.push(w.ui.settled());
+  for (let i = 0; i < 7; i++) {
+    await w.poll();
+    settled.push(w.ui.settled());
+  }
+  assert.deepEqual(settled, [null, null, 'a.js', null, 'a.js', null, null, 'b.js']);
+  assert.deepEqual(w.reported, ['a.js', 'b.js']);
+});
+
+test('a fresh read that finds another entry, or none, empties settled() until the polls agree again, and never counts as a poll', async (t) => {
+  let disk: string | null = 'a.js';
+  const w = watch(t, async () => disk);
+  await flush();
+  disk = 'b.js';
+  assert.equal(await w.ui.fresh(), 'b.js');
+  assert.equal(w.ui.settled(), null);
+  await w.poll();
+  assert.deepEqual([w.reported, w.ui.settled()], [['a.js'], null], 'a fresh read and one poll are not two polls');
+  await w.poll();
+  assert.deepEqual([w.reported, w.ui.settled()], [['a.js', 'b.js'], 'b.js']);
+
+  disk = null;
+  assert.equal(await w.ui.fresh(), null);
+  assert.equal(w.ui.settled(), null, 'the file is gone, as while a build writes it');
+  disk = 'b.js';
+  await w.poll();
+  assert.equal(w.ui.settled(), 'b.js');
+
+  disk = 'c.js';
+  await w.poll();
+  disk = 'b.js';
+  assert.equal(await w.ui.fresh(), 'b.js');
+  assert.equal(w.ui.settled(), null, 'a fresh read of the entry taken does not overrule a poll that found another');
+  await w.poll();
+  assert.deepEqual([w.reported, w.ui.settled()], [['a.js', 'b.js'], 'b.js']);
 });
 
 test('readEntry names the module script of a built index.html, and nothing for a missing or half-written one', async () => {

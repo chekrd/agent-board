@@ -216,22 +216,24 @@ app.get('/api/diff', async (c) => {
 });
 
 // Every snapshot names the UI build, so a page from an older one reloads, also after a `pnpm build` alone.
-let uiEntry: string | null = null;
-watchEntry(() => readEntry(join(WEB_DIST, 'index.html')), (entry) => {
-  uiEntry = entry;
-  notify();
-});
+const index = join(WEB_DIST, 'index.html');
+const ui = watchEntry(() => readEntry(index), notify);
 
-const message = () => JSON.stringify({ ...snapshot(), uiEntry });
+const message = (uiEntry: string | null) => JSON.stringify({ ...snapshot(), uiEntry });
 
 app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;
+  let closed = false;
   return {
-    onOpen(_evt, ws) {
-      off = onChange(() => ws.send(message()));
-      ws.send(message());
+    // Read now: the page may come from a build the polls have not taken yet.
+    async onOpen(_evt, ws) {
+      const uiEntry = await ui.fresh();
+      if (closed) return;
+      off = onChange(() => ws.send(message(ui.settled())));
+      ws.send(message(uiEntry));
     },
     onClose() {
+      closed = true;
       off?.();
     },
   };
@@ -239,7 +241,7 @@ app.get('/ws/events', upgradeWebSocket(() => {
 
 app.use('/*', serveStatic({ root: WEB_DIST }));
 app.get('*', async (c) => {
-  const html = await readFile(join(WEB_DIST, 'index.html'), 'utf8').catch(() => null);
+  const html = await readFile(index, 'utf8').catch(() => null);
   return html ? c.html(html) : c.text('UI not built: run `pnpm build`', 503);
 });
 
