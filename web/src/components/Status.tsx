@@ -26,14 +26,18 @@ const prLabels: Record<string, string> = {
   ERROR: 'az error',
 };
 
-export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatus }) {
-  if (!pr) return null;
+function prState(pr: PrFlow, status: SessionStatus) {
   const result = pr.result?.split(' ')[0];
-  const failed = result === 'FAILED' ? pr.result!.split(': ').slice(1).join(': ') : '';
   const fixing = result === 'FAILED' && !pr.watching && status === 'working';
   const closedAs = result === 'CLOSED' && (pr.result!.endsWith('completed') ? 'merged' : pr.result!.split(' ').at(-1));
   const label = !pr.id ? 'opening PR' : fixing ? 'fixing' : closedAs || (result ? prLabels[result] : 'checks pending');
-  const state = !pr.id ? 'RUNNING' : result ?? 'RUNNING';
+  return { result, label, state: !pr.id ? 'RUNNING' : result ?? 'RUNNING' };
+}
+
+export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatus }) {
+  if (!pr) return null;
+  const { result, label, state } = prState(pr, status);
+  const failed = result === 'FAILED' ? pr.result!.split(': ').slice(1).join(': ') : '';
   const title = [
     'Pull request and the state of its checks',
     pr.result ?? 'No result yet',
@@ -43,4 +47,10 @@ export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatu
   const text = <>PR{pr.id ? ` ${pr.id}` : ''} · {label}</>;
   const marks = { className: styles.pr, 'data-state': state, 'data-label': label, 'data-watching': pr.watching || undefined, title };
   return pr.url ? <a {...marks} href={pr.url} target="_blank" rel="noreferrer">{text}</a> : <span {...marks}>{text}</span>;
+}
+
+export function PrDot({ pr, status }: { pr: PrFlow | null; status: SessionStatus }) {
+  if (!pr) return null;
+  const { label, state } = prState(pr, status);
+  return <span className={styles.dot} data-pr data-state={state} data-label={label} data-watching={pr.watching || undefined} aria-hidden />;
 }

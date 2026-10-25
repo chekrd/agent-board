@@ -1,6 +1,14 @@
 @layer components {
-  .pr {
+  .pr, .dot {
     --dot: var(--prompt);
+    &[data-state="PASSED"] { --dot: var(--ok); }
+    &[data-state="FAILED"], &[data-state="ERROR"] { --dot: var(--danger); }
+    &[data-state="CLOSED"] { --dot: var(--muted); }
+    &[data-label="fixing"] { --dot: var(--prompt); }
+    &[data-label="merged"] { --dot: var(--merged); }
+  }
+
+  .pr {
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -17,11 +25,17 @@
 
     &::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
     &[data-watching]::before { animation: breathe 1.4s ease-in-out infinite; }
-    &[data-state="PASSED"] { --dot: var(--ok); }
-    &[data-state="FAILED"], &[data-state="ERROR"] { --dot: var(--danger); border-color: var(--danger); color: var(--danger); }
-    &[data-state="CLOSED"] { --dot: var(--muted); }
-    &[data-label="fixing"] { --dot: var(--prompt); border-color: var(--line-2); color: var(--text-2); }
-    &[data-label="merged"] { --dot: var(--merged); }
+    &[data-state="FAILED"], &[data-state="ERROR"] { border-color: var(--danger); color: var(--danger); }
+    &[data-label="fixing"] { border-color: var(--line-2); color: var(--text-2); }
     &[href]:hover { background: var(--hover); }
+  }
+
+  .dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--dot);
+    &[data-watching] { animation: breathe 1.4s ease-in-out infinite; }
   }
 }
