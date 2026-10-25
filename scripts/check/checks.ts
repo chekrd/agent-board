@@ -264,4 +264,74 @@ export const checks: Check[] = [
       assert.deepEqual(page.errors, []);
     },
   },
+  {
+    name: 'P1a.mock-contract two answers at once to one end-of-turn decision: one 204 and one 400 answered (two 204s with --legacy), both in /mock/log',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock }) {
+      const { legacy } = await mock.get('/mock');
+      const group = async () => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-group');
+      const { summary } = await group();
+      const body = { key: `s:${summary.basis}`, choice: summary.decision.options[0].label };
+      // Not the board: today's UI throws when the double send of --legacy reorders it twice at once.
+      await page.goto(`${mock.url}/mock`);
+      const replies = await page.eval(async (body) => {
+        const post = async () => {
+          const res = await fetch('/api/sessions/s-group/answer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+          return { status: res.status, body: res.status === 204 ? null : await res.json() };
+        };
+        return Promise.all([post(), post()]);
+      }, body);
+      const second = legacy ? { status: 204, body: null } : { status: 400, body: { error: 'you already answered this', code: 'answered' } };
+      assert.deepEqual(replies.toSorted((a, b) => a.status - b.status), [{ status: 204, body: null }, second]);
+      const entries = await logged(mock, 'both answers', (e) => e.action === 'answer' && e.sessionId === 's-group');
+      assert.deepEqual(entries.toSorted((a, b) => a.status! - b.status!).map((e) => [e.status, e.code, e.body]), [
+        [204, null, body],
+        [second.status, second.body?.code ?? null, body],
+      ]);
+      const after = await group();
+      if (legacy) assert.equal('answered' in after, false);
+      else assert.deepEqual([after.answered.key, after.answered.text], [body.key, body.choice]);
+      await until('s-group to start on the answer, with no step yet', async () => {
+        const s = await group();
+        return s.status === 'working' && s.activity.step === (legacy ? 'Thinking' : null);
+      });
+    },
+  },
+  {
+    name: 'P1a.compat-accept today\'s UI accepts the second opinion on a question and on a menu; the snapshot names what was sent',
+    async run({ page, mock, shot }) {
+      const { legacy } = await mock.get('/mock');
+      const sessionOf = async (id: string) => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === id);
+      for (const [id, key, text] of [
+        ['s-cart', 'q:toolu_01Cart', 'Merge both carts. Cap each line at available stock and show a toast listing anything trimmed.'],
+        ['s-hooks', 'm:toolu_01Hooks', 'Backoff: Exponential, 5 tries · Give up: Email the account owner, Disable the endpoint'],
+      ]) {
+        await page.goto(`${mock.url}/s/${id}/details`);
+        await page.click('button', 'Accept & send');
+        const [accepted] = await logged(mock, `the accepted second opinion of ${id}`, (e) => e.action === 'accept-advice' && e.sessionId === id);
+        assert.deepEqual([accepted.status, accepted.body.key], [204, key]);
+        const s = await sessionOf(id);
+        if (legacy) assert.equal('answered' in s, false);
+        else assert.deepEqual([s.answered.key, s.answered.text], [key, text]);
+        await until(`${id} to start working`, async () => (await sessionOf(id)).status === 'working');
+        await shot(`accepted-${id}`);
+      }
+    },
+  },
+  {
+    name: 'P1a.compat-dismiss today\'s UI dismisses a question: it closes, the tile leaves Decide, and nothing counts as answered',
+    async run({ page, mock, shot }) {
+      const { legacy } = await mock.get('/mock');
+      await page.goto(`${mock.url}/s/s-cart/details`);
+      await page.click('button[value="dismiss"]');
+      const [dismissed] = await logged(mock, 'the dismissal', (e) => e.action === 'dismiss');
+      assert.deepEqual([dismissed.sessionId, dismissed.status, dismissed.body.key], ['s-cart', 204, 'q:toolu_01Cart']);
+      const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
+      assert.deepEqual([s.question, s.dismissedAsk, s.status, s.answered], [null, 'toolu_01Cart', 'idle', legacy ? undefined : null]);
+      await page.click('a[href="/"]');
+      await page.until('the s-cart tile to leave Decide', () =>
+        document.querySelector('[data-tile]:has(a[href="/s/s-cart/details"])')?.getAttribute('data-attention') === 'idle');
+      await shot('dismissed');
+    },
+  },
 ];
