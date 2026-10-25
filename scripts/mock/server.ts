@@ -106,7 +106,8 @@ function shown(s: Session) {
 const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
 
 // As in server/main.ts: every snapshot names the entry the polls have taken, and a socket that opens first reads
-// index.html, which can only cast doubt on it. On --legacy only a socket that opens is told an entry, what that read finds.
+// index.html, which can only cast doubt on it. On --legacy only a socket that opens is told an entry, what that read
+// finds. A src that /mock/ui-entry sets is named instead of either until {src: null} or a scenario load clears it.
 const ui = watchEntry(() => readEntry(join(DIST, 'index.html')), () => {
   if (!args.legacy) push();
 });
