@@ -49,7 +49,6 @@ const ARTIFACT_CSP = [
 const TYPING_MS = 300;
 
 const run = promisify(execFile);
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 class HttpError extends Error {
   status: number;
@@ -86,6 +85,7 @@ interface Entry {
 let state: Scenario = scenarios.queue(Date.now());
 let scenarioName = 'queue';
 const timers = new Set<NodeJS.Timeout>();
+const pauses = new Set<() => void>();
 const uploads = new Set<string>();
 const log: Entry[] = [];
 let failNext: { error: string; code?: string } | null = null;
@@ -121,6 +121,8 @@ function load(name: string) {
   if (!make) throw new HttpError(404, `unknown scenario ${name}; there are ${Object.keys(scenarios).join(', ')}`);
   for (const t of timers) clearTimeout(t);
   timers.clear();
+  for (const cancel of pauses) cancel();
+  pauses.clear();
   failNext = null;
   delayMs = 0;
   dropUntil = 0;
@@ -136,6 +138,21 @@ function later(ms: number, fn: () => void) {
     fn();
   }, ms);
   timers.add(t);
+}
+
+// Fails when another scenario loads meanwhile, so a request from before never acts on the new one.
+function pause(ms: number) {
+  return new Promise<void>((done, fail) => {
+    const cancel = () => {
+      clearTimeout(timer);
+      fail(new Error('the mock loaded another scenario meanwhile'));
+    };
+    const timer = setTimeout(() => {
+      pauses.delete(cancel);
+      done();
+    }, ms);
+    pauses.add(cancel);
+  });
 }
 
 const find = (id: string) => state.sessions.find((s) => s.id === id);
@@ -192,8 +209,8 @@ function closeQuestion(id: string) {
 
 const answers = answering({
   store: { get: find, update },
-  send: () => sleep(TYPING_MS),
-  keys: () => sleep(TYPING_MS),
+  send: () => pause(TYPING_MS),
+  keys: () => pause(TYPING_MS),
   notify: push,
   decided: (id) => {
     closeQuestion(id);
@@ -305,7 +322,7 @@ const actions: Record<string, (s: Session, body: any) => void | Promise<void>> =
 };
 
 async function sessionAction(id: string, action: string, body: any) {
-  if (delayMs) await sleep(delayMs);
+  if (delayMs) await pause(delayMs);
   if (failNext) {
     const { error, code } = failNext;
     failNext = null;
