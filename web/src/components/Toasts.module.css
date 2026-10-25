@@ -1,26 +1,79 @@
 @layer components {
   .toasts {
-    inset: auto 16px 16px auto;
+    position: fixed;
+    inset: 64px 16px auto;
+    width: auto;
     margin: 0;
     padding: 0;
     border: 0;
-    background: transparent;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-width: min(480px, calc(100vw - 32px));
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+    position-area: none;
+    pointer-events: none;
+    &:popover-open { display: flex; flex-direction: column; align-items: center; gap: 8px; }
   }
 
   .toast {
+    pointer-events: auto;
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--del);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--text);
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
-    button { margin-left: auto; }
+    align-items: center;
+    gap: 12px;
+    max-width: min(620px, 100%);
+    min-height: 46px;
+    padding: 8px 8px 8px 16px;
+    border-radius: 14px;
+    background: var(--text);
+    color: var(--ground);
+    font-size: 14px;
+    font-weight: 550;
+    line-height: 1.4;
+    box-shadow: var(--shadow);
+    animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    :focus-visible { outline-color: var(--ground); }
+  }
+
+  @keyframes toast-in {
+    from { translate: 0 10px; opacity: 0; }
+  }
+
+  .mark {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ground);
+    opacity: 0.5;
+    [data-kind="error"] > & { background: var(--danger); opacity: 1; }
+  }
+
+  .message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+  .action {
+    flex: none;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--ground) 40%, transparent);
+    border-radius: 9px;
+    background: none;
+    color: inherit;
+    font-weight: 700;
+    &:hover { border-color: var(--ground); }
+  }
+
+  .close {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: inherit;
+    opacity: 0.7;
+    &:hover { opacity: 1; }
   }
 }

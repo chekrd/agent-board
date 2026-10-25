@@ -174,7 +174,7 @@ export const checks: Check[] = [
       await page.click('fieldset button', 'Email the account owner');
       await shot('task-menu');
       await page.click('button[type="submit"]', 'Send answer');
-      const toast = await page.until('the error toast', () => [...document.querySelectorAll('[role="alert"]')].map((t) => t.firstChild?.textContent).join('\n'));
+      const toast = await page.until('the error toast', () => [...document.querySelectorAll<HTMLElement>('[data-toast][data-kind="error"]')].map((t) => t.innerText.trim()).join('\n'));
       assert.equal(toast, 'this question is no longer open');
       const [sent] = await logged(mock, 'the menu answer', (e) => e.action === 'answer-menu');
       assert.deepEqual([sent.sessionId, sent.status, sent.code, sent.body.toolUseId], ['s-hooks', 400, 'stale', 'toolu_01Hooks']);
