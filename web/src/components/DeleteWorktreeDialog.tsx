@@ -38,11 +38,14 @@ export function DeleteWorktreeDialog() {
     };
   }, []);
 
+  // Once per ask: the loss check can settle after Esc has closed the dialog but before its close event clears the
+  // target, and that must not open it again.
+  const asked = target?.session;
   useEffect(() => {
-    if (!target || dialog.current!.open) return;
+    if (!asked || dialog.current!.open) return;
     dialog.current!.showModal();
     cancel.current?.focus();
-  }, [target]);
+  }, [asked]);
 
   const confirm = () => {
     const { session } = target!;

@@ -1445,4 +1445,38 @@ export const checks: Check[] = [
       assert.deepEqual(await page.eval(chips, 'dialog#new-task'), await page.eval(chips, '#new-task-inline'));
     },
   },
+  {
+    name: 'P4.delete-stays-closed a delete dialog closed just as its loss check comes back stays closed',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      // The loss check's answer waits until the check lets it through.
+      await page.eval(() => {
+        const w = window as unknown as { fetch: typeof fetch; e2eRelease: () => void };
+        const real = w.fetch.bind(w);
+        w.e2eRelease = () => {};
+        w.fetch = (input, init) => {
+          const response = real(input, init);
+          if (!String(input).endsWith('/delete-worktree') || init?.method !== 'GET') return response;
+          return new Promise((resolve) => (w.e2eRelease = () => resolve(response)));
+        };
+      });
+      await page.click('[data-tile][data-session="s-invoice"] button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the loss check under way', () => !!document.querySelector('dialog#delete-worktree[open]')?.textContent?.includes('Checking'));
+      // Closed the moment the answer is drawn, before the effects of that render run.
+      await page.eval(() => {
+        const dialog = document.querySelector<HTMLDialogElement>('dialog#delete-worktree')!;
+        const drawn = new MutationObserver(() => {
+          if (dialog.textContent?.includes('Checking')) return;
+          drawn.disconnect();
+          dialog.close();
+        });
+        drawn.observe(dialog, { subtree: true, childList: true, characterData: true });
+        (window as unknown as { e2eRelease: () => void }).e2eRelease();
+      });
+      await sleep(400);
+      assert.equal(await page.eval(() => !!document.querySelector('dialog#delete-worktree[open]')), false, 'the dialog opened again');
+    },
+  },
 ];
