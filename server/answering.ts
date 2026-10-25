@@ -21,6 +21,11 @@ export interface Reply {
   files?: string[];
 }
 
+interface Typing {
+  claim?: { seen: string | null | undefined; typed: boolean; text: string };
+  type: () => Promise<void>;
+}
+
 export function liveTty(s: Session) {
   if (s.status === 'exited') throw new Error('this session has ended; continue it first');
   if (!s.tty) throw new Error('this session has no terminal yet');
@@ -28,6 +33,8 @@ export function liveTty(s: Session) {
 }
 
 export function answering({ store, send, keys, notify, decided, isCommand, checkUploads }: AnsweringDeps) {
+  const turns = new Map<string, Promise<void>>();
+
   const must = (id: string) => {
     const s = store.get(id);
     if (!s) throw new Error(`unknown session ${id}`);
@@ -35,11 +42,12 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
   };
 
   // Claimed before the keys go out, which takes up to 2 s, and given back if they fail.
-  async function deliver(id: string, seen: string | null | undefined, typed: boolean, text: string, type: () => Promise<void>) {
-    const { reopen } = claim(store, id, seen, typed, text);
+  async function deliver(id: string, t: Typing) {
+    if (!t.claim) return t.type();
+    const { reopen } = claim(store, id, t.claim.seen, t.claim.typed, t.claim.text);
     notify();
     try {
-      await type();
+      await t.type();
     } catch (err) {
       reopen();
       notify();
@@ -48,27 +56,48 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     decided(id);
   }
 
+  // One send at a time per session, since a paste that lands in another's pause before Enter joins its prompt. A send
+  // that had to wait is checked again, so it meets the decision as the one before left it: closed if that went out,
+  // open again if it failed.
+  async function inTurn(id: string, prepare: () => Typing) {
+    let next = prepare();
+    for (let turn = turns.get(id); turn; turn = turns.get(id)) {
+      await turn;
+      next = prepare();
+    }
+    const done = deliver(id, next);
+    const free = () => void turns.delete(id);
+    turns.set(id, done.then(free, free));
+    return done;
+  }
+
   async function answer(id: string, reply: Reply, commands = true) {
     const text = reply.text?.trim() ?? '';
     const files = await checkUploads(reply.files);
     if (!reply.choice && !text && !files.length) throw new Error('empty answer');
     // Slash commands and `!` shell commands go in verbatim and are not an answer to the question.
     const command = commands && !reply.choice && !files.length && (await isCommand(must(id), text));
-    const s = must(id);
-    const tty = liveTty(s);
-    if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
-    if (command) return send(tty, text);
-    const prompt = [s.question ? `Re: "${s.question.title}"` : '', reply.choice ? `My decision: ${reply.choice}.` : '', text].filter(Boolean).join(' — ');
-    await deliver(id, reply.key, !reply.choice, answerText(reply.choice, text, files.length), () => send(tty, prompt, files));
+    await inTurn(id, () => {
+      const s = must(id);
+      const tty = liveTty(s);
+      if (s.status === 'waiting' || s.menu) throw new Error(`Claude is showing ${s.waitingFor ?? 'a question'} in its terminal; answer that first`);
+      if (command) return { type: () => send(tty, text) };
+      checkDecision(s, reply.key, !reply.choice);
+      const about = s.question && reply.key === `q:${s.question.toolUseId}` ? `Re: "${s.question.title}"` : '';
+      const prompt = [about, reply.choice ? `My decision: ${reply.choice}.` : '', text].filter(Boolean).join(' — ');
+      return { claim: { seen: reply.key, typed: !reply.choice, text: answerText(reply.choice, text, files.length) }, type: () => send(tty, prompt, files) };
+    });
   }
 
   async function answerMenu(id: string, body: { toolUseId: string; answers: MenuAnswer[] }) {
-    const s = must(id);
-    const tty = liveTty(s);
-    const key = `m:${body.toolUseId}`;
-    checkDecision(s, key);
-    const strokes = menuKeystrokes(s.menu!, body.answers);
-    await deliver(id, key, false, menuAnswerText(s.menu!, body.answers), () => keys(tty, strokes));
+    await inTurn(id, () => {
+      const s = must(id);
+      const tty = liveTty(s);
+      const key = `m:${body.toolUseId}`;
+      checkDecision(s, key);
+      const strokes = menuKeystrokes(s.menu!, body.answers);
+      return { claim: { seen: key, typed: false, text: menuAnswerText(s.menu!, body.answers) }, type: () => keys(tty, strokes) };
+    });
   }
 
   async function acceptAdvice(id: string, seenAt?: number) {

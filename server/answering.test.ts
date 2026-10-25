@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { setImmediate as flush } from 'node:timers/promises';
 import { answering } from './answering.ts';
 import type { Advice, Session } from './db.ts';
-import { decisionKey } from './decision.ts';
+import { claim, decisionKey } from './decision.ts';
 import type { Keystroke } from './ghostty.ts';
 
 const session = (patch: Partial<Session>): Session => ({
@@ -29,8 +29,9 @@ function world(s: Session, { hold = false } = {}) {
   const pressed: Keystroke[][] = [];
   const decided: string[] = [];
   const sends: { done: () => void; fail: (err: Error) => void }[] = [];
+  const store = { get: (id: string) => (id === row.id ? row : undefined), update: (_: string, patch: Partial<Session>) => void (row = { ...row, ...patch }) };
   const answers = answering({
-    store: { get: (id) => (id === row.id ? row : undefined), update: (_, patch) => void (row = { ...row, ...patch }) },
+    store,
     send: (_tty, text) => {
       typed.push(text);
       return hold ? new Promise((done, fail) => sends.push({ done: () => done(), fail })) : Promise.resolve();
@@ -41,7 +42,7 @@ function world(s: Session, { hold = false } = {}) {
     isCommand: async (_s, text) => text.startsWith('!') || text.split(' ')[0] === '/review',
     checkUploads: async (files) => (files as string[] | undefined) ?? [],
   });
-  return { answers, row: () => row, notified: () => notified, typed, pressed, decided, sends };
+  return { answers, store, row: () => row, notified: () => notified, typed, pressed, decided, sends };
 }
 
 test('two answers to one decision at once type once: the second is refused while the first still types', async () => {
@@ -72,19 +73,76 @@ test('a send that fails gives the decision back and rethrows', async () => {
   assert.deepEqual(w.decided, []);
 });
 
-test('a send that fails after a later one went out leaves the later claim in place', async () => {
-  const w = world(session({ summary }), { hold: true });
-  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
-  await flush();
+test('a message sent while an answer to a question types goes out after it, as a message and not as a reply to the question', async () => {
+  const w = world(session({ question }), { hold: true });
+  const answer = w.answers.answer('s', { key: 'q:q1', choice: 'A' });
   const note = w.answers.answer('s', { key: null, text: 'Also bump the version' });
   await flush();
-  assert.equal(w.sends.length, 2);
+  assert.deepEqual(w.typed, ['Re: "Which way?" — My decision: A.'], 'one send at a time');
+  w.sends[0].done();
+  await answer;
+  await flush();
+  assert.equal(w.typed.at(-1), 'Also bump the version');
   w.sends[1].done();
   await note;
+  assert.deepEqual([w.row().answered?.key, w.row().answered?.text, w.decided], ['q:q1', 'Also bump the version', ['s', 's']]);
+});
+
+test('a message never closes a question: one sent while the answer types is refused once the answer fails, and the question stays open', async () => {
+  const w = world(session({ question }), { hold: true });
+  const answer = w.answers.answer('s', { key: 'q:q1', choice: 'A' });
+  const note = assert.rejects(w.answers.answer('s', { key: null, text: 'Also bump the version' }), { message: /asked something meanwhile/, code: 'stale' });
+  await flush();
+  w.sends[0].fail(new Error('can\'t find pane'));
+  await assert.rejects(answer, /can't find pane/);
+  await flush();
+  assert.deepEqual(w.typed, ['Re: "Which way?" — My decision: A.']);
+  await note;
+  assert.deepEqual([w.row().answered, decisionKey(w.row()), w.decided], [null, 'q:q1', []]);
+});
+
+test('an answer that fails while a message waits gives the decision back first: the message claims it, and once that fails too a retry types', async () => {
+  const w = world(session({ summary }), { hold: true });
+  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  const note = w.answers.answer('s', { key: null, text: 'Also bump the version' });
+  await flush();
+  assert.deepEqual(w.typed, ['My decision: Ship.']);
   w.sends[0].fail(new Error('the pane is gone'));
   await assert.rejects(answer, /the pane is gone/);
+  await flush();
   assert.deepEqual([w.row().answered?.key, w.row().answered?.text], ['s:t2', 'Also bump the version']);
-  assert.equal(decisionKey(w.row()), null);
+  w.sends[1].fail(new Error('the pane is gone'));
+  await assert.rejects(note, /the pane is gone/);
+  assert.deepEqual([w.row().answered, decisionKey(w.row())], [null, 's:t2']);
+  const retry = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  await flush();
+  w.sends[2].done();
+  await retry;
+  assert.deepEqual([w.typed.at(-1), w.row().answered?.text, w.decided], ['My decision: Ship.', 'Ship', ['s']]);
+});
+
+test('a send that fails gives back only its own claim: a record written while it typed stays', async () => {
+  const w = world(session({}), { hold: true });
+  const first = w.answers.answer('s', { key: null, text: 'one' });
+  await flush();
+  claim(w.store, 's', null, true, 'two');
+  w.sends[0].fail(new Error('the pane is gone'));
+  await assert.rejects(first, /the pane is gone/);
+  assert.equal(w.row().answered?.text, 'two');
+});
+
+test('a command waits for the send that is typing and goes out after it', async () => {
+  const w = world(session({ summary }), { hold: true });
+  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  const command = w.answers.answer('s', { key: null, text: '/review' });
+  await flush();
+  assert.deepEqual(w.typed, ['My decision: Ship.']);
+  w.sends[0].done();
+  await answer;
+  await flush();
+  w.sends[1].done();
+  await command;
+  assert.deepEqual([w.typed, w.row().answered?.text], [['My decision: Ship.', '/review'], 'Ship']);
 });
 
 test('a command is typed as is and never claims, whatever the page showed', async () => {
