@@ -654,9 +654,6 @@ export const checks: Check[] = [
       await page.click('main h1');
       await reloaded('once focus left the prompt');
 
-      // Told on open of a build it already reloaded for, today's board only offers the reload and arms for no later
-      // build, so it opens on its own entry again.
-      await mock.post('/mock/ui-entry', { src: null });
       await page.goto(`${mock.url}/`);
       await page.click('button', 'New task');
       await page.until('the New task dialog', () => !!document.querySelector<HTMLDialogElement>('dialog#new-task')?.open);
