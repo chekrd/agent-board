@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -50,6 +50,21 @@ test('the diff merges committed, staged, unstaged and untracked changes and leav
   const one = await fullDiff(main, 'master', { paths: ['a.txt'] });
   assert.equal(one.stat.files, 1);
   assert.match(one.patch, / one\n-two\n\+TWO\n three/);
+});
+
+// The edit keeps the size and the mtime of a.txt, and the index looks written in that same second, so only a
+// re-read of the file shows the change.
+test('a same-size edit made in the second the index was written is in the diff', async () => {
+  const { main } = repo();
+  const then = new Date(Math.floor(Date.now() / 1000) * 1000 - 10_000);
+  utimesSync(join(main, 'a.txt'), then, then);
+  git(main, 'update-index', '--refresh');
+  write(main, 'a.txt', 'one\nTWO\nthree\n');
+  utimesSync(join(main, 'a.txt'), then, then);
+  utimesSync(join(main, '.git', 'index'), then, then);
+
+  const diff = await fullDiff(main, 'master');
+  assert.match(diff.patch, / one\n-two\n\+TWO\n three/);
 });
 
 test('git wt lays out task folders, copies .worktreeinclude files and removes cleanly', async () => {

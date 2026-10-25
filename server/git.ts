@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -110,6 +110,13 @@ export interface FullDiff {
   stat: DiffStat;
 }
 
+// git re-reads a file whose stat matches its entry only when the entry is as new as the index,
+// so a copy newer than the index would hide a same-size edit made in the second it was written.
+async function copyIndex(from: string, to: string) {
+  const times = await stat(from).catch(() => null);
+  if (times) await copyFile(from, to).then(() => utimes(to, times.atime, times.mtime)).catch(() => {});
+}
+
 // Everything on disk (committed, staged, unstaged, untracked minus ignored) against
 // the merge-base, staged into a throwaway index so the real one is never touched.
 // With `paths`, every unchanged line is context, so those files read in full.
@@ -120,7 +127,7 @@ export async function fullDiff(worktree: string, base: string, opts: { statOnly?
   try {
     let realIndex = (await git(worktree, ['rev-parse', '--git-path', 'index'])).trim();
     if (!isAbsolute(realIndex)) realIndex = join(worktree, realIndex);
-    await copyFile(realIndex, index).catch(() => {});
+    await copyIndex(realIndex, index);
     const env = { GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: '1' };
     await git(worktree, ['add', '-A'], env);
     const diff = (format: string[]) => git(worktree, [
