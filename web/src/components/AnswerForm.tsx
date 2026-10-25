@@ -1,8 +1,9 @@
-import { useActionState, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
-import { api, sessionAction, upload } from '../api.ts';
+import { useActionState, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
+import { sessionAction, upload } from '../api.ts';
 import type { Advice, Command, Menu, Session } from '../types.ts';
 import { adviceFor, type DecisionView } from '../util.ts';
 import styles from './AnswerForm.module.css';
+import { rank, useCommands } from './Composer.tsx';
 import { Elapsed } from './Elapsed.tsx';
 
 // Outside the component: Detail remounts the form when a decision opens or clears.
@@ -88,7 +89,7 @@ export function AnswerForm({ session, decision = null }: { session: Session; dec
   const [picked, setPicked] = useState(0);
   const [closed, setClosed] = useState(false);
   const [focused, setFocused] = useState(false);
-  const commands = useCommands(session.worktree, focused || draft.startsWith('/'));
+  const commands = useCommands(session.worktree, focused || draft.startsWith('/')) ?? [];
   const query = /^\/\S*$/.test(draft) && !closed ? draft.slice(1).toLowerCase() : null;
   const matches = query === null ? [] : rank(commands, query);
 
@@ -210,39 +211,6 @@ export function AnswerForm({ session, decision = null }: { session: Session; dec
       </div>
     </form>
   );
-}
-
-const COMMANDS_FRESH_MS = 60_000;
-const commandCache = new Map<string, { at: number; list: Promise<Command[]> }>();
-
-function useCommands(worktree: string, wanted: boolean) {
-  const [commands, setCommands] = useState<Command[]>([]);
-  useEffect(() => {
-    if (!wanted) return;
-    const cached = commandCache.get(worktree);
-    if (!cached || Date.now() - cached.at > COMMANDS_FRESH_MS) {
-      const list = api<Command[]>('GET', `/api/commands?worktree=${encodeURIComponent(worktree)}`);
-      list.catch(() => commandCache.delete(worktree));
-      commandCache.set(worktree, { at: Date.now(), list });
-    }
-    let live = true;
-    commandCache.get(worktree)!.list.then((list) => live && setCommands(list), () => {});
-    return () => {
-      live = false;
-    };
-  }, [worktree, wanted]);
-  return commands;
-}
-
-function rank(commands: Command[], query: string) {
-  const score = (c: Command) => {
-    const name = c.name.toLowerCase();
-    if (name === query) return -1;
-    if (name.startsWith(query)) return 0;
-    if (name.split(':').at(-1)!.startsWith(query)) return 1;
-    return name.includes(query) ? 2 : 3;
-  };
-  return commands.map((c) => ({ c, s: score(c) })).filter((x) => x.s < 3).sort((a, b) => a.s - b.s).slice(0, 8).map((x) => x.c);
 }
 
 const level = (confidence: number) => (confidence >= 75 ? 'high' : confidence >= 50 ? 'medium' : 'low');

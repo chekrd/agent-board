@@ -12,10 +12,11 @@ const jump = (id: string) => {
 };
 
 // One segment per waiting card, or past 20 a bar per kind that shows its count. There is no text label: the counts
-// are in the aria-label and the tab title. The slot beside it announces cards that arrived since the page loaded.
+// are in the aria-label and the tab title. The slot beside it announces cards that arrived since the page loaded and
+// that the queue has not drawn at the front yet; `current` is the card it draws.
 export function Meter({ deck, repos, current }: { deck: readonly Session[]; repos: RepoView[]; current: string | null }) {
-  const { seen, front } = useQueue();
-  const arrived = seen ? arrivals(deck, seen, front) : [];
+  const { seen } = useQueue();
+  const arrived = seen ? arrivals(deck, seen, current) : [];
   const { label, segments, bars } = meter(deck, current, new Set(arrived.map((s) => s.id)));
   const nameOf = (s: Session) => sessionLabel(s, locate(repos, s).branch);
 

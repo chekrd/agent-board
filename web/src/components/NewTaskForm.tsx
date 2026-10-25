@@ -1,6 +1,6 @@
 import { useActionState, useEffect, useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { api } from '../api.ts';
-import { openSheet, type View } from '../router.ts';
+import { openSheet } from '../router.ts';
 import type { RepoView } from '../types.ts';
 import { Icon } from './Icon.tsx';
 import styles from './NewTaskForm.module.css';
@@ -73,10 +73,10 @@ const subscribe = (fn: () => void) => {
   return () => void subscribers.delete(fn);
 };
 
-// On the Wall the form is already on the page; over the queue it opens as a dialog.
-export function openNewTask(view: View) {
+// On the Wall, the queue's resting one included, the form is already on the page; over the queue it opens as a dialog.
+export function openNewTask() {
   const inline = document.querySelector<HTMLTextAreaElement>(`#${INLINE} textarea`);
-  if (view === 'wall' && inline) return inline.focus();
+  if (inline) return inline.focus();
   const dialog = document.getElementById(DIALOG) as HTMLDialogElement | null;
   if (!dialog) return;
   if (!dialog.open) dialog.showModal();

@@ -1,0 +1,53 @@
+/* The queue's card moves through View Transitions. Their names are idents that CSS Modules would hash, so they live
+   here. While a card is dealt only the card is captured, and the page under it, the peeks included, updates live. */
+@layer components {
+  [data-card] { view-transition-name: deck-card; }
+
+  :root[data-deal] { view-transition-name: none; }
+
+  :root[data-deal]::view-transition-group(deck-card) { animation: none; }
+
+  :root[data-deal="back"]::view-transition-old(deck-card) { animation: deck-leave-back 0.32s cubic-bezier(0.5, 0, 0.75, 0) both; }
+  :root[data-deal="back"]::view-transition-new(deck-card) { animation: deck-enter 0.52s cubic-bezier(0.2, 0.8, 0.2, 1) 0.24s both; }
+
+  :root[data-deal="enter"]::view-transition-old(deck-card),
+  :root[data-deal="enter-back"]::view-transition-old(deck-card) { animation: none; opacity: 0; }
+  :root[data-deal="enter"]::view-transition-new(deck-card) { animation: deck-enter 0.52s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  :root[data-deal="enter-back"]::view-transition-new(deck-card) { animation: deck-enter-back 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+  /* An answered or dismissed card leaves over the next one, which is already there beneath it. */
+  :root[data-deal="down"]::view-transition-old(deck-card),
+  :root[data-deal="side"]::view-transition-old(deck-card) { z-index: 1; }
+  :root[data-deal="down"]::view-transition-old(deck-card) { animation: deck-leave-down 0.44s cubic-bezier(0.55, 0, 0.8, 0.25) both; }
+  :root[data-deal="side"]::view-transition-old(deck-card) { animation: deck-leave-side 0.38s cubic-bezier(0.5, 0, 0.75, 0) both; }
+  :root[data-deal="down"]::view-transition-new(deck-card),
+  :root[data-deal="side"]::view-transition-new(deck-card) { animation: none; }
+
+  @keyframes deck-leave-down {
+    to { transform: translateY(46vh) scale(0.26); opacity: 0; }
+  }
+
+  @keyframes deck-leave-side {
+    to { transform: translateX(38%) rotate(2deg); opacity: 0; }
+  }
+
+  @keyframes deck-leave-back {
+    to { transform: translateY(-64px) scale(0.9); opacity: 0; }
+  }
+
+  @keyframes deck-enter {
+    from { transform: translateY(-28px) scale(0.96); opacity: 0.35; }
+  }
+
+  @keyframes deck-enter-back {
+    from { transform: translateY(-60px) scale(0.9); opacity: 0; }
+  }
+
+  @keyframes deck-peek-in {
+    from { transform: translateY(-20px); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(deck-card), ::view-transition-new(deck-card) { animation-delay: 0s !important; }
+  }
+}

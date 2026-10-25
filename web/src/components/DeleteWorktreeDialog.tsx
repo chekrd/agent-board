@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, sessionAction } from '../api.ts';
+import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import type { Session } from '../types.ts';
 import styles from './DeleteWorktreeDialog.module.css';
@@ -51,6 +52,7 @@ export function DeleteWorktreeDialog() {
     const { session } = target!;
     dialog.current!.close();
     closeSheetOf(session.id);
+    queue.own(session.id);
     sessionAction(session.id, 'delete-worktree').catch(reportError);
   };
 

@@ -1,0 +1,19 @@
+@layer components {
+  /* The terminal keeps its own dark look in both themes. */
+  .plate {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 20px;
+    border-radius: 16px;
+    background: var(--term-bg);
+    color: #f1ece4;
+  }
+
+  .caption { font: 12px var(--mono); color: #b3aa9c; }
+
+  .subject { font: 17px/1.45 var(--mono); color: #ffd28a; overflow-wrap: anywhere; }
+
+  .explain { margin-top: 2px; font-size: 15px; line-height: 1.55; color: var(--text-2); }
+}

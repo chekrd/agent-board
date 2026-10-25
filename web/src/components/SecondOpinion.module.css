@@ -1,0 +1,55 @@
+@layer components {
+  .box {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1.5px dashed var(--line-2);
+    border-radius: 14px;
+    background: var(--card-2);
+    &[data-advice="failed"] { flex-direction: row; align-items: center; gap: 10px; padding: 10px 14px; }
+  }
+
+  .band {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 30px 14px;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card-2);
+    &[data-advice="failed"] { flex-direction: row; align-items: center; gap: 12px; }
+    .row { gap: 6px 12px; flex-wrap: wrap; }
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    strong { font-size: 14.5px; font-weight: 650; color: var(--text); }
+  }
+
+  .clock { margin-right: auto; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+  .step {
+    padding-left: 24px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .failed { flex: 1; min-width: 0; font-size: 14px; color: var(--text-2); }
+
+  .reasoning { flex: 1; min-width: 240px; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+
+  @media (max-width: 760px) {
+    .band { margin: 0 18px 14px; }
+    .reasoning { min-width: 0; flex-basis: 100%; }
+  }
+}

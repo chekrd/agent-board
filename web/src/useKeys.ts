@@ -129,7 +129,7 @@ export function useBoardKeys({ route, deck, repos, artifacts }: { route: Route; 
     }),
     (action, e) => {
       if (action.type === 'view') go(viewPath(action.to));
-      else if (action.type === 'new-task') openNewTask(route.view);
+      else if (action.type === 'new-task') openNewTask();
       else if (action.type === 'keys') toggleKeys();
       else if (action.type === 'undo') sends.undo();
       else if (action.type === 'tab') showTab(action.tab);

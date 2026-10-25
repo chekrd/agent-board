@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { sessionAction } from '../api.ts';
+import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
 import type { Session, WorktreeView } from '../types.ts';
@@ -14,7 +15,9 @@ export function openTerminal(id: string) {
   return sessionAction(id, 'focus');
 }
 
+// Taking a card out of the queue from this page needs no word that it no longer waits.
 export function archive(session: Session, name: string) {
+  queue.own(session.id);
   sessionAction(session.id, 'archive', { archived: true }).then(() => {
     const undo = () => void sessionAction(session.id, 'archive', { archived: false }).catch(reportError);
     toast('undo', `Archived ${name}`, { session: session.id, action: { label: 'Undo', run: undo } });
@@ -43,7 +46,16 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
         )}
         <Item label="Open in Finder" note={session.worktree} onClick={act('finder')} />
         <Item label="Open in VS Code" note={session.worktree} onClick={act('vscode')} />
-        {!exited && <Item label="Quit Claude" note="Stops the process; Continue picks it up later" onClick={act('quit')} />}
+        {!exited && (
+          <Item
+            label="Quit Claude"
+            note="Stops the process; Continue picks it up later"
+            onClick={pick(() => {
+              queue.own(session.id);
+              sessionAction(session.id, 'quit').catch(reportError);
+            })}
+          />
+        )}
         {session.archived ? (
           <Item label="Unarchive" note="Back into the queue and the strip" onClick={act('archive', { archived: false })} />
         ) : (

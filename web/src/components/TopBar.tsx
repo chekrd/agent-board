@@ -29,7 +29,7 @@ function ConnectionPill({ link }: { link: Link }) {
 
 export function TopBar({ route, deck }: { route: Route; deck: readonly Session[] }) {
   const { repos, link, newVersion } = useStore();
-  const { front } = useQueue();
+  const { shown } = useQueue();
   const onQueue = route.view === 'queue';
   return (
     <header className={styles.bar}>
@@ -43,7 +43,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
         )}
       </div>
       <div className={styles.middle}>
-        {deck.length > 0 && <Meter deck={deck} repos={repos} current={onQueue ? front : null} />}
+        {deck.length > 0 && <Meter deck={deck} repos={repos} current={onQueue ? shown : null} />}
       </div>
       <div className={styles.end}>
         <button type="button" className={styles.ghost} data-repos aria-label="Repos" onClick={openRepos}>
@@ -60,7 +60,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
             <span className={styles.label}>Wall</span>
           </a>
         </nav>
-        <button type="button" className={styles.newTask} disabled={!repos.length} aria-label="New task" onClick={() => openNewTask(route.view)}>
+        <button type="button" className={styles.newTask} disabled={!repos.length} aria-label="New task" onClick={openNewTask}>
           <Icon name="plus" />
           <span className={styles.label}>New task</span>
         </button>
