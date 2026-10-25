@@ -32,6 +32,31 @@ const logged = (mock: Mock, what: string, match: (e: Entry) => boolean) =>
     return found.length ? found : null;
   });
 
+// A mock of its own over a copy of the build. `build()` writes a new build there, an index.html that names a copy of
+// the entry script, and returns that script.
+async function withOwnBuild(run: (own: Mock, build: () => string) => Promise<void>) {
+  const dist = mkdtempSync(join(tmpdir(), 'agent-board-dist-'));
+  let own: Mock | undefined;
+  try {
+    cpSync(BUILD, dist, { recursive: true });
+    own = await startMock({ dist });
+    await run(own, () => {
+      const html = readFileSync(join(dist, 'index.html'), 'utf8');
+      const entry = html.match(/src="([^"]+\.js)"/)![1];
+      const next = entry.replace(/\.js$/, '-next.js');
+      copyFileSync(join(dist, entry), join(dist, next));
+      writeFileSync(join(dist, 'index.html'), html.replace(entry, next));
+      return next;
+    });
+  } finally {
+    await own?.stop();
+    rmSync(dist, { recursive: true, force: true });
+  }
+}
+
+// Every load and reload of the page requests its document again.
+const loads = (page: Page, url: string) => page.requests.filter((u) => u === url).length;
+
 // Page functions: they run in the browser, so they use only their arguments.
 
 const connection = () => {
@@ -87,11 +112,24 @@ const received = (title: string | null) => {
   return m && { carries: 'uiEntry' in m, uiEntry: m.uiEntry ?? null };
 };
 
+// Whether the check's socket got a message that shows `title` and names `entry`.
+const named = (entry: string, title: string) =>
+  !!(window as unknown as Probe).e2eMessages?.some((m) => m.uiEntry === entry && m.sessions.some((s) => s.title === title));
+
 const navigation = () => ({
   marker: (window as unknown as Probe).e2eMarker ?? null,
   type: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type ?? null,
   entry: document.querySelector('script[type="module"][src]')?.getAttribute('src') ?? null,
 });
+
+// Sets the marker and opens the check's socket; returns the page's entry script.
+const listen = () => {
+  const w = window as unknown as Probe;
+  w.e2eMarker = true;
+  w.e2eMessages = [];
+  new WebSocket(`ws://${location.host}/ws/events`).onmessage = (e) => w.e2eMessages.push(JSON.parse(e.data));
+  return document.querySelector('script[type="module"][src]')?.getAttribute('src') ?? null;
+};
 
 export const checks: Check[] = [
   {
@@ -399,13 +437,7 @@ export const checks: Check[] = [
       const { legacy } = await mock.get('/mock');
       await page.goto(`${mock.url}/`);
       await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
-      const entry = await page.eval(() => {
-        const w = window as unknown as Probe;
-        w.e2eMarker = true;
-        w.e2eMessages = [];
-        new WebSocket(`ws://${location.host}/ws/events`).onmessage = (e) => w.e2eMessages.push(JSON.parse(e.data));
-        return document.querySelector('script[type="module"][src]')?.getAttribute('src');
-      });
+      const entry = await page.eval(listen);
       assert.match(entry ?? '', /^\/assets\/index-[\w-]+\.js$/);
       assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: entry });
       const title = 'Lazy-load product reviews, patched';
@@ -419,19 +451,12 @@ export const checks: Check[] = [
   {
     name: 'P1b.ui-entry-build a build written into the folder the server serves reaches an open page: it reloads into the new entry once, and stays',
     async run({ page }) {
-      const dist = mkdtempSync(join(tmpdir(), 'agent-board-dist-'));
-      let own: Mock | undefined;
-      try {
-        cpSync(BUILD, dist, { recursive: true });
-        own = await startMock({ dist });
-        await page.goto(`${own.url}/`);
+      await withOwnBuild(async (own, build) => {
+        const url = `${own.url}/`;
+        await page.goto(url);
         await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
         await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
-        const html = readFileSync(join(dist, 'index.html'), 'utf8');
-        const entry = html.match(/src="([^"]+\.js)"/)![1];
-        const next = entry.replace(/\.js$/, '-next.js');
-        copyFileSync(join(dist, entry), join(dist, next));
-        writeFileSync(join(dist, 'index.html'), html.replace(entry, next));
+        const next = build();
         // Read twice 2 s apart before it counts, so the reload comes 2 to 4 s after the build.
         const reloaded = await until('the page to reload into the new build', () => page.eval(navigation).then((n) => n.entry === next && n, () => null), 15_000);
         assert.deepEqual(reloaded, { marker: null, type: 'reload', entry: next });
@@ -439,11 +464,34 @@ export const checks: Check[] = [
         await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
         await own.post('/mock/patch', { id: 's-reviews', patch: { title: 'Lazy-load product reviews, patched' } });
         await sleep(3000);
-        assert.deepEqual(await page.eval(navigation), { marker: true, type: 'reload', entry: next });
-      } finally {
-        await own?.stop();
-        rmSync(dist, { recursive: true, force: true });
-      }
+        assert.deepEqual([await page.eval(navigation), loads(page, url)], [{ marker: true, type: 'reload', entry: next }, 2]);
+      });
+    },
+  },
+  {
+    name: 'P1b.ui-entry-early a page loaded from a new build before the server has taken it loads once and stays: the snapshot on open names its entry, one pushed meanwhile none, and the one when the build is taken its entry',
+    async run({ page }) {
+      await withOwnBuild(async (own, build) => {
+        const url = `${own.url}/`;
+        const next = build();
+        await page.goto(url);
+        // Time for the reload a snapshot on open naming the older entry would cause.
+        await sleep(500);
+        assert.equal(loads(page, url), 1, 'the page reloaded');
+        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        assert.equal(await page.eval(listen), next);
+        assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: next });
+        const title = 'Lazy-load product reviews, patched';
+        await own.post('/mock/patch', { id: 's-reviews', patch: { title } });
+        await sleep(300);
+        assert.equal(loads(page, url), 1, 'the snapshot pushed after the patch reloaded the page');
+        // The build is taken two polls 2 s apart after it lands, so this push comes before.
+        assert.deepEqual(await page.until('the snapshot pushed after the patch', received, title), { carries: true, uiEntry: null });
+        await page.until('the snapshot pushed when the build is taken', named, next, title);
+        // The page's own socket got the same pushes; a reload they caused would have replaced the document by now.
+        await sleep(1000);
+        assert.deepEqual([await page.eval(navigation), loads(page, url)], [{ marker: true, type: 'navigate', entry: next }, 1]);
+      });
     },
   },
   {
