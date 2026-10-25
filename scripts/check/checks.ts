@@ -2900,4 +2900,36 @@ export const checks: Check[] = [
       assert.deepEqual(await actions(mock), []);
     },
   },
+  {
+    name: 'P6.menu-outside a click beside the sheet while its ⋯ menu is open closes only the menu; after a click inside the sheet closed the menu, Esc still closes the sheet, and a click beside it with no menu open does too',
+    async run({ page, mock, shot }) {
+      const layers = () => ({ menu: !!document.querySelector('[popover="auto"]:popover-open'), sheet: !!document.querySelector('#task-sheet:modal'), path: location.pathname });
+      const menu = async () => {
+        await page.click('#task-sheet button[aria-label="Session actions"]');
+        await page.until('the ⋯ menu', () => !!document.querySelector('[popover="auto"]:popover-open'));
+      };
+      await openFromWall(page, mock, 's-invoice');
+      await page.until('the sheet to settle', settled);
+      await menu();
+      await page.pointAt(12, 12, true);
+      await page.until('the menu to close', () => !document.querySelector('[popover="auto"]:popover-open'));
+      await sleep(400);
+      assert.deepEqual(await page.eval(layers), { menu: false, sheet: true, path: '/s/s-invoice/overview' });
+      await shot('sheet-after-menu-outside');
+
+      await menu();
+      await page.click('#task-sheet [role="tablist"]');
+      await page.until('the menu to close', () => !document.querySelector('[popover="auto"]:popover-open'));
+      await sleep(100);
+      assert.deepEqual(await page.eval(layers), { menu: false, sheet: true, path: '/s/s-invoice/overview' });
+      await page.key('Escape');
+      await page.until('Esc to close the sheet', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+
+      await page.click('[data-tile][data-session="s-invoice"] a');
+      await page.until('the sheet again', sheetOpen);
+      await page.until('the sheet to settle', settled);
+      await page.pointAt(12, 12, true);
+      await page.until('a click beside it to close the sheet', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/wall');
+    },
+  },
 ];
