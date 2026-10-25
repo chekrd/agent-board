@@ -1531,4 +1531,16 @@ export const checks: Check[] = [
       assert.deepEqual(await heard('d', 1), [told(entry, title)]);
     },
   },
+  {
+    name: 'S1.new-task a New task with a prompt is working right after it is made, with no step yet (Thinking on --legacy) and its clock from that moment',
+    async run({ mock }) {
+      const { legacy } = await mock.get('/mock');
+      const before = Date.now();
+      const { sessionId } = await mock.post('/api/worktrees', { repoId: 1, name: 'starting-step', prompt: 'Make the cart test stop flaking', startClaude: true });
+      const after = Date.now();
+      const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === sessionId);
+      assert.deepEqual([s.status, s.activity.step], ['working', legacy ? 'Thinking' : null]);
+      assert.ok(s.activity.since >= before && s.activity.since <= after, `the clock runs from ${s.activity.since}, not from the New task at ${before}–${after}`);
+    },
+  },
 ];

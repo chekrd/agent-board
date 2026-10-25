@@ -379,7 +379,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
     id, repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
-    activity: working ? { step: 'Thinking', since: now } : null, menu: null, answered: null, artifacts: [], archived: false, createdAt: now, updatedAt: now,
+    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;
