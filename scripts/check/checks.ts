@@ -654,6 +654,9 @@ export const checks: Check[] = [
       await page.click('main h1');
       await reloaded('once focus left the prompt');
 
+      // Told on open of a build it already reloaded for, today's board only offers the reload and arms for no later
+      // build, so it opens on its own entry again.
+      await mock.post('/mock/ui-entry', { src: null });
       await page.goto(`${mock.url}/`);
       await page.click('button', 'New task');
       await page.until('the New task dialog', () => !!document.querySelector<HTMLDialogElement>('dialog#new-task')?.open);
@@ -1477,6 +1480,55 @@ export const checks: Check[] = [
       });
       await sleep(400);
       assert.equal(await page.eval(() => !!document.querySelector('dialog#delete-worktree[open]')), false, 'the dialog opened again');
+    },
+  },
+  {
+    name: 'S1.ui-entry-sticky an entry /mock/ui-entry names is named again by every later push (none on --legacy) and to every socket that opens later, until {src: null} or a scenario load clears it',
+    async run({ page, mock }) {
+      const { legacy } = await mock.get('/mock');
+      type Sockets = Record<string, { uiEntry?: string | null; sessions: { id: string; title: string | null }[] }[]>;
+      const openSocket = (name: string) => {
+        const w = window as unknown as { e2eSockets?: Sockets };
+        const messages: Sockets[string] = [];
+        (w.e2eSockets ??= {})[name] = messages;
+        new WebSocket(`ws://${location.host}/ws/events`).onmessage = (e) => messages.push(JSON.parse(e.data));
+      };
+      // Once the socket has had `n` messages: whether each names an entry, which one, and the title of s-reviews.
+      const heardOn = (name: string, n: number) => {
+        const messages = (window as unknown as { e2eSockets?: Sockets }).e2eSockets?.[name] ?? [];
+        return messages.length >= n && messages.map((m) => ({ carries: 'uiEntry' in m, uiEntry: m.uiEntry ?? null, title: m.sessions.find((s) => s.id === 's-reviews')?.title ?? null }));
+      };
+      const heard = (name: string, n: number) => page.until(`socket ${name} to get ${n} messages`, heardOn, name, n);
+      const open = async (name: string) => {
+        await page.eval(openSocket, name);
+        await heard(name, 1);
+      };
+
+      // Not the board, which would reload into the entry named.
+      await page.goto(`${mock.url}/mock`);
+      await open('a');
+      const [{ uiEntry: entry, title }] = await heard('a', 1);
+      assert.match(entry ?? '', /^\/assets\/index-[\w-]+\.js$/);
+      const src = '/assets/index-sticky.js';
+      const [once, twice] = [`${title}, patched`, `${title}, patched again`];
+      await mock.post('/mock/ui-entry', { src });
+      await mock.post('/mock/patch', { id: 's-reviews', patch: { title: once } });
+      await open('b');
+      await mock.post('/mock/ui-entry', { src: null });
+      await mock.post('/mock/patch', { id: 's-reviews', patch: { title: twice } });
+      await open('c');
+      await mock.post('/mock/ui-entry', { src });
+      await mock.post('/mock/scenario/queue');
+      await open('d');
+
+      const told = (uiEntry: string | null, title: string | null) => ({ carries: true, uiEntry, title });
+      const pushed = (uiEntry: string | null, title: string | null) => (legacy ? { carries: false, uiEntry: null, title } : told(uiEntry, title));
+      assert.deepEqual(await heard('a', 7), [
+        told(entry, title), told(src, title), pushed(src, once), told(entry, once), pushed(entry, twice), told(src, twice), pushed(entry, title),
+      ]);
+      assert.deepEqual(await heard('b', 5), [told(src, once), told(entry, once), pushed(entry, twice), told(src, twice), pushed(entry, title)]);
+      assert.deepEqual(await heard('c', 3), [told(entry, twice), told(src, twice), pushed(entry, title)]);
+      assert.deepEqual(await heard('d', 1), [told(entry, title)]);
     },
   },
 ];

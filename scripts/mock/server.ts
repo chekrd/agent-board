@@ -92,6 +92,7 @@ const log: Entry[] = [];
 let failNext: { error: string; code?: string } | null = null;
 let delayMs = 0;
 let dropUntil = 0;
+let announced: string | null = null;
 
 const clients = new Set<WebSocket>();
 let pushing = false;
@@ -115,7 +116,7 @@ function push() {
   pushing = true;
   queueMicrotask(() => {
     pushing = false;
-    const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry: ui.settled() }) });
+    const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry: announced ?? ui.settled() }) });
     for (const ws of clients) ws.send(message);
   });
 }
@@ -130,6 +131,7 @@ function load(name: string) {
   failNext = null;
   delayMs = 0;
   dropUntil = 0;
+  announced = null;
   state = make(Date.now());
   if (args.legacy) for (const s of state.sessions) s.answered = null;
   answers = answeringFor(state);
@@ -619,8 +621,11 @@ route('POST', '/mock/drop', ({ body, afterReply }) => {
   afterReply(() => setTimeout(() => drop(ms), 50));
   return { ms };
 });
+// Names src in place of the build's entry until {src: null} or a scenario load clears it: to the open sockets at once,
+// to every socket that opens and in every push (on --legacy pushes name no entry).
 route('POST', '/mock/ui-entry', ({ body }) => {
-  const message = JSON.stringify({ ...snapshot(), uiEntry: String(body.src) });
+  announced = body.src == null ? null : String(body.src);
+  const message = JSON.stringify({ ...snapshot(), uiEntry: announced ?? ui.settled() });
   for (const ws of clients) ws.send(message);
   return { sockets: clients.size };
 });
@@ -766,7 +771,7 @@ server.on('upgrade', (req, socket, head) => {
     if (ws.readyState !== ws.OPEN) return;
     clients.add(ws);
     ws.on('close', () => clients.delete(ws));
-    ws.send(JSON.stringify({ ...snapshot(), uiEntry: args.legacy ? read : ui.settled() }));
+    ws.send(JSON.stringify({ ...snapshot(), uiEntry: announced ?? (args.legacy ? read : ui.settled()) }));
   });
 });
 
