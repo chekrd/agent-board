@@ -32,17 +32,20 @@ let order = '';
 // On the queue the tiles' reorder would cut a card's own transition short, and under a sheet it has nothing to show.
 const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector(`#${SHEET_DIALOG}[open]`);
 
+// The state changes at once and only the redraw waits for a reorder's transition, so a set made meanwhile builds on
+// the newest state and is not undone when the transition applies.
 function set(next: State) {
   const key = orderKey(next.sessions);
-  const reordered = key !== order;
+  const animate = key !== order && state.link === 'live' && !document.hidden && reorderShows();
   order = key;
-  const apply = () => {
-    state = next;
+  state = next;
+  const notify = () => {
     for (const fn of subscribers) fn();
   };
-  if (reordered && state.link === 'live' && !document.hidden && reorderShows()) document.startViewTransition(() => flushSync(apply));
-  else apply();
+  if (animate) document.startViewTransition(() => flushSync(notify));
+  else notify();
 }
+
 
 let wake: ReturnType<typeof setTimeout> | undefined;
 
