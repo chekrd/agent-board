@@ -181,13 +181,14 @@ const toolResults = (entries: Record<string, any>[]) =>
   entries.flatMap((e) => (e.type === 'user' && Array.isArray(e.message?.content) ? e.message.content : [])
     .filter((b: Record<string, any>) => b.type === 'tool_result').map((b: Record<string, any>) => String(b.tool_use_id)));
 
-// The current turn started at the developer's last prompt; its step is Claude's latest block.
+// The current turn started at the developer's last prompt; its step is Claude's latest block since then, null until
+// Claude has written one.
 function activity(entries: Record<string, any>[]): Activity | null {
-  const start = entries.findLast((e) => promptText(e));
-  const block = entries.map((e) => blocks(e).at(-1)).findLast(Boolean);
-  if (!start || !block) return null;
-  const step = block.type === 'tool_use' ? describeTool(block) : block.type === 'thinking' ? 'Thinking' : 'Writing';
-  return { step: step.split('\n')[0].slice(0, 140), since: Date.parse(start.timestamp) || Date.now() };
+  const start = entries.findLastIndex((e) => promptText(e));
+  if (start < 0) return null;
+  const block = entries.slice(start + 1).map((e) => blocks(e).at(-1)).findLast(Boolean);
+  const step = !block ? null : block.type === 'tool_use' ? describeTool(block) : block.type === 'thinking' ? 'Thinking' : 'Writing';
+  return { step: step && step.split('\n')[0].slice(0, 140), since: Date.parse(entries[start].timestamp) || Date.now() };
 }
 
 const ENV_PREFIX = String.raw`^\s*(?:\w+=\S*\s+)*`;

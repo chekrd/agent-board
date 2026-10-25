@@ -85,6 +85,13 @@ test('the current step is the latest block, timed from the last prompt', async (
   assert.deepEqual(m.toolResults, []);
 });
 
+test('right after a new prompt there is no step yet, and the clock starts at that prompt, not the turn before', async () => {
+  const m = await meta([prompt('first', 0), assistant([ask('q1')], 1), toolResult('q1', 'Posted'), prompt('Re: "Which way?" — My decision: A.', 5)]);
+  assert.deepEqual(m.activity, { step: null, since: Date.parse(at(5)) });
+  const fresh = await meta([prompt('Fix the login', 2)]);
+  assert.deepEqual(fresh.activity, { step: null, since: Date.parse(at(2)) });
+});
+
 test('tool results are collected, so an answered AskUserQuestion menu can be cleared', async () => {
   const m = await meta([prompt('x'), assistant([toolUse('menu1', 'AskUserQuestion')]), toolResult('menu1', 'User answered')]);
   assert.deepEqual(m.toolResults, ['menu1']);
