@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
@@ -105,12 +105,36 @@ test('a fresh read that finds another entry, or none, empties settled() until th
   assert.deepEqual([w.reported, w.ui.settled()], [['a.js', 'b.js'], 'b.js']);
 });
 
-test('readEntry names the module script of a built index.html, and nothing for a missing or half-written one', async () => {
+function indexFile(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'agent-board-test-'));
-  const file = join(dir, 'index.html');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return join(dir, 'index.html');
+}
+
+test('readEntry names the module script of a built index.html, and nothing for a missing or half-written one', async (t) => {
+  const file = indexFile(t);
   assert.equal(await readEntry(file), null);
   writeFileSync(file, '<script type="module" crossorigin src="/assets/index-BJD80D25.js"></script>\n<link rel="modulepreload" href="/assets/rolldown-runtime-4tVxZq34.js">');
   assert.equal(await readEntry(file), '/assets/index-BJD80D25.js');
   writeFileSync(file, '<script type="module" crossorigin src="/assets/index-BJ');
   assert.equal(await readEntry(file), null);
+  writeFileSync(file, '<script type="module" crossorigin src="/assets/index-BJD80D25.js">');
+  assert.equal(await readEntry(file), null, 'its end tag is not written yet');
+});
+
+test('readEntry names the first module script with a src, as the page does, whatever comes before it', async (t) => {
+  const file = indexFile(t);
+  const entry = '<script type="module" crossorigin src="/assets/index-BJD80D25.js"></script>';
+  for (const [before, what] of [
+    ['<script src="/assets/legacy-polyfills-C1x2.js"></script>', 'a classic script with a src'],
+    ['<script type="text/javascript" src="/assets/analytics-E5f6.js"></script>', 'a script of another type with a src'],
+    [`<script>window.started = Date.now()</script><script type="module">import '/assets/boot-D3v4.js'</script>`, 'scripts with no src'],
+    ['<!-- <script type="module" src="/assets/index-old.js"></script> -->', 'a module script in a comment'],
+    [`<script>document.write('<script type="module" src="/assets/fake.js"><\\/script>')</script>`, 'a module script in the text of another'],
+  ]) {
+    writeFileSync(file, `${before}\n${entry}`);
+    assert.equal(await readEntry(file), '/assets/index-BJD80D25.js', what);
+  }
+  writeFileSync(file, `<SCRIPT TYPE=Module data-note="src=x.js" SRC='/assets/index-BJD80D25.js'></SCRIPT>`);
+  assert.equal(await readEntry(file), '/assets/index-BJD80D25.js', 'names in any case, values quoted or not');
 });

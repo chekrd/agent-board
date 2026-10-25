@@ -1,8 +1,27 @@
 import { readFile } from 'node:fs/promises';
 
-// The module script index.html loads; every build names it anew.
-export const readEntry = async (file: string) =>
-  (await readFile(file, 'utf8').catch(() => '')).match(/src="([^"]+\.js)"/)?.[1] ?? null;
+// A script's start tag up to its end tag, so a tag written inside a script's text is not taken for one.
+const SCRIPT = /<script(?=[\s/>])((?:[^>"']|"[^"]*"|'[^']*')*)>[\s\S]*?<\/script[\s/>]/gi;
+const ATTRIBUTE = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+function attributes(tag: string) {
+  const found = new Map<string, string>();
+  for (const [, name, ...value] of tag.matchAll(ATTRIBUTE)) {
+    if (!found.has(name.toLowerCase())) found.set(name.toLowerCase(), value.find((v) => v !== undefined) ?? '');
+  }
+  return found;
+}
+
+// The entry the page compares: the src of its first <script type="module" src>, which every build names anew. A
+// script the file does not close yet, as while a build writes it, never counts.
+export async function readEntry(file: string) {
+  const html = (await readFile(file, 'utf8').catch(() => '')).replace(/<!--[\s\S]*?-->/g, '');
+  for (const [, tag] of html.matchAll(SCRIPT)) {
+    const script = attributes(tag);
+    if (script.get('type')?.toLowerCase() === 'module' && script.has('src')) return script.get('src') || null;
+  }
+  return null;
+}
 
 // Polled: fs.watch stops firing once a build replaces the file. A build deletes and rewrites it, so after the entry
 // found at the start, a new one counts only once two polls in a row agree, and a read that finds none never counts.
