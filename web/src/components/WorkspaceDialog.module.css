@@ -1,26 +1,4 @@
 @layer components {
-  .sheet {
-    position: fixed;
-    inset: 7vh 24px 0;
-    width: auto;
-    max-width: 1540px;
-    height: auto;
-    max-height: none;
-    margin: 0 auto;
-    border-bottom: 0;
-    border-radius: 26px 26px 0 0;
-    box-shadow: 0 -30px 80px -30px rgb(0 0 0 / 0.6);
-    overflow: hidden;
-    translate: 0 0;
-    transition: translate 0.42s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s, display 0.16s allow-discrete, overlay 0.16s allow-discrete;
-    @starting-style { translate: 0 102%; }
-    &[open] { display: flex; flex-direction: column; }
-    &:focus-visible { outline: none; }
-    &::backdrop { transition-duration: 0.3s; }
-  }
-
-  .grabber { flex: none; width: 44px; height: 4px; margin: 10px auto 0; border-radius: 2px; background: var(--line-2); }
-
   .head {
     flex: none;
     display: flex;
@@ -29,19 +7,6 @@
     padding: 6px 26px 14px;
     border-bottom: 1px solid var(--line);
     h2 { font-size: 25px; font-weight: 650; letter-spacing: -0.012em; }
-  }
-
-  .close {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    height: 32px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: 9px;
-    background: none;
-    color: var(--text-2);
-    &:hover { background: var(--hover); color: var(--text); }
   }
 
   .scroll { flex: 1; min-height: 0; overflow: auto; }
@@ -198,10 +163,8 @@
   .checks { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; label { display: inline-flex; align-items: center; gap: 8px; } }
 
   @media (max-width: 760px) {
-    .sheet { inset: 3vh 0 0; border-radius: 20px 20px 0 0; }
     .head { padding: 6px 16px 12px; }
     .head h2 { font-size: 22px; }
-    .close kbd { display: none; }
     .content { padding: 18px 16px 40px; }
   }
 }

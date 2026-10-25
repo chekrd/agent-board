@@ -5,6 +5,7 @@ import type { Conversation, RepoView, Session, WorktreeView } from '../types.ts'
 import { ago } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import { openTerminal } from './SessionMenu.tsx';
+import sheet from './TaskSheet.module.css';
 import styles from './WorkspaceDialog.module.css';
 
 const closeDialog = () => document.querySelector<HTMLDialogElement>('#workspace')?.close();
@@ -33,10 +34,10 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
   };
 
   return (
-    <dialog id="workspace" closedby="any" tabIndex={-1} aria-labelledby="workspace-title" className={styles.sheet}>
-      <span className={styles.grabber} aria-hidden />
+    <dialog id="workspace" closedby="any" tabIndex={-1} aria-labelledby="workspace-title" className={sheet.sheet}>
+      <span className={sheet.grabber} aria-hidden />
       <header className={styles.head}>
-        <button type="button" className={styles.close} aria-label="Close" commandfor="workspace" command="close">
+        <button type="button" className={sheet.close} aria-label="Close" commandfor="workspace" command="close">
           <Icon name="chevron-down" size={18} />
           <kbd>Esc</kbd>
         </button>
