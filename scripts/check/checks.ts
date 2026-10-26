@@ -4179,7 +4179,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'shell-2 the page under a dealt card takes clicks: the toast\'s Undo clicked while the card is still flying takes the send back; and a click on Archive within the guard of the card that came up does nothing, as X does',
+    name: 'shell-2 the page under a dealt card takes clicks: the toast\'s Undo, and the dock capsule\'s, clicked while the card is still flying takes the send back; and a click on Archive within the guard of the card that came up does nothing, as X does',
     async run({ page, mock }) {
       const middle = (selector: string, text: string) => {
         const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => (e.textContent ?? '').includes(text));
@@ -4199,6 +4199,12 @@ export const checks: Check[] = [
       await page.until('s-cart back at the front', frontIs, 's-cart');
       const clicks = await page.eval(() => (window as unknown as { e2eClicks: { deal: string | null; on: string }[] }).e2eClicks);
       assert.deepEqual(clicks.at(-1), { deal: 'down', on: 'UndoZ' });
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      const capsule = await page.until('the Undo of its capsule while the card is dealt', middle, '[data-capsule][data-session="s-cart"] button', 'Undo');
+      await page.pointAt(capsule.x, capsule.y, true);
+      await page.until('s-cart back at the front again', frontIs, 's-cart');
+      assert.deepEqual((await page.eval(() => (window as unknown as { e2eClicks: { deal: string | null; on: string }[] }).e2eClicks)).at(-1), { deal: 'down', on: 'Undo' });
 
       await page.click('[data-segment][data-session="s-reviews"]');
       await ready(page, 's-reviews');
