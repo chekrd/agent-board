@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { decisionKey } from '../../server/decision.ts';
 import { kindOf, refreeze, resolveFront, rotate, targetOf, type Frozen } from './deck.ts';
 import type { MenuAnswer, Session } from './types.ts';
+import { adviceFor } from './util.ts';
 
 // The queue's own state, which no snapshot carries: the card being read, what ⏎ sends on each decision, the key
 // guard, and the markers the cards show.
@@ -112,7 +113,7 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   // Fronts leaving through this page's own send, archive or quit, which need no "no longer waits".
   const own = new Set<string>();
   // The front card as last arranged, to tell an outside change of it.
-  let arranged: { id: string; sig: string; target: string } | null = null;
+  let arranged: { id: string; sig: string; target: string; offer: string } | null = null;
   // The card as the view last drew it.
   let drawn: { id: string; sig: string } | null = null;
   // The deck of the last sync, which a move arranges again around its new front.
@@ -144,7 +145,8 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   };
 
   // Arranges the deck around `pinned`, the card wanted at the front: it keeps the pin, or moves it to the card that
-  // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes.
+  // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes, and when
+  // its second opinion finishes or changes, which changes what its own option sends.
   function arrangeAround(pinned: string | null): Left[] {
     const at = now();
     const events: Left[] = [];
@@ -172,10 +174,12 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     const before = arranged?.id ?? null;
     const sig = card ? signature(card, at) : '';
     const target = card ? targetOf(card, (key && frozen.get(key)) || null, at) : '';
+    const advice = card && adviceFor(card);
+    const offer = advice?.state === 'done' ? String(advice.at) : '';
     if (card && before !== card.id) guardUntil = guard();
     else if (card && arranged!.sig !== sig) update(card.id);
-    else if (card && arranged!.target !== target) guardUntil = guard();
-    arranged = card ? { id: card.id, sig, target } : null;
+    else if (card && (arranged!.target !== target || arranged!.offer !== offer)) guardUntil = guard();
+    arranged = card ? { id: card.id, sig, target, offer } : null;
 
     const pending = front ? notSent.get(front) : undefined;
     if (front && pending?.shown === false) notSent = new Map(notSent).set(front, { ...pending, shown: true });

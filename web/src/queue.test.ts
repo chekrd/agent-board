@@ -335,3 +335,22 @@ test('what waits for the deals under way runs after their changes, once the tran
   for (const fn of timers.splice(0)) fn();
   assert.deepEqual(log, ['nothing under way', 'the first send held', 'the second send held', 'Z']);
 });
+
+test('a second opinion that finishes or changes on the card being read restarts the guard, though ⏎ stays on the choice frozen, as it changes what the option it picked sends', () => {
+  const { q, advance } = world();
+  const s = session('s', { status: 'waiting', question: question('q1', [{ label: 'Keep' }, { label: 'Merge', recommended: true }]) });
+  q.sync([s]);
+  q.freeze('q:q1', { via: 'recommended', label: 'Merge' });
+  advance(GUARD_MS);
+  const advised = { ...s, advice: advice('q:q1', { choice: 'Merge', at: 7 }) };
+  assert.equal(primary(advised, q.state().frozen.get('q:q1')!).label, 'Send “Merge”');
+  q.sync([advised]);
+  assert.equal(q.guarded(), true, 'it finished');
+  advance(GUARD_MS);
+  q.sync([{ ...advised, advice: advice('q:q1', { choice: 'Merge', at: 8 }) }]);
+  assert.equal(q.guarded(), true, 'it changed');
+  advance(GUARD_MS);
+  q.sync([{ ...advised, advice: advice('q:q1', { choice: 'Merge', at: 8 }) }]);
+  assert.equal(q.guarded(), false, 'the same snapshot again');
+  assert.equal(q.state().updated.has('s'), false, 'the decision is the same');
+});

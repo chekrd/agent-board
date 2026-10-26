@@ -4277,4 +4277,24 @@ export const checks: Check[] = [
       assert.deepEqual(drafts, [['s-cart', { text: '', files: [{ name: 'shot.png', path: '/uploads/late/shot.png' }] }]]);
     },
   },
+  {
+    name: 'client-5 a second opinion that finishes on the choice ⏎ was frozen on guards the card again, so 1 pressed at once sends nothing; after the guard 1 accepts it',
+    scenario: 'freeze',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      assert.equal((await page.eval(card))?.primary, 'Send “Merge both carts”');
+      const advice = await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Merge both carts', answer: 'Merge both carts, and also drop the stock cap so nothing is trimmed.' });
+      await page.until('the suggestion under option 1', () => !!document.querySelector('[data-card] [data-option="1"]')?.parentElement?.querySelector('[data-suggestion]'));
+      assert.deepEqual(await page.eval(() => [document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent, !!document.querySelector('[data-primary][data-guarded]')]),
+        ['Send “Merge both carts”', true]);
+      await page.key('1');
+      await sleep(300);
+      assert.equal(await page.eval(toastsOf, 'undo'), null, '1 sent the advice the moment it came');
+      await ready(page, 's-cart');
+      await page.key('1');
+      const [sent] = await logged(mock, 'the accept', (e) => e.action === 'accept-advice', POSTED_MS);
+      assert.deepEqual([sent.sessionId, sent.body.adviceAt], ['s-cart', advice.at]);
+    },
+  },
 ];
