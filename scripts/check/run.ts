@@ -1,14 +1,15 @@
 import { existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { refuseLive } from '../isolate.ts';
+import { LIVE_PORT, refuseLive } from '../isolate.ts';
 import { launch, lookName, sleep, type Browser, type Look } from './cdp.ts';
 import { checks, type Check } from './checks.ts';
 import { startMock, type Mock } from './mock.ts';
 
 // pnpm e2e [--only <pattern>] [--matrix] [--port <mock port>] [--shots <dir>] [--dist <dir>]
 // Runs the checks in checks.ts against the mock in a headless Brave of its own. Without --port it starts a mock
-// on a free port. --shots saves each check's screenshots under <dir>/<look>/; failures always land in .e2e/.
+// on a free port. --shots saves each check's screenshots under <dir>/<look>/; failures always land in .e2e/. A check
+// fails on an error in the page and on a request to any host but 127.0.0.1, where the mocks are.
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const FAILURES = join(ROOT, '.e2e');
@@ -81,6 +82,12 @@ async function runOne(mock: Mock, browser: Browser, check: Check, look: Look) {
     await sleep(100);
     const unexpected = page.errors.filter((e) => !check.expectedErrors?.some((re) => re.test(e)));
     if (unexpected.length) throw new Error(`errors in the page:\n${unexpected.join('\n')}`);
+    const elsewhere = page.requests.filter((url) => {
+      if (/^(data|blob|about):/.test(url)) return false;
+      const { hostname, port } = new URL(url);
+      return hostname !== '127.0.0.1' || Number(port) === LIVE_PORT;
+    });
+    if (elsewhere.length) throw new Error(`requests to a host other than the mocks on 127.0.0.1:\n${elsewhere.join('\n')}`);
     return null;
   } catch (err) {
     const file = join(FAILURES, `${slug(check.name)}--${lookName(look)}.png`);
