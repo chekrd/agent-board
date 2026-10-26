@@ -269,6 +269,20 @@ test('a deal taken back brings its card to the front again once the deck has it,
   assert.deepEqual(deals, ['down', 'enter-back', 'enter-back']);
 });
 
+test('a card whose send was taken back before it returns is in the deck already: it comes back to the front with the order around it, so a skip then goes to the card after it', () => {
+  const { q, advance } = world();
+  q.sync([a, b, c]);
+  q.deal('down', () => {});
+  q.sync([b, c]);
+  advance(GUARD_MS);
+  q.sync([a, b, c]);
+  assert.deepEqual([q.state().front, q.state().order], ['b', ['b', 'c', 'a']]);
+  q.restore('a', () => true);
+  assert.deepEqual([q.state().front, q.state().order, q.guarded()], ['a', ['a', 'b', 'c'], true]);
+  q.skip();
+  assert.equal(q.state().front, 'b');
+});
+
 test('a menu\'s picks are kept by decision, a reload too, so its card comes back with them', () => {
   const first = world();
   const picks = [{ labels: ['Linear'], other: '' }, { labels: [], other: 'Page the on-call' }];
@@ -301,4 +315,23 @@ test('a fresh ring lasts 2.6 s', () => {
   assert.ok(q.state().fresh.has('a'));
   advance(1);
   assert.equal(q.state().fresh.has('a'), false);
+});
+
+test('what waits for the deals under way runs after their changes, once the transition applied them, so Z takes back the send of the press it follows', () => {
+  const changes: (() => void)[] = [];
+  const timers: (() => void)[] = [];
+  const q = createQueue({ transition: (change) => void changes.push(change), later: (fn) => void timers.push(fn) });
+  const log: string[] = [];
+  q.afterDeal(() => log.push('nothing under way'));
+  q.deal('down', () => log.push('the first send held'));
+  q.afterDeal(() => log.push('Z'));
+  q.deal('side', () => log.push('the second send held'));
+  assert.deepEqual(log, ['nothing under way']);
+  changes.shift()!();
+  for (const fn of timers.splice(0)) fn();
+  assert.deepEqual(log, ['nothing under way', 'the first send held'], 'one deal is still under way');
+  changes.shift()!();
+  assert.deepEqual(log, ['nothing under way', 'the first send held', 'the second send held'], 'not inside the transition\'s update');
+  for (const fn of timers.splice(0)) fn();
+  assert.deepEqual(log, ['nothing under way', 'the first send held', 'the second send held', 'Z']);
 });

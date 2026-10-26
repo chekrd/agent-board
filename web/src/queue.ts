@@ -195,11 +195,23 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   // come up, and the press was aimed at the one before it.
   let still = false;
 
+  // A deal applies its change in the transition's update, a frame or so after the press, and what waits for that
+  // runs after it.
+  let dealing = 0;
+  const afterDeals: (() => void)[] = [];
+
   function deal(way: Deal, change: () => void) {
     if (state.front && (way === 'down' || way === 'side')) own.add(state.front);
     const guardUntil = guard();
     commit({ ...state, guardUntil });
-    transition(change, way);
+    dealing++;
+    transition(() => {
+      try {
+        change();
+      } finally {
+        if (--dealing === 0) for (const fn of afterDeals.splice(0)) later(fn, 0);
+      }
+    }, way);
   }
 
   return {
@@ -249,6 +261,11 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     // Applies a change that takes the front card away (a send, dismissal, archive) as one deal. The guard starts
     // at once, so a second press before the next card is up cannot answer it.
     deal,
+    // Runs `fn` once the deals under way have applied their changes, or at once.
+    afterDeal(fn: () => void) {
+      if (dealing) afterDeals.push(fn);
+      else fn();
+    },
     own(id: string) {
       own.add(id);
     },
@@ -263,10 +280,13 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
       deal('side', change);
       return true;
     },
-    // Takes a deal back: when `change` puts the card in the deck again, it comes back to the front.
+    // Takes a deal back: when `change` puts the card in the deck again, it comes back to the front. A deck that has it
+    // already, as when a send was taken back before its card returns, is arranged around it at once.
     restore(id: string, change: () => boolean) {
       transition(() => {
-        if (change()) commit({ ...state, front: id });
+        if (!change()) return;
+        if (deck.some((s) => s.id === id)) arrangeAround(id);
+        else commit({ ...state, front: id });
       }, 'enter-back');
     },
 

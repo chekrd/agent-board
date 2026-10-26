@@ -4220,4 +4220,61 @@ export const checks: Check[] = [
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['archive', 's-reviews']]);
     },
   },
+  {
+    name: 'client-4 Z pressed in the same moment as an answer takes back that answer, not the send before it, and an Undo takes its send back at once, before its card comes back',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('ArrowRight');
+      await ready(page, 's-group');
+      await page.eval(() => {
+        for (const [key, code] of [['1', 'Digit1'], ['z', 'KeyZ']]) document.body.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }));
+      });
+      const pressed = Date.now();
+      await page.until('s-group back at the front', frontIs, 's-group');
+      await sleep(HELD_MS - (Date.now() - pressed));
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
+
+      await ready(page, 's-group');
+      await page.key('1');
+      await page.until('its toast', toastsOf, 'undo');
+      const kept = await page.eval(() => {
+        [...document.querySelectorAll<HTMLButtonElement>('[data-toast][data-kind="undo"] button')].find((b) => b.textContent?.startsWith('Undo'))!.click();
+        return (JSON.parse(sessionStorage.getItem('agent-board:sends') ?? '[]') as { sessionId: string }[]).map((i) => i.sessionId);
+      });
+      assert.deepEqual(kept.filter((id) => id === 's-group'), [], 'the send was still held when its Undo had run');
+      await page.until('s-group back at the front', frontIs, 's-group');
+      await sleep(HELD_MS);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
+    },
+  },
+  {
+    name: 'client-4.late-file a file that finishes uploading between a press and its hold stays in the reply box, as the send does not carry it',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('see the screenshot');
+      const pressed = await page.eval(() => {
+        const fetched = window.fetch;
+        window.fetch = (input, init) => (String(input).includes('/api/uploads')
+          ? Promise.resolve(new Response(JSON.stringify({ path: '/uploads/late/shot.png' }), { headers: { 'content-type': 'application/json' } }))
+          : fetched(input, init));
+        const section = document.querySelector('[data-card] textarea')!.closest('section')!;
+        document.querySelector<HTMLButtonElement>('[data-card] [data-option="2"]')!.click();
+        const data = new DataTransfer();
+        data.items.add(new File(['png'], 'shot.png', { type: 'image/png' }));
+        section.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+        return !!document.documentElement.dataset.deal;
+      });
+      assert.equal(pressed, true, 'the option did not deal the card');
+      const [sent] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.body.choice, sent.body.text, sent.body.files], ['Keep the account cart', 'see the screenshot', undefined]);
+      const drafts = await page.eval(() => JSON.parse(sessionStorage.getItem('agent-board:drafts') ?? '[]') as [string, { text: string; files: { path: string }[] }][]);
+      assert.deepEqual(drafts, [['s-cart', { text: '', files: [{ name: 'shot.png', path: '/uploads/late/shot.png' }] }]]);
+    },
+  },
 ];

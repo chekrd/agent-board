@@ -69,14 +69,15 @@ export function editDraft(id: string, edit: (d: Draft) => Draft) {
   for (const fn of subscribers) fn();
 }
 
-// A send takes the text and the files that finished uploading; one still uploading stays, and one that failed goes.
-export function takeDraft(id: string): Draft | null {
+// A send takes the text and the files it carries, `paths`; one still uploading stays, as does one that finished
+// after the press, and one that failed goes.
+export function takeDraft(id: string, paths: readonly string[]): Draft | null {
   const d = draftOf(id);
-  const ready = d.files.filter((f) => f.path);
-  if (!d.text && !ready.length) return null;
+  const taken = d.files.filter((f) => f.path && paths.includes(f.path));
+  if (!d.text && !taken.length) return null;
   release({ text: '', files: d.files.filter((f) => f.error) });
-  editDraft(id, () => ({ text: '', files: d.files.filter((f) => !f.path && !f.error) }));
-  return { text: d.text, files: ready };
+  editDraft(id, () => ({ text: '', files: d.files.filter((f) => !taken.includes(f) && !f.error) }));
+  return { text: d.text, files: taken };
 }
 
 // A send taken back or refused gives back what it took, ahead of anything written since.

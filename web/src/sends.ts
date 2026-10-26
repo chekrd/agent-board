@@ -133,26 +133,25 @@ function review() {
 // send is taken back or refused.
 export function hold(s: Session, request: Request, name: string, { dealt = false } = {}) {
   const { text, files } = request.body;
-  const draft = request.action === 'answer' && (text !== undefined || !!files?.length) ? takeDraft(s.id) : null;
+  const draft = request.action === 'answer' && (text !== undefined || !!files?.length) ? takeDraft(s.id, files ?? []) : null;
   return sends.hold(s, request, { name, draft, dealt });
 }
 
-// Takes back a held send, the newest without an id. A card dealt out with it comes back to the front, and the reply
-// box gets back what the send took from it.
+// Takes back a held send, the newest without an id, at once, so its timer cannot post it while the card comes back.
+// A card dealt out with it comes back to the front, and the reply box gets back what the send took from it. Z waits
+// for a deal under way, whose send is the newest.
 export function undo(id?: string) {
+  if (id === undefined) return queue.afterDeal(() => takeBack());
+  takeBack(id);
+}
+
+function takeBack(id?: string) {
   const item = sends.items().filter((i) => i.state === 'held' && (id === undefined || i.id === id)).at(-1);
   if (!item) return;
-  const back = () => {
-    givenBack.add(item.id);
-    if (!sends.undo(item.id)) {
-      givenBack.delete(item.id);
-      return false;
-    }
-    if (item.restore.draft) putBack(item.sessionId, item.restore.draft);
-    return true;
-  };
-  if (item.restore.dealt) queue.restore(item.sessionId, back);
-  else back();
+  givenBack.add(item.id);
+  sends.undo(item.id);
+  if (item.restore.draft) putBack(item.sessionId, item.restore.draft);
+  if (item.restore.dealt) queue.restore(item.sessionId, () => true);
 }
 
 // The page is going away or being frozen: whatever has not been posted yet goes now. Not on visibilitychange,
