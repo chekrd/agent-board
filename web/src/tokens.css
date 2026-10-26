@@ -53,23 +53,9 @@
     --term-bg: light-dark(#23201b, #0b0a08);
     --tint-decide: light-dark(#f7fbe7, #22251a);
     --tint-focus: light-dark(#fff6e8, #272016);
-    --radius: 8px;
     --font-display: 'Bricolage Grotesque Variable', 'Hanken Grotesk Variable', system-ui, sans-serif;
     --font: 'Hanken Grotesk Variable', system-ui, -apple-system, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
-
-    /* The older names, which today's components still use. New code uses the names above. */
-    --bg: var(--ground);
-    --surface: var(--card);
-    --surface-2: var(--raised);
-    --border: var(--line);
-    --accent-soft: var(--accent-tint);
-    --accent-text: var(--on-accent);
-    --info: var(--know);
-    --info-soft: var(--know-tint);
-    --warn: var(--prompt);
-    --del: var(--danger);
-    --add: var(--ok);
   }
 
   :root {

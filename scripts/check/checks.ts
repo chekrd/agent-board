@@ -708,7 +708,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P2.3 the Diff tab stays dark in the light theme too, and the older token names resolve dark inside it',
+    name: 'P2.3 the Diff tab stays dark in the light theme too',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/s/s-cart/diff`);
       await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
