@@ -172,6 +172,9 @@ test('the primary on an ask card, for every frozen choice and composer state', (
   });
   assert.deepEqual(primary(s, advised, { composer: open('', ['/u/a.png']) }).press, { action: 'answer', body: { key: 'q:q1', choice: 'Keep', files: ['/u/a.png'] }, label: 'Keep' });
   assert.equal(primary(s, advised, { composer: open('note', [], true) }).disabled, true, 'an attachment still uploading');
+  assert.equal(primary(s, advised, { composer: open('', ['/u/a.png'], true) }).disabled, true, 'one more still uploading');
+  assert.equal(primary(s, advised, { composer: open('', [], true) }).disabled, true, 'the one attachment still uploading, which the accept would leave out');
+  assert.equal(primary(s, advised, { composer: { ...closed, uploading: true } }).disabled, false, 'an upload in a closed composer goes nowhere');
 
   const changed = { ...s, advice: advice('q:q1', { choice: 'Merge', at: 8 }) };
   assert.deepEqual(primary(changed, advised, { composer: closed }), {
@@ -241,7 +244,15 @@ test('an option pressed: the second opinion\'s own option accepts it unless a no
   assert.deepEqual(choose(s, 'Merge', closed), { action: 'accept-advice', body: { key: 'q:q1', adviceAt: 7 }, label: 'Merge' });
   assert.deepEqual(choose(s, 'Merge', open('only if in stock')), { action: 'answer', body: { key: 'q:q1', choice: 'Merge', text: 'only if in stock' }, label: 'Merge' });
   assert.deepEqual(choose(s, 'Keep'), { action: 'answer', body: { key: 'q:q1', choice: 'Keep' }, label: 'Keep' });
-  assert.deepEqual(choose({ ...s, advice: advice('q:q1', { state: 'thinking', choice: 'Merge' }) }, 'Merge').action, 'answer');
+  assert.deepEqual(choose({ ...s, advice: advice('q:q1', { state: 'thinking', choice: 'Merge' }) }, 'Merge')?.action, 'answer');
+});
+
+test('no option sends while an attachment in the open composer is still uploading, which the send would leave out', () => {
+  const s = session('s', { question: question('q1'), advice: advice('q:q1', { choice: 'Merge', at: 7 }) });
+  assert.equal(choose(s, 'Keep', open('see the screenshot', [], true)), null);
+  assert.equal(choose(s, 'Merge', open('', [], true)), null);
+  assert.equal(choose(s, 'Keep', open('see both', ['/u/a.png'], true)), null);
+  assert.deepEqual(choose(s, 'Keep', { ...closed, uploading: true }), { action: 'answer', body: { key: 'q:q1', choice: 'Keep' }, label: 'Keep' });
 });
 
 test('a draft counts as a command only once the command list has loaded, and the way the server tells them', () => {

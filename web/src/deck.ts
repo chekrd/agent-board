@@ -154,6 +154,10 @@ export interface Primary {
 
 const reply: Primary = { label: 'Reply', disabled: false, press: { intent: 'compose' } };
 
+// An attachment still uploading in the open composer goes along once it is up, so what would send the note sends
+// nothing until then.
+const uploadingIn = (composer: Composer | undefined) => !!composer?.open && !!composer.uploading;
+
 // The draft and the ready files go along with an option only while the composer is open, so nothing unseen is sent.
 function noteOf(composer: Composer | undefined): Body | null {
   if (!composer?.open) return null;
@@ -203,10 +207,11 @@ export function primary(s: Session, frozen: Frozen | null, input: { composer?: C
     return unchanged ? { label: accept, disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: a!.answer } } : reply;
   }
   if (f.label === null) return decisionOf(s)!.options.length ? { label: 'Pick an option', disabled: true, press: null } : reply;
-  if (unchanged && !note) return { label: accept, disabled: false, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: f.label } };
+  const waits = uploadingIn(input.composer);
+  if (unchanged && !note) return { label: accept, disabled: waits, press: { action: 'accept-advice', body: { key, adviceAt: f.adviceAt }, label: f.label } };
   return {
     label: note ? `Send “${f.label}” + your note` : `Send “${f.label}”`,
-    disabled: !!note && !!input.composer?.uploading,
+    disabled: waits,
     press: { action: 'answer', body: { key, choice: f.label, ...note }, label: f.label },
   };
 }
@@ -220,8 +225,9 @@ export function targetOf(s: Session, frozen: Frozen | null, now = Date.now()) {
 }
 
 // An option pressed on an ask or end-of-turn card: the second opinion's own option accepts it, as long as no note
-// goes with it.
-export function choose(s: Session, label: string, composer?: Composer): Request {
+// goes with it. Null while an attachment is still uploading.
+export function choose(s: Session, label: string, composer?: Composer): Request | null {
+  if (uploadingIn(composer)) return null;
   const key = decisionKey(s)!;
   const a = adviceFor(s);
   const note = noteOf(composer);

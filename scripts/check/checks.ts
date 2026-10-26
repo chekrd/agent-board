@@ -4146,4 +4146,36 @@ export const checks: Check[] = [
       assert.deepEqual([sent.sessionId, sent.body.choice, sent.status], ['s-cart', 'Keep the account cart', 204]);
     },
   },
+  {
+    name: 'client-3 an option pressed while the open reply box still uploads its picture sends nothing and says so; once the picture is up the same option sends it along',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(() => {
+        const w = window as unknown as { e2eUploads: () => void };
+        const up = new Promise<void>((done) => (w.e2eUploads = done));
+        const fetched = window.fetch;
+        window.fetch = (input, init) => (String(input).includes('/api/uploads') ? up.then(() => fetched(input, init)) : fetched(input, init));
+      });
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('see the screenshot');
+      await page.eval(pastePng, '[data-card] textarea');
+      await page.until('the picture, uploading', () => !!document.querySelector('[data-card] [data-state="uploading"]'));
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('the word that nothing was sent', () =>
+        document.querySelector('[data-card] section[aria-label] [role="status"]')?.textContent === 'An attachment is still uploading; nothing was sent.');
+      await page.key('2');
+      await sleep(300);
+      assert.equal(await page.eval(toastsOf, 'undo'), null, 'an option sent the note without its picture');
+      assert.equal(await page.eval(frontIs, 's-cart'), true);
+      await page.eval(() => (window as unknown as { e2eUploads: () => void }).e2eUploads());
+      await page.until('the picture, up', () => !!document.querySelector('[data-card] [data-state="ready"]'));
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const [sent] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.body.choice, sent.body.text, sent.body.files?.length], ['Keep the account cart', 'see the screenshot', 1]);
+      assert.equal((await actions(mock)).length, 1);
+    },
+  },
 ];

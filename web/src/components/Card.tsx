@@ -152,7 +152,10 @@ export function Card({ session, repos, deck, enter }: CardProps) {
     if (!primary.disabled && !queue.guarded()) press(primary.press);
   };
   const pick = (label: string) => {
-    if (!queue.guarded()) send(choose(session, label, box));
+    if (queue.guarded()) return;
+    const r = choose(session, label, box);
+    if (r) send(r);
+    else setNote('An attachment is still uploading; nothing was sent.');
   };
   const edit = () => {
     if (!done) return;
