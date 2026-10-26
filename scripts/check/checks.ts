@@ -4320,4 +4320,26 @@ export const checks: Check[] = [
       assert.deepEqual(await page.eval(history), { entries: ['/', '/s/s-hooks/overview'], index: 0, sheet: false });
     },
   },
+  {
+    name: 'shell-5 a click in an artifact gives the frame focus, and once the pointer leaves it the sheet has focus again, so 1 shows Overview and Esc closes the sheet',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/s/s-cart/artifacts`);
+      await page.until('the sheet', sheetOpen);
+      await page.until('the sheet to settle', settled);
+      const frame = await page.until('the artifact', () => {
+        const f = document.querySelector<HTMLIFrameElement>('#task-sheet iframe');
+        const r = f?.getBoundingClientRect();
+        return r && r.width > 100 && f!.contentWindow ? { x: r.x + r.width / 2, y: r.y + r.height / 2, top: r.top } : null;
+      });
+      await sleep(300);
+      await page.pointAt(frame.x, frame.y, true);
+      await page.until('the frame, focused', () => document.activeElement?.tagName === 'IFRAME');
+      await page.pointAt(frame.x, frame.top - 40);
+      await page.until('the sheet, focused', () => document.activeElement?.id === 'task-sheet');
+      await page.key('1');
+      await page.until('Overview', () => location.pathname === '/s/s-cart/overview');
+      await page.key('Escape');
+      await page.until('the queue', () => location.pathname === '/' && !document.querySelector('#task-sheet[open]'));
+    },
+  },
 ];

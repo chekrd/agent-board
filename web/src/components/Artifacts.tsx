@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { showTab } from '../router.ts';
 import type { Session } from '../types.ts';
 import { ago } from '../util.ts';
@@ -7,6 +8,18 @@ import { Icon } from './Icon.tsx';
 export const artifactUrl = (sessionId: string, id: string) => `/api/sessions/${sessionId}/artifacts/${id}`;
 
 export function Artifacts({ session, item }: { session: Session; item: string | null }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  // Keys typed while the frame has focus go to its own document, out of reach of the sheet's Esc and the board's
+  // keys, so the sheet takes focus back once the pointer is off the frame. The page gets no pointerleave for the
+  // sandboxed frame, but it sees the pointer move over its own content again.
+  useEffect(() => {
+    const back = () => {
+      const f = frame.current;
+      if (f && document.activeElement === f) f.closest('dialog')?.focus();
+    };
+    document.addEventListener('pointermove', back);
+    return () => document.removeEventListener('pointermove', back);
+  }, []);
   const list = session.artifacts.toReversed();
   const shown = list.find((a) => a.id === item) ?? list[0];
   if (!shown) return <p className={styles.empty}>Claude has not made any artifacts in this session.</p>;
@@ -28,7 +41,7 @@ export function Artifacts({ session, item }: { session: Session; item: string | 
             Open in new tab <Icon name="external" size={14} />
           </a>
         </header>
-        <iframe key={shown.id} className={styles.frame} title={shown.title} src={artifactUrl(session.id, shown.id)} sandbox="allow-scripts" />
+        <iframe ref={frame} key={shown.id} className={styles.frame} title={shown.title} src={artifactUrl(session.id, shown.id)} sandbox="allow-scripts" />
       </div>
     </div>
   );
