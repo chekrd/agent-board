@@ -331,7 +331,11 @@ const actions: Record<string, (s: Session, body: any) => void | Promise<void>> =
     push();
   },
   archive: (s, body) => update(s.id, { archived: body.archived ?? true }),
-  'delete-worktree': (s) => removeWorktree(mustRepo(s.repoId), s.worktree),
+  'delete-worktree': (s) => {
+    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
+    state.sessions = state.sessions.filter((o) => o !== s);
+    push();
+  },
 };
 
 async function sessionAction(id: string, action: string, body: any) {
@@ -356,6 +360,7 @@ function deleteLoss(s: Session) {
   const repo = repoOf(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
+  if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0 };
 }

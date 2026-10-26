@@ -11,6 +11,8 @@ interface Loss {
   deletesBranch: boolean;
   files: number;
   commits: number;
+  // The task runs in the repository's main checkout, which clearing it keeps.
+  checkout?: boolean;
 }
 
 type Check = { state: 'checking' } | { state: 'done'; loss: Loss } | { state: 'failed'; error: string };
@@ -74,11 +76,15 @@ export function DeleteWorktreeDialog() {
     <dialog id="delete-worktree" ref={dialog} role="alertdialog" aria-labelledby="delete-worktree-title" className={styles.dialog} onClose={() => setTarget(null)}>
       {target && (
         <>
-          <h2 id="delete-worktree-title">{loss?.deletesBranch ? `Delete the worktree and its local branch ${loss.branch}?` : 'Delete the worktree?'}</h2>
+          <h2 id="delete-worktree-title">
+            {loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
+          </h2>
           <code className={styles.path}>{target.session.worktree}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
-          {loss && (lost.length ? (
+          {loss?.checkout ? (
+            <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
+          ) : loss && (lost.length ? (
             <>
               <p>This throws away:</p>
               <ul className={styles.loss}>{lost.map((l) => <li key={l}>{l}</li>)}</ul>
@@ -86,10 +92,12 @@ export function DeleteWorktreeDialog() {
           ) : (
             <p>Nothing is lost: there are no uncommitted changes, and every commit is on a remote or another branch.</p>
           ))}
-          <p className={styles.muted}>Claude quits and the worktree's terminals close.</p>
+          <p className={styles.muted}>
+            {loss?.checkout ? "This task's Claude quits, its terminal closes and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
+          </p>
           <footer>
             <button type="button" ref={cancel} commandfor="delete-worktree" command="close">Cancel</button>
-            <button type="button" className={styles.delete} disabled={check?.state === 'checking'} onClick={confirm}>Delete worktree</button>
+            <button type="button" className={styles.delete} disabled={check?.state === 'checking'} onClick={confirm}>Clear task</button>
           </footer>
         </>
       )}

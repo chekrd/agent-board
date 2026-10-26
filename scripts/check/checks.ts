@@ -1371,7 +1371,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.9 the ⋯ menu lists what each session can do; Delete worktree… asks in a dialog that names the branch, the path and the loss, starts on Cancel and closes on Esc; a failed loss check says so; Delete worktree deletes',
+    name: 'P4.9 the ⋯ menu lists what each session can do; Clear task… asks in a dialog that names the branch, the path and the loss, starts on Cancel and closes on Esc; a failed loss check says so; Clear task deletes',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -1380,10 +1380,10 @@ export const checks: Check[] = [
         await page.click(`[data-tile][data-session="${id}"] button[aria-label="Session actions"]`);
         return page.until(`the menu of ${id}`, menuItems);
       };
-      assert.deepEqual(await open('s-stripe'), ['Continue', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Delete worktree…']);
+      assert.deepEqual(await open('s-stripe'), ['Continue', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Clear task…']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
-      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Delete worktree…']);
+      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Clear task…']);
       await shot('session-menu');
 
       const asked = () => {
@@ -1397,10 +1397,10 @@ export const checks: Check[] = [
           focus: document.activeElement?.textContent,
         };
       };
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       const shown = await page.until('the delete dialog', asked);
       assert.deepEqual({ ...shown, text: undefined }, {
-        title: 'Delete the worktree and its local branch invoice-rounding?', path: '~/code/worktrees/invoice-rounding/billing-api', text: undefined,
+        title: 'Clear the task, its worktree and its local branch invoice-rounding?', path: '~/code/worktrees/invoice-rounding/billing-api', text: undefined,
         loss: ['3 uncommitted or untracked files', '2 commits that no other branch or remote has'], focus: 'Cancel',
       });
       assert.match(shown.text, /This throws away:/);
@@ -1410,19 +1410,41 @@ export const checks: Check[] = [
       await page.until('the dialog to close', () => !document.querySelector('dialog#delete-worktree[open]'));
 
       await open('s-stripe');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       const failed = await page.until('the failed loss check', asked);
       assert.match(failed.text, /Could not check what would be lost \(git status failed: fatal: unable to read the index\); uncommitted changes and unpushed commits may be lost\./);
       await page.key('Escape');
       await page.until('the dialog to close', () => !document.querySelector('dialog#delete-worktree[open]'));
 
       await open('s-invoice');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the delete dialog', asked);
-      await page.click('dialog#delete-worktree button', 'Delete worktree');
+      await page.click('dialog#delete-worktree button', 'Clear task');
       const [deleted] = await logged(mock, 'the deletion', (e) => e.method === 'POST' && e.action === 'delete-worktree');
       assert.deepEqual([deleted.sessionId, deleted.status], ['s-invoice', 204]);
       await page.until('the tile to go', () => !document.querySelector('[data-tile][data-session="s-invoice"]'));
+    },
+  },
+  {
+    name: 'P4.9.checkout Clear task… on a task in the main checkout asks to clear only the task, says the checkout stays on its branch, and removes the task alone',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/s/s-edge/overview`);
+      await page.until('the task page', sheetOpen);
+      await page.click('#task-sheet button[aria-label="Session actions"]');
+      assert.ok((await page.until('the menu', menuItems)).includes('Clear task…'), 'no Clear task… for a task in the main checkout');
+      await page.click(':popover-open button', 'Clear task');
+      const shown = await page.until('the dialog', () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#delete-worktree');
+        return d?.open && !d.innerText.includes('Checking') ? { title: d.querySelector('h2')?.textContent?.trim(), text: d.innerText, loss: d.querySelectorAll('li').length } : null;
+      });
+      assert.deepEqual({ title: shown.title, loss: shown.loss }, { title: 'Clear the task?', loss: 0 });
+      assert.match(shown.text, /main checkout, which stays as it is, on main\./);
+      await page.click('dialog#delete-worktree button', 'Clear task');
+      const [cleared] = await logged(mock, 'the clearing', (e) => e.method === 'POST' && e.action === 'delete-worktree');
+      assert.deepEqual([cleared.sessionId, cleared.status], ['s-edge', 204]);
+      const after = await mock.get('/api/state');
+      assert.equal(after.sessions.some((x: { id: string }) => x.id === 's-edge'), false);
+      assert.ok(after.repos.find((r: { id: number }) => r.id === 1).worktrees.some((w: { path: string; isMain: boolean }) => w.isMain && w.path === '~/code/storefront'), 'the checkout went');
     },
   },
   {
@@ -1554,7 +1576,7 @@ export const checks: Check[] = [
       await page.until('Keys to close', () => !document.querySelector('dialog#keys[open]'));
 
       await page.click('[data-tile][data-session="s-invoice"] button[aria-label="Session actions"]');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree[open]'));
       await page.key('?');
       await sleep(300);
@@ -1738,7 +1760,7 @@ export const checks: Check[] = [
       await escape('the ⋯ menu', '[popover="auto"]:popover-open', () => page.click('#task-sheet button[aria-label="Session actions"]'));
       await escape('the delete dialog', 'dialog#delete-worktree[open]', async () => {
         await page.click('#task-sheet button[aria-label="Session actions"]');
-        await page.click(':popover-open button', 'Delete worktree');
+        await page.click(':popover-open button', 'Clear task');
       });
       await page.key('Escape');
       await page.until('all files again', () => document.querySelectorAll('section[data-file]').length === 12);
@@ -1804,7 +1826,7 @@ export const checks: Check[] = [
         };
       });
       await page.click('[data-tile][data-session="s-invoice"] button[aria-label="Session actions"]');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the loss check under way', () => !!document.querySelector('dialog#delete-worktree[open]')?.textContent?.includes('Checking'));
       // Closed the moment the answer is drawn, before the effects of that render run.
       await page.eval(() => {
@@ -3483,9 +3505,9 @@ export const checks: Check[] = [
       await ready(page, 's-hooks');
       await page.click('[data-card] button[aria-label="Session actions"]');
       await page.until('the menu', menuItems);
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the delete dialog', confirmable);
-      await page.click('dialog#delete-worktree button', 'Delete worktree');
+      await page.click('dialog#delete-worktree button', 'Clear task');
       await page.until('s-group at the front', frontIs, 's-group');
       assert.deepEqual(await page.eval(dealt), ['side', 'side']);
       const [deleted] = await logged(mock, 'the deletion', (e) => e.method === 'POST' && e.action === 'delete-worktree');
@@ -3693,7 +3715,7 @@ export const checks: Check[] = [
       await page.until('the menu', menuItems);
       await sideways('the ⋯ menu');
       assert.equal(await page.eval(inside, ':popover-open'), true, 'the ⋯ menu');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree li'));
       await page.until('the dialog to settle', settled);
       await sideways('Delete worktree');
@@ -3889,7 +3911,7 @@ export const checks: Check[] = [
       await page.key('Escape');
 
       await page.click('[data-card] button[aria-label="Session actions"]');
-      await page.click(':popover-open button', 'Delete worktree');
+      await page.click(':popover-open button', 'Clear task');
       await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree li'));
       await audit('Delete worktree');
       await page.key('Escape');

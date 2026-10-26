@@ -290,9 +290,11 @@ export function archive(id: string, archived: boolean) {
   notify();
 }
 
-export function stopWorktree(worktree: string) {
-  for (const s of sessions.all().filter((s) => s.worktree === worktree)) if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
+export async function stopWorktree(worktree: string) {
+  const gone = sessions.all().filter((s) => s.worktree === worktree);
+  for (const s of gone) if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
   sessions.removeByWorktree(worktree);
+  await Promise.all(gone.map((s) => rm(join(SESSIONS_DIR, s.id), { recursive: true, force: true })));
   scheduleRerank();
   notify();
 }
@@ -337,7 +339,7 @@ export async function removeWorktreeAndSessions(repo: RepoView, path: string, op
     await ghostty.closeTerminalsIn(path, ttys);
     const keepBranch = !worktree.branch || longLived(repo, worktree.branch);
     await removeWorktree(repo.path, path, { force: opts.force, deleteBranch: opts.deleteBranch && !keepBranch });
-    stopWorktree(path);
+    await stopWorktree(path);
   });
 }
 
@@ -358,22 +360,38 @@ export async function checkoutExistingBranch(repo: RepoView, branch: string) {
 const longLived = (repo: RepoView, branch: string) =>
   ['master', 'main', 'develop', 'trunk', repo.base, repo.base.replace(/^[^/]+\//, '')].includes(branch) || branch.startsWith('release/');
 
-// What Delete worktree would throw away, for its confirmation.
+// What Clear task would throw away, for its confirmation. A task in the main checkout keeps it, and its branch.
 export async function deleteWorktreeLoss(id: string) {
   const s = must(id);
   const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
   if (!worktree) throw new Error('worktree not found');
+  if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
   return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
 }
 
+// Clear task: in a worktree of its own, everything in it goes, the worktree and its branch too. In the main checkout,
+// which other Claudes may share, only this session's Claude and its tab go, with the task.
 export async function deleteWorktree(id: string) {
   const s = must(id);
   const repo = repoView(s.repoId);
-  if (!repo) throw new Error('worktree not found');
-  await removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
+  const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
+  if (!repo || !worktree) throw new Error('worktree not found');
+  if (!worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
+  stopAdvice(id);
+  const pid = s.pid && alive(s.pid) ? s.pid : null;
+  const tty = pid ? (s.tty ?? await ttyOf(pid)) : null;
+  if (pid) {
+    process.kill(pid, 'SIGTERM');
+    await waitForExit([pid], 10_000);
+  }
+  if (tty) await ghostty.closeTerminalsIn(null, [tty]);
+  sessions.remove(id);
+  await rm(join(SESSIONS_DIR, id), { recursive: true, force: true });
+  scheduleRerank();
+  notify();
 }
 
 const diffInFlight = new Set<string>();

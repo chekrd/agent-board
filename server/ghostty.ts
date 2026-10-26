@@ -70,7 +70,7 @@ activate`, cwd, input);
 
 // Working directory comes from the shell's OSC 7 reports, so a tab whose shell has
 // no integration is only found through the tty of a process known to run in it.
-export async function closeTerminalsIn(dir: string, knownTtys: string[]) {
+export async function closeTerminalsIn(dir: string | null, knownTtys: string[]) {
   const out = await script(`set out to ""
 set sep to character id 9
 repeat with t in terminals
@@ -83,7 +83,7 @@ repeat with t in terminals
 end repeat
 return out`);
   const ids = out.split('\n').filter(Boolean).map((line) => line.split('\t')).filter(([, wd, tty]) =>
-    knownTtys.includes(tty) || wd === dir || wd.startsWith(`${dir}/`)).map(([id]) => id);
+    knownTtys.includes(tty) || (dir !== null && (wd === dir || wd.startsWith(`${dir}/`)))).map(([id]) => id);
   for (const id of ids) await script('close (first terminal whose id is item 1 of argv)', id);
   return ids.length;
 }
