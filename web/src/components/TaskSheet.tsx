@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { SHEET_DIALOG } from '../keys.ts';
-import { useOuterClick } from '../layers.ts';
+import { keepUnderLayer } from '../layers.ts';
 import { closeSheet, showTab, type Route, type Tab } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
@@ -20,7 +20,6 @@ import { toast } from './Toasts.tsx';
 export function TaskSheet({ route }: { route: Route }) {
   const { sessions, repos, link } = useStore();
   const dialog = useRef<HTMLDialogElement>(null);
-  const outerClick = useOuterClick();
   const sheet = route.sheet;
   const session = sheet ? sessions.find((s) => s.id === sheet.id) : undefined;
   const name = session ? sessionLabel(session, locate(repos, session).branch) : 'Task';
@@ -51,7 +50,7 @@ export function TaskSheet({ route }: { route: Route }) {
       tabIndex={-1}
       className={styles.sheet}
       aria-label={name}
-      {...outerClick}
+      onCancel={keepUnderLayer}
       onClose={closeSheet}
     >
       <span className={styles.grabber} aria-hidden />

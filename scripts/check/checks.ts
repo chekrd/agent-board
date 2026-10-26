@@ -3980,4 +3980,53 @@ export const checks: Check[] = [
       }
     },
   },
+  {
+    name: 'shell-1 a click beside an open ⋯ menu only closes it: on the card it presses no option, on the Wall it opens no other task, and in the sheet it runs no Terminal',
+    async run({ page, mock }) {
+      const menuShown = () => !!document.querySelector('[popover="auto"]:popover-open');
+      // A point on the first visible match whose text has `text`, clear of the open menu, where that match takes the hit.
+      const besideMenu = (selector: string, text: string) => {
+        const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => e.checkVisibility() && (e.textContent ?? '').includes(text));
+        const menu = document.querySelector('[popover="auto"]:popover-open')?.getBoundingClientRect();
+        if (!el || !menu) return null;
+        const r = el.getBoundingClientRect();
+        for (let x = r.left + 8; x < r.right; x += 8) {
+          const y = r.top + r.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          if ((x < menu.left || x > menu.right || y < menu.top || y > menu.bottom) && hit && el.contains(hit)) return { x, y };
+        }
+        return null;
+      };
+      const clickBeside = async (selector: string, text = '') => {
+        await page.until('the ⋯ menu', menuShown);
+        const at = await page.until(`${selector} beside the menu`, besideMenu, selector, text);
+        await page.pointAt(at.x, at.y, true);
+        await page.until('the menu to close', () => !document.querySelector('[popover="auto"]:popover-open'));
+        await sleep(400);
+      };
+
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] button[aria-label="Session actions"]');
+      await clickBeside('[data-card] [data-option="1"]');
+      const clicked = Date.now();
+      assert.equal(await page.eval(toastsOf, 'undo'), null, 'the click held an answer');
+      assert.equal(await page.eval(frontIs, 's-cart'), true);
+
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.click('[data-tile][data-session="s-invoice"] button[aria-label="Session actions"]');
+      await clickBeside('[data-tile][data-session="s-search"] p');
+      assert.deepEqual(await page.eval(() => [location.pathname, !!document.querySelector('#task-sheet[open]')]), ['/wall', false]);
+
+      await openSheetOf(page, mock, 's-astro');
+      await page.until('the sheet to settle', settled);
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await clickBeside('#task-sheet [role="tabpanel"] button', 'Terminal');
+      await sleep(600);
+      assert.deepEqual(await page.eval(() => [location.pathname, !!document.querySelector('#task-sheet:modal')]), ['/s/s-astro/overview', true]);
+      await sleep(Math.max(0, HELD_MS - (Date.now() - clicked)));
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
 ];
