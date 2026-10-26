@@ -28,6 +28,8 @@ export interface Restore {
   name: string;
   // What the send took from the reply box.
   draft: Draft | null;
+  // Sent from its card, which left the queue with it.
+  dealt: boolean;
 }
 
 const subscribers = new Set<() => void>();
@@ -103,14 +105,14 @@ function review() {
 
 // Holds an answering request for 5 s. What it takes along from the reply box leaves the box, and comes back if the
 // send is taken back or refused.
-export function hold(s: Session, request: Request, name: string) {
+export function hold(s: Session, request: Request, name: string, { dealt = false } = {}) {
   const { text, files } = request.body;
   const draft = request.action === 'answer' && (text !== undefined || !!files?.length) ? takeDraft(s.id) : null;
-  return sends.hold(s, request, { name, draft });
+  return sends.hold(s, request, { name, draft, dealt });
 }
 
-// Takes back a held send, the newest without an id. Its card comes back to the front, and the reply box gets back
-// what the send took from it; a command never left its card.
+// Takes back a held send, the newest without an id. A card dealt out with it comes back to the front, and the reply
+// box gets back what the send took from it.
 export function undo(id?: string) {
   const item = sends.items().filter((i) => i.state === 'held' && (id === undefined || i.id === id)).at(-1);
   if (!item) return;
@@ -123,8 +125,8 @@ export function undo(id?: string) {
     if (item.restore.draft) putBack(item.sessionId, item.restore.draft);
     return true;
   };
-  if (item.command) back();
-  else queue.restore(item.sessionId, back);
+  if (item.restore.dealt) queue.restore(item.sessionId, back);
+  else back();
 }
 
 // The page is going away or being frozen: whatever has not been posted yet goes now. Not on visibilitychange,
