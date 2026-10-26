@@ -30,11 +30,11 @@ export interface Check {
   run: (t: Context) => Promise<void>;
 }
 
-const logged = (mock: Mock, what: string, match: (e: Entry) => boolean) =>
+const logged = (mock: Mock, what: string, match: (e: Entry) => boolean, timeout = 5000) =>
   until(`${what} in the mock's log`, async () => {
     const found = (await mock.log()).filter((e) => match(e) && e.status !== null);
     return found.length ? found : null;
-  });
+  }, timeout);
 
 // A mock of its own over a copy of the build. `build()` writes a new build there, an index.html that names a copy of
 // the entry script, and returns that script.
@@ -306,9 +306,69 @@ async function openQueue(page: Page, mock: Mock, front = 's-cart') {
   await page.until(`the card of ${front}`, frontIs, front);
 }
 
+// A held send goes out 5 s after the press.
+const HELD_MS = 5500;
+const POSTED_MS = 8000;
+
+// The session actions the mock has answered, the page's reads left out.
+const actions = async (mock: Mock) => (await mock.log()).filter((e) => e.method === 'POST' && e.action !== null && e.status !== null);
+
+const stateOf = async (mock: Mock, id: string) => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === id);
+
+const unguarded = () => !document.querySelector('[data-primary][data-guarded]');
+
+// `id` is the card, and the guard that came with it is over, so an answer key counts.
+async function ready(page: Page, id: string) {
+  await page.until(`the card of ${id}`, frontIs, id);
+  await page.until('the guard to end', unguarded);
+}
+
+// Records every deal the page runs from now on.
+const watchDeals = () => {
+  const w = window as unknown as { e2eDeals: string[] };
+  w.e2eDeals = [];
+  let last: string | undefined;
+  new MutationObserver(() => {
+    const deal = document.documentElement.dataset.deal;
+    if (deal && deal !== last) w.e2eDeals.push(deal);
+    last = deal;
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-deal'] });
+};
+const dealt = () => (window as unknown as { e2eDeals?: string[] }).e2eDeals ?? [];
+
+// Pastes a one-pixel PNG into the reply box, as a screenshot from the clipboard comes.
+const pastePng = (selector: string) => {
+  const field = document.querySelector<HTMLTextAreaElement>(selector)!;
+  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+  const data = new DataTransfer();
+  data.items.add(new File([png], 'shot.png', { type: 'image/png' }));
+  field.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+};
+
+// The reply box in `scope`: its text, each attachment as "<state> <name>", and whether it has focus.
+const replyIn = (scope: string) => {
+  const field = document.querySelector<HTMLTextAreaElement>(`${scope} textarea`);
+  const box = field?.closest('section');
+  return field && box ? {
+    value: field.value,
+    files: [...box.querySelectorAll<HTMLElement>('[data-state]')].map((f) => `${f.dataset.state} ${f.querySelector('button')?.getAttribute('aria-label')?.replace(/^Remove /, '')}`),
+    focused: document.activeElement === field,
+  } : null;
+};
+
+// Pressing a key on the card from a script, as auto-repeat or a fast double press would.
+const pressEnter = (gaps: number[], repeat = false) =>
+  new Promise<void>((done) => {
+    const press = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', repeat, bubbles: true, cancelable: true }));
+    press();
+    let at = 0;
+    for (const gap of gaps) setTimeout(press, (at += gap));
+    setTimeout(done, at + 50);
+  });
+
 export const checks: Check[] = [
   {
-    name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option answers once and the tile turns working',
+    name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option on the card answers once and the tile turns working',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
@@ -321,17 +381,15 @@ export const checks: Check[] = [
       assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: '(3) Agent Board' });
       await shot('board');
 
-      await page.goto(`${mock.url}/s/s-cart/overview`);
-      await page.until('the sheet with its 3 options', () => location.pathname === '/s/s-cart/overview' && document.querySelectorAll('button[name="choice"]').length === 3);
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
       await shot('task-ask');
-      await page.click('button[name="choice"]', 'Keep the account cart');
-      const answers = await logged(mock, 'the answer', (e) => e.action === 'answer');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      const answers = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
       assert.equal(answers.length, 1);
       const [a] = answers;
       assert.deepEqual([a.sessionId, a.body.key, a.body.choice, a.status], ['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]);
 
-      await page.click('#task-sheet button[aria-label^="Back to"]');
-      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]'));
       await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'working');
       assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
@@ -340,18 +398,19 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P0.3 a refused answer (/mock/fail, stale) shows the toast "this question is no longer open"',
-    expectedErrors: [/this question is no longer open/, /status of 400/],
+    name: 'P0.3 a refused answer (/mock/fail, stale) says why in a toast: Not sent to Retry failed webhooks: this question is no longer open',
+    expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
-      await page.goto(`${mock.url}/s/s-hooks/overview`);
-      await page.until('the menu with its 2 questions', () => location.pathname === '/s/s-hooks/overview' && document.querySelectorAll('fieldset').length === 2);
-      await page.click('fieldset button', 'Exponential, 5 tries');
-      await page.click('fieldset button', 'Email the account owner');
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await ready(page, 's-hooks');
+      await page.key('6');
+      await page.until('Disable the endpoint unpicked', () => document.querySelector('[data-card] [data-option="6"]')?.getAttribute('aria-pressed') === 'false');
       await shot('task-menu');
-      await page.click('button[type="submit"]', 'Send answer');
-      const toast = await page.until('the error toast', () => [...document.querySelectorAll<HTMLElement>('[data-toast][data-kind="error"]')].map((t) => t.innerText.trim()).join('\n'));
-      assert.equal(toast, 'this question is no longer open');
+      await page.click('[data-card] [data-primary]');
+      const toast = await until('the error toast', () => page.eval(() => [...document.querySelectorAll<HTMLElement>('[data-toast][data-kind="error"]')].map((t) => t.innerText.trim()).join('\n')), POSTED_MS);
+      assert.equal(toast, 'Not sent to Retry failed webhooks: this question is no longer open\nShow');
       const [sent] = await logged(mock, 'the menu answer', (e) => e.action === 'answer-menu');
       assert.deepEqual([sent.sessionId, sent.status, sent.code, sent.body.toolUseId], ['s-hooks', 400, 'stale', 'toolu_01Hooks']);
       assert.deepEqual(sent.body.answers, [{ labels: ['Exponential, 5 tries'], other: '' }, { labels: ['Email the account owner'], other: '' }]);
@@ -419,7 +478,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P0 narrow smoke: no sideways scroll on the board or in the sheet; New task and the options stay reachable',
+    name: 'P0 narrow smoke: no sideways scroll on the board or in the sheet; New task and the way from the sheet to the card stay reachable',
     narrow: true,
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -428,10 +487,10 @@ export const checks: Check[] = [
       await page.until('New task in reach', reachable, 'button', 'New task');
       await shot('narrow-board');
       await page.goto(`${mock.url}/s/s-cart/details`);
-      await page.until('the options', () => document.querySelectorAll('button[name="choice"]').length === 3);
+      await page.until('the queue box', () => !!document.querySelector('#task-sheet [data-queued]'));
       assert.deepEqual(await page.eval(sidewaysScroll), []);
       // The sheet slides up as it opens.
-      await page.until('the first option in reach', reachable, 'button[name="choice"]', 'Merge both carts');
+      await page.until('Answer it on its card in reach', reachable, '#task-sheet [data-queued] button', 'Answer it on its card');
       await shot('narrow-task');
     },
   },
@@ -486,11 +545,11 @@ export const checks: Check[] = [
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
-      await page.goto(`${mock.url}/s/s-cart/details`);
-      await page.until('the options', () => document.querySelectorAll('button[name="choice"]').length === 3);
+      await openQueue(page, mock);
+      await page.until('the options', () => document.querySelectorAll('[data-card] [data-option]').length === 3);
       await shot('task-ask');
-      await page.goto(`${mock.url}/s/s-hooks/details`);
-      await page.until('the menu with its 2 questions', () => document.querySelectorAll('fieldset').length === 2);
+      await page.key('ArrowRight');
+      await page.until('the menu with its 2 questions', () => document.querySelectorAll('[data-card] section[role="group"]').length === 2);
       await shot('task-menu');
       await page.goto(`${mock.url}/s/s-reviews/details`);
       await page.until('the latest reply with its table', () => document.querySelector('section table') !== null);
@@ -537,18 +596,23 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P1a.compat-accept today\'s UI accepts the second opinion on a question and on a menu; the snapshot names what was sent',
+    name: 'P1a.compat-accept the card accepts the second opinion on a question and on a menu; the snapshot names what was sent',
     async run({ page, mock, shot }) {
       const { legacy } = await mock.get('/mock');
       const sessionOf = async (id: string) => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === id);
-      for (const [id, key, text] of [
-        ['s-cart', 'q:toolu_01Cart', 'Merge both carts. Cap each line at available stock and show a toast listing anything trimmed.'],
-        ['s-hooks', 'm:toolu_01Hooks', 'Backoff: Exponential, 5 tries · Give up: Email the account owner, Disable the endpoint'],
+      for (const [id, key, text, action] of [
+        ['s-cart', 'q:toolu_01Cart', 'Merge both carts. Cap each line at available stock and show a toast listing anything trimmed.', 'accept-advice'],
+        ['s-hooks', 'm:toolu_01Hooks', 'Backoff: Exponential, 5 tries · Give up: Email the account owner, Disable the endpoint', 'answer-menu'],
       ]) {
-        await page.goto(`${mock.url}/s/${id}/details`);
-        await page.click('button', 'Accept & send');
-        const [accepted] = await logged(mock, `the accepted second opinion of ${id}`, (e) => e.action === 'accept-advice' && e.sessionId === id);
-        assert.deepEqual([accepted.status, accepted.body.key], [204, key]);
+        await page.goto(`${mock.url}/`);
+        await page.click(`[data-segment][data-session="${id}"]`);
+        await ready(page, id);
+        assert.equal((await page.eval(card))!.primary, 'Accept suggestion');
+        // The segment keeps focus after the click, and ⏎ on it would press it again.
+        await page.eval(() => (document.activeElement as HTMLElement | null)?.blur());
+        await page.key('Enter');
+        const [accepted] = await logged(mock, `the accepted second opinion of ${id}`, (e) => e.action === action && e.sessionId === id, POSTED_MS);
+        assert.deepEqual([accepted.status, accepted.body.key ?? `m:${accepted.body.toolUseId}`], [204, key]);
         const s = await sessionOf(id);
         if (legacy) assert.equal('answered' in s, false);
         else assert.deepEqual([s.answered.key, s.answered.text], [key, text]);
@@ -558,17 +622,16 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P1a.compat-dismiss today\'s UI dismisses a question: it closes, the tile leaves Decide, and nothing counts as answered',
+    name: 'P1a.compat-dismiss the card dismisses a question: it closes, the tile leaves Decide, and nothing counts as answered',
     async run({ page, mock, shot }) {
       const { legacy } = await mock.get('/mock');
-      await page.goto(`${mock.url}/s/s-cart/details`);
-      await page.click('button[value="dismiss"]');
-      const [dismissed] = await logged(mock, 'the dismissal', (e) => e.action === 'dismiss');
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] footer button', 'Dismiss');
+      const [dismissed] = await logged(mock, 'the dismissal', (e) => e.action === 'dismiss', POSTED_MS);
       assert.deepEqual([dismissed.sessionId, dismissed.status, dismissed.body.key], ['s-cart', 204, 'q:toolu_01Cart']);
       const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === 's-cart');
       assert.deepEqual([s.question, s.dismissedAsk, s.status, s.answered], [null, 'toolu_01Cart', 'idle', legacy ? undefined : null]);
-      await page.click('#task-sheet button[aria-label^="Back to"]');
-      await page.until('the sheet to close', () => !document.querySelector('#task-sheet[open]'));
       await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to leave Decide', () =>
         document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'idle');
@@ -1290,15 +1353,6 @@ export const checks: Check[] = [
       }
       const back = await until('the pill to turn live again', () => page.eval(pillAt, 'live'), 10_000);
       assert.deepEqual({ ...back, breathing: undefined }, { link: 'live', text: 'Live', title: '', breathing: undefined });
-    },
-  },
-  {
-    name: 'P4.15 answering in the sheet still works until P5: an option on s-cart sends answer with its key and choice',
-    async run({ page, mock }) {
-      await openSheetOf(page, mock, 's-cart');
-      await page.click('#task-sheet button[name="choice"]', 'Keep the account cart');
-      const answers = await logged(mock, 'the answer', (e) => e.action === 'answer');
-      assert.deepEqual(answers.map((a) => [a.sessionId, a.body.key, a.body.choice, a.status]), [['s-cart', 'q:toolu_01Cart', 'Keep the account cart', 204]]);
     },
   },
   {
@@ -2202,6 +2256,628 @@ export const checks: Check[] = [
       assert.equal((await page.eval(card))!.primary, 'Accept suggestion');
       await page.until('the card to settle', still);
       await shot('queue-free-text');
+    },
+  },
+  {
+    name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Z; the meter and the tab title count 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
+    async run({ page, mock, shot }) {
+      const { advice } = await stateOf(mock, 's-cart');
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(watchDeals);
+      await page.key('Enter');
+      const pressed = Date.now();
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(dealt), ['down']);
+      const [held] = await page.until('the undo toast', toastsOf, 'undo');
+      assert.match(held.text, /^Sending “Merge both carts” to Merge guest cart on login · [1-5] s\s+Undo\s+Z$/);
+      const count = () => Number(document.querySelector('[data-toast][data-kind="undo"]')?.textContent?.match(/· (\d) s/)?.[1]);
+      const first = await page.eval(count);
+      await sleep(1100);
+      assert.ok((await page.eval(count)) < first, 'the countdown did not count down');
+      assert.deepEqual(await page.eval(() => [document.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label'), document.title]), [
+        '2 decisions · 1 terminal prompt · 2 finished turns', '(2) Agent Board',
+      ]);
+      await shot('queue-held');
+      await sleep(HELD_MS - (Date.now() - pressed));
+      const sent = await actions(mock);
+      assert.deepEqual(sent.map((e) => [e.action, e.sessionId, e.body, e.status]), [['accept-advice', 's-cart', { key: 'q:toolu_01Cart', adviceAt: advice.at }, 204]]);
+      assert.ok(sent[0].at - pressed >= 4900, `posted ${sent[0].at - pressed} ms after ⏎`);
+    },
+  },
+  {
+    name: 'P5.2.2 Undo gives back what the send took: option 2 with a note and a pasted picture held, Z within 3 s brings s-cart back with both in the reply box and nothing goes out; sent again, the answer carries the choice, the note and the picture',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('only if stock allows');
+      await page.eval(pastePng, '[data-card] textarea');
+      await page.until('the picture uploaded', () => !!document.querySelector('[data-card] [data-state="ready"]'));
+      await page.click('[data-card] [data-option="2"]');
+      const pressed = Date.now();
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(replyIn, '[data-card]'), null, 'the reply box went with s-cart');
+      await page.key('z');
+      await page.until('s-cart back at the front', frontIs, 's-cart');
+      assert.ok(Date.now() - pressed < 3000, `back ${Date.now() - pressed} ms after the press`);
+      assert.deepEqual({ ...(await page.eval(replyIn, '[data-card]')), focused: undefined }, { value: 'only if stock allows', files: ['ready shot.png'], focused: undefined });
+      assert.equal(await page.eval(() => document.querySelector('[data-toast][data-kind="undo"]')), null, 'the undo toast stayed');
+      await sleep(6000);
+      assert.deepEqual(await actions(mock), []);
+
+      await page.until('the guard to end', unguarded);
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const [answer] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
+      const [upload] = await logged(mock, 'the upload', (e) => e.path === '/api/uploads');
+      assert.deepEqual([answer.sessionId, answer.status, { ...answer.body, files: undefined }], ['s-cart', 204, {
+        key: 'q:toolu_01Cart', choice: 'Keep the account cart', text: 'only if stock allows', files: undefined,
+      }]);
+      assert.equal(upload.body.filename, 'shot.png');
+      assert.equal(answer.body.files.length, 1);
+      assert.match(answer.body.files[0], /\/uploads\/[\w-]+\/shot\.png$/);
+    },
+  },
+  {
+    name: 'P5.2.3 the choice frozen while the second opinion runs stays: with Send “Merge both carts” shown, advice that finishes on Ask the shopper shows on option 3, option 1 keeps the highlight, and ⏎ answers Merge both carts, not the advice',
+    scenario: 'freeze',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      assert.equal((await page.eval(card))!.primary, 'Send “Merge both carts”');
+      await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Ask the shopper', confidence: 71 });
+      const third = await page.until('the late second opinion on option 3', () => {
+        const option = document.querySelector('[data-card] [data-option="3"]')?.parentElement;
+        return option?.innerText.includes('Second opinion · 71%') && option.innerText;
+      });
+      assert.match(third, /Ask the shopper, because it fits what the task asks for\./);
+      const frozen = await page.eval(() => [...document.querySelectorAll('[data-card] [data-frozen] [data-option]')].map((o) => (o as HTMLElement).dataset.option));
+      assert.deepEqual([frozen, (await page.eval(card))!.primary], [['1'], 'Send “Merge both carts”']);
+      await shot('queue-freeze');
+      await page.until('the guard to end', unguarded);
+      await page.key('Enter');
+      await sleep(HELD_MS);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['answer', { key: 'q:toolu_01Cart', choice: 'Merge both carts' }]]);
+    },
+  },
+  {
+    name: 'P5.2.4 a second opinion that came in after the freeze is accepted by its own digit: 3 sends accept-advice with the new advice\'s at',
+    scenario: 'freeze',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      const advice = await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Ask the shopper', confidence: 71 });
+      await page.until('the late second opinion on option 3', () => !!document.querySelector('[data-card] [data-option="3"]')?.parentElement?.innerText.includes('Second opinion · 71%'));
+      await page.until('the guard to end', unguarded);
+      await page.key('3');
+      await sleep(HELD_MS);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['accept-advice', { key: 'q:toolu_01Cart', adviceAt: advice.at }]]);
+    },
+  },
+  {
+    name: 'P5.2.5 advice that changes after the freeze relabels the primary to Send “Merge both carts”, guarded about 0.9 s, and ⏎ answers with that choice instead of accepting',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      assert.equal((await page.eval(card))!.primary, 'Accept suggestion');
+      await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Merge both carts' });
+      const changed = Date.now();
+      await page.until('the relabel, guarded', () => {
+        const c = document.querySelector<HTMLElement>('[data-card] [data-primary]');
+        return c?.firstElementChild?.textContent === 'Send “Merge both carts”' && c.hasAttribute('data-guarded');
+      });
+      await page.until('the guard to end', unguarded);
+      const held = Date.now() - changed;
+      assert.ok(held > 700 && held < 1600, `the guard ended ${held} ms after the advice changed`);
+      await page.key('Enter');
+      await sleep(HELD_MS);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['answer', { key: 'q:toolu_01Cart', choice: 'Merge both carts' }]]);
+    },
+  },
+  {
+    name: 'P5.2.6 the server refuses an accept whose advice changed during the hold: 400 advice-changed, the toast Not sent to Merge guest cart on login: the second opinion changed; read it again, s-cart back as peek 1 marked Not sent, and Show brings it to the front with the banner',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Merge both carts' });
+      const [refused] = await logged(mock, 'the refused accept', (e) => e.action === 'accept-advice', POSTED_MS);
+      assert.deepEqual([refused.status, refused.code], [400, 'advice-changed']);
+      const [error] = await page.until('the error toast', toastsOf, 'error');
+      assert.equal(error.text, 'Not sent to Merge guest cart on login: the second opinion changed; read it again\nShow');
+      const [first] = await page.until('s-cart as peek 1', () => {
+        const p = document.querySelector<HTMLElement>('[data-peek="1"]');
+        return p?.dataset.session === 's-cart' && [p.innerText];
+      });
+      assert.match(first, /not sent/i);
+      assert.equal((await page.eval(card))!.session, 's-hooks');
+      await shot('queue-not-sent-peek');
+      await page.click('[data-toast][data-kind="error"] button', 'Show');
+      await page.until('s-cart at the front', frontIs, 's-cart');
+      assert.equal(await page.eval(() => document.querySelector('[data-card] [data-not-sent]')?.textContent), 'Not sent: the second opinion changed; read it again');
+      await page.until('the card to settle', still);
+      await shot('queue-not-sent-banner');
+    },
+  },
+  {
+    name: 'P5.2.7 the key guard: ⏎ as the first card comes up does nothing; two ⏎ 300 ms apart hold one send, and two 650 ms apart one more while the card after it stays; an auto-repeated ⏎ does nothing, and a double click on an option holds it once',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.eval(pressEnter, []);
+      await sleep(300);
+      assert.deepEqual([(await page.eval(card))!.session, await page.eval(toastsOf, 'undo')], ['s-cart', null], 'the first card was not guarded');
+      await ready(page, 's-cart');
+      await page.eval(pressEnter, [300]);
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.equal((await page.eval(toastsOf, 'undo'))?.length, 1);
+      await page.until('the guard to end', unguarded);
+      await page.eval(pressEnter, [650]);
+      await page.until('s-group at the front', frontIs, 's-group');
+      await sleep(400);
+      assert.equal((await page.eval(card))!.session, 's-group', 'the second ⏎ answered the card after it');
+      await page.until('the guard to end', unguarded);
+      await page.eval(pressEnter, [], true);
+      await sleep(400);
+      assert.equal((await page.eval(card))!.session, 's-group', 'an auto-repeated ⏎ answered');
+      await page.dblclick('[data-card] [data-option="2"]');
+      await page.until('s-astro at the front', frontIs, 's-astro');
+      await sleep(HELD_MS + 600);
+      assert.deepEqual((await actions(mock)).map((e) => [e.sessionId, e.action, e.body.choice ?? null]).toSorted(), [
+        ['s-cart', 'accept-advice', null], ['s-group', 'answer', 'By repo'], ['s-hooks', 'answer-menu', null],
+      ]);
+    },
+  },
+  {
+    name: 'P5.2.8 Space on a focused option shows or hides the details and holds nothing',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(() => document.querySelector<HTMLElement>('[data-card] [data-option="2"]')!.focus());
+      await page.key(' ');
+      await page.until('the details hidden', () => document.querySelector('[data-card] section[aria-label="Claude\'s details"] button')?.getAttribute('aria-expanded') === 'false');
+      assert.deepEqual([(await page.eval(card))!.session, await page.eval(toastsOf, 'undo')], ['s-cart', null]);
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.9 the menu: its picks start as the second opinion\'s, Accept suggestion; 4 unpicks Email the account owner, Send answer; Use the suggestion picks them again; an empty question 2 reads Answer both questions, off; picked again, ⏎ sends answer-menu with the picks on screen',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await ready(page, 's-hooks');
+      const primary = () => [document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent, document.querySelector<HTMLButtonElement>('[data-card] [data-primary]')?.disabled];
+      const picks = () => [...document.querySelectorAll('[data-card] section[role="group"]')].map((q) => [...q.querySelectorAll('[aria-pressed="true"]')].map((o) => o.querySelector('span span')?.textContent));
+      assert.deepEqual(await page.eval(primary), ['Accept suggestion', false]);
+      await page.key('4');
+      await page.until('Send answer', (label: string) => document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent === label, 'Send answer');
+      await page.click('[data-card] button', 'Use the suggestion');
+      await page.until('Accept suggestion', (label: string) => document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent === label, 'Accept suggestion');
+      assert.deepEqual(await page.eval(picks), [['Exponential, 5 tries'], ['Email the account owner', 'Disable the endpoint']]);
+      await page.key('4');
+      await page.key('6');
+      await page.until('Answer both questions', (label: string) => document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent === label, 'Answer both questions');
+      assert.deepEqual(await page.eval(primary), ['Answer both questions', true]);
+      await page.key('5');
+      await page.until('Send answer', (label: string) => document.querySelector('[data-card] [data-primary]')?.firstElementChild?.textContent === label, 'Send answer');
+      const onScreen = await page.eval(picks);
+      await shot('queue-menu-picks');
+      await page.key('Enter');
+      await page.until('s-group at the front', frontIs, 's-group');
+      const [sent] = await logged(mock, 'the menu answer', (e) => e.action === 'answer-menu', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body.toolUseId], [204, 'toolu_01Hooks']);
+      assert.deepEqual(sent.body.answers, onScreen.map((labels) => ({ labels, other: '' })));
+      assert.deepEqual(onScreen, [['Exponential, 5 tries'], ['Post to #billing-alerts']]);
+    },
+  },
+  {
+    name: 'P5.2.10 a menu of one single-choice question: its digit holds answer-menu with that pick',
+    scenario: 'lone-menu',
+    async run({ page, mock }) {
+      await openQueue(page, mock, 's-lone');
+      await ready(page, 's-lone');
+      await page.key('2');
+      await page.until('the undo toast', toastsOf, 'undo');
+      const [sent] = await logged(mock, 'the menu answer', (e) => e.action === 'answer-menu', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body], [204, { toolUseId: 'toolu_01Lone', answers: [{ labels: ['Every 15 min, 8 tries'], other: '' }] }]);
+    },
+  },
+  {
+    name: 'P5.2.11 your own answer: W, "Use the cache" and Enter hold answer with the key and the text, and the card deals out',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('Use the cache');
+      await page.eval(watchDeals);
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(dealt), ['down']);
+      assert.match((await page.until('the undo toast', toastsOf, 'undo'))[0].text, /^Sending “Use the cache” to Merge guest cart on login/);
+      assert.equal(await page.eval(() => document.activeElement?.closest('[data-card]')?.getAttribute('data-session') ?? null), 's-hooks', 'focus stayed on the page');
+      const [sent] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body], [204, { key: 'q:toolu_01Cart', text: 'Use the cache' }]);
+    },
+  },
+  {
+    name: 'P5.2.12 a command: /compact and Enter hold it with a toast Sending /compact …, the card stays and its reply box is empty and says the question stays open; it goes out 5 s on; Z puts it back in the box instead',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      const command = async () => {
+        await page.type('/compact');
+        await page.until('the command list', () => [...document.querySelectorAll('[data-card] [role="option"] code')].some((c) => c.textContent === '/compact'));
+        await page.key('Enter');
+        return page.until('the undo toast', toastsOf, 'undo');
+      };
+      const [held] = await command();
+      assert.match(held.text, /^Sending \/compact to Merge guest cart on login · [1-5] s/);
+      assert.deepEqual(await page.eval(() => [
+        document.querySelector<HTMLElement>('[data-card]')?.dataset.session, document.querySelector<HTMLTextAreaElement>('[data-card] textarea')?.value,
+        document.querySelector('[data-card] [role="status"]')?.textContent,
+      ]), ['s-cart', '', '/compact goes to the terminal as typed; the question stays open.']);
+      await shot('queue-command');
+      const [sent] = await logged(mock, 'the command', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body], [204, { key: 'q:toolu_01Cart', text: '/compact' }]);
+
+      await command();
+      await page.click('[data-card] h1');
+      await page.key('z');
+      await page.until('the command back in the box', () => document.querySelector<HTMLTextAreaElement>('[data-card] textarea')?.value === '/compact');
+      assert.equal((await page.eval(card))!.session, 's-cart');
+      await sleep(6000);
+      assert.equal((await actions(mock)).length, 1, 'the command taken back went out');
+    },
+  },
+  {
+    name: 'P5.2.13 Dismiss deals s-cart sideways with the toast Dismissing “…” and Undo, and 5 s on dismiss goes out with its key',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(watchDeals);
+      await page.click('[data-card] footer button', 'Dismiss');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(dealt), ['side']);
+      assert.match((await page.until('the undo toast', toastsOf, 'undo'))[0].text, /^Dismissing “What should happen to a guest cart when the shopper logs in\?” · [1-5] s\s+Undo\s+Z$/);
+      const [sent] = await logged(mock, 'the dismissal', (e) => e.action === 'dismiss', POSTED_MS);
+      assert.deepEqual([sent.sessionId, sent.status, sent.body], ['s-cart', 204, { key: 'q:toolu_01Cart' }]);
+    },
+  },
+  {
+    name: 'P5.2.14 Your turn: ⏎ (Reply) focuses the reply box and Enter holds a message whose raw body has "key":null; X archives Fix broken doc anchors at once, its card goes sideways, and the toast\'s Undo unarchives it',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-reviews"]');
+      await ready(page, 's-reviews');
+      // The segment keeps focus after the click, and ⏎ on it would press it again.
+      await page.eval(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.key('Enter');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('Commit it and open a PR');
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      const [sent] = await logged(mock, 'the message', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.sessionId, sent.status, sent.body], ['s-reviews', 204, { key: null, text: 'Commit it and open a PR' }]);
+      assert.match(sent.raw ?? '', /"key":null/);
+
+      await page.click('[data-segment][data-session="s-anchors"]');
+      await ready(page, 's-anchors');
+      await page.eval(watchDeals);
+      const pressed = Date.now();
+      await page.key('x');
+      const [archived] = await logged(mock, 'the archive', (e) => e.action === 'archive');
+      assert.deepEqual([archived.sessionId, archived.body, archived.status], ['s-anchors', { archived: true }, 204]);
+      assert.ok(archived.at - pressed < 1000, `archived ${archived.at - pressed} ms after X`);
+      await page.until('s-anchors gone', () => !document.querySelector('[data-card][data-session="s-anchors"]') && !document.documentElement.dataset.deal);
+      assert.deepEqual(await page.eval(dealt), ['side']);
+      const toast = await page.until('the archive toast', () => [...document.querySelectorAll<HTMLElement>('[data-toast][data-kind="undo"]')].find((t) => t.innerText.startsWith('Archived'))?.innerText);
+      assert.equal(toast, 'Archived Fix broken doc anchors\nUndo');
+      await page.click('[data-toast][data-kind="undo"] button', 'Undo');
+      const [back] = await logged(mock, 'the unarchive', (e) => e.action === 'archive' && e.body.archived === false);
+      assert.deepEqual([back.sessionId, back.status], ['s-anchors', 204]);
+      await page.until('s-anchors back at the front', frontIs, 's-anchors');
+    },
+  },
+  {
+    name: 'P5.2.15 a refused send: with /mock/fail stale, ⏎ on s-cart with a note gets a 400 at 5 s, an error toast, and s-cart comes back as peek 1 marked Not sent; Show brings it to the front with the banner and the note back in its reply box',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock, shot }) {
+      await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('only if stock allows');
+      await page.click('[data-card] h1');
+      assert.equal((await page.eval(card))!.primary, 'Send “Merge both carts” + your note');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const [refused] = await logged(mock, 'the refused answer', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([refused.status, refused.code, refused.body], [400, 'stale', { key: 'q:toolu_01Cart', choice: 'Merge both carts', text: 'only if stock allows' }]);
+      const [error] = await page.until('the error toast', toastsOf, 'error');
+      assert.equal(error.text, 'Not sent to Merge guest cart on login: this question is no longer open\nShow');
+      assert.match(await page.until('s-cart as peek 1', () => {
+        const p = document.querySelector<HTMLElement>('[data-peek="1"]');
+        return p?.dataset.session === 's-cart' && p.innerText;
+      }), /not sent/i);
+      await page.click('[data-toast][data-kind="error"] button', 'Show');
+      await page.until('s-cart at the front', frontIs, 's-cart');
+      assert.equal(await page.eval(() => document.querySelector('[data-card] [data-not-sent]')?.textContent), 'Not sent: this question is no longer open');
+      assert.deepEqual({ ...(await page.eval(replyIn, '[data-card]')), focused: undefined }, { value: 'only if stock allows', files: [], focused: undefined });
+      await page.until('the card to settle', still);
+      await shot('queue-refused');
+    },
+  },
+  {
+    name: 'P5.2.16 the early check: an answer held on s-group whose turn moves on (lastTurn t9) fails with Not sent to Group board tiles by repo: this question is no longer open, and nothing is posted',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await ready(page, 's-group');
+      await page.key('1');
+      await page.until('s-astro at the front', frontIs, 's-astro');
+      await mock.post('/mock/patch', { id: 's-group', patch: { lastTurn: 't9' } });
+      const [error] = await page.until('the error toast', toastsOf, 'error');
+      assert.equal(error.text, 'Not sent to Group board tiles by repo: this question is no longer open\nShow');
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.16-working the early check when the session went on working: Show opens its sheet on Overview, and the answer it held is back in the sheet\'s reply box',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.click('[data-peek="2"] > span');
+      await ready(page, 's-group');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('Group by repo, attention inside');
+      await page.key('Enter');
+      await page.until('s-astro at the front', frontIs, 's-astro');
+      await mock.post('/mock/patch', { id: 's-group', patch: { lastTurn: 't9', status: 'working', activity: { step: 'Edit web/src/order.ts', since: Date.now() } } });
+      const [error] = await page.until('the error toast', toastsOf, 'error');
+      assert.equal(error.text, 'Not sent to Group board tiles by repo: this question is no longer open\nShow');
+      await page.click('[data-toast][data-kind="error"] button', 'Show');
+      await page.until('the sheet of s-group', () => location.pathname === '/s/s-group/overview' && !!document.querySelector('#task-sheet:modal'));
+      assert.deepEqual({ ...(await page.eval(replyIn, '#task-sheet')), focused: undefined }, { value: 'Group by repo, attention inside', files: [], focused: undefined });
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.17 answered elsewhere: a send held on s-cart whose decision another window answers is dropped with word that it was already answered, and nothing is posted',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await mock.post('/mock/patch', { id: 's-cart', patch: { answered: { key: 'q:toolu_01Cart', text: 'Merge both carts', at: Date.now() } } });
+      const [info] = await page.until('the toast', toastsOf, 'info');
+      assert.equal(info.text, 'Already answered elsewhere; nothing was sent to Merge guest cart on login');
+      assert.equal(await page.eval(toastsOf, 'undo'), null);
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.18 reconnecting: a send held as the connection drops for 8 s waits for Agent Board at about 5 s, and goes out once, after the pill reads Live again',
+    expectedErrors: [/WebSocket/, /ERR_/],
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      const pressed = Date.now();
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await mock.post('/mock/drop', { ms: 8000 });
+      try {
+        await page.until('the pill to turn reconnecting', pillAt, 'reconnecting');
+        const [waiting] = await until('the waiting toast', () => page.eval(toastsOf, 'info'), 8000);
+        const at = Date.now() - pressed;
+        assert.ok(at > 4500 && at < 7000, `waiting after ${at} ms`);
+        assert.equal(waiting.text, 'Waiting for Agent Board to send “Merge both carts” to Merge guest cart on login');
+      } finally {
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
+      }
+      await until('the pill to turn live again', () => page.eval(pillAt, 'live'), 10_000);
+      const sent = await until('the post', async () => {
+        const posted = await actions(mock);
+        return posted.length && posted;
+      }, POSTED_MS);
+      assert.deepEqual(sent.map((e) => [e.action, e.sessionId, e.status]), [['accept-advice', 's-cart', 204]]);
+      assert.ok(sent[0].at - pressed > 8000, `posted ${sent[0].at - pressed} ms after ⏎, inside the drop`);
+      await sleep(1000);
+      assert.equal((await actions(mock)).length, 1);
+    },
+  },
+  {
+    name: 'P5.2.19 pagehide: an option pressed, then the page left within 1 s, still reaches the server at once: the page posts what it holds as it goes',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('1');
+      const pressed = Date.now();
+      await sleep(300);
+      await page.goto('about:blank');
+      const [sent] = await logged(mock, 'the answer posted on pagehide', (e) => e.action === 'accept-advice');
+      assert.deepEqual([sent.sessionId, sent.status], ['s-cart', 204]);
+      assert.ok(sent.at - pressed < 2000, `posted ${sent.at - pressed} ms after the press`);
+    },
+  },
+  {
+    name: 'P5.2.20 the reload gate: a new build announced while a send is held does not reload the page until it went out, and then it does',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(() => void ((window as unknown as { e2eProbe?: number }).e2eProbe = 1));
+      await page.key('1');
+      const pressed = Date.now();
+      await mock.post('/mock/ui-entry', { src: '/assets/next.js' });
+      await sleep(2000);
+      assert.equal(await page.eval(() => (window as unknown as { e2eProbe?: number }).e2eProbe), 1, 'reloaded with a send held');
+      const loadedAt = await until('the page to reload', async () => {
+        try {
+          return await page.eval(() => ((window as unknown as { e2eProbe?: number }).e2eProbe === undefined && document.readyState === 'complete' ? performance.timeOrigin : 0));
+        } catch {
+          return 0;
+        }
+      }, 7000 - (Date.now() - pressed));
+      const [sent] = await logged(mock, 'the held answer', (e) => e.action === 'accept-advice');
+      assert.equal(sent.status, 204);
+      assert.ok(sent.at < loadedAt, `the answer went out ${sent.at - loadedAt} ms after the reload`);
+    },
+  },
+  {
+    name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, Second opinion: Merge both carts · 82% and Answer it on its card, and no answer controls; that button closes the sheet with s-cart at the front, also from over the Wall',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('o');
+      await page.until('the sheet', () => location.pathname === '/s/s-cart/overview' && !!document.querySelector('#task-sheet:modal'));
+      const box = () => {
+        const q = document.querySelector<HTMLElement>('#task-sheet [data-queued]');
+        return q && { text: [...q.children].map((c) => c.textContent), controls: document.querySelectorAll('#task-sheet [data-option], #task-sheet textarea, #task-sheet input:not([type="file"])').length };
+      };
+      assert.deepEqual(await page.until('the queue box', box), {
+        text: ['In your queue · Decision', 'What should happen to a guest cart when the shopper logs in?', 'Second opinion: Merge both carts · 82%', 'Answer it on its card'], controls: 0,
+      });
+      assert.equal(await page.eval(() => [...document.querySelectorAll('#task-sheet button')].some((b) => /dismiss|accept|send/i.test(b.textContent ?? ''))), false);
+      await page.until('the sheet to settle', settled);
+      await shot('sheet-in-your-queue');
+      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.until('the queue with s-cart at the front', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-cart');
+
+      // A waiting task's tile goes to its card, so this sheet is over the Wall because its task asked while it was open.
+      await openFromWall(page, mock, 's-invoice');
+      await mock.post('/mock/patch', {
+        id: 's-invoice',
+        patch: { status: 'idle', activity: null, question: { toolUseId: 'toolu_inv', category: 'plan-problem', askedAt: Date.now(), title: 'Round half cents to even?', details: '', options: [{ label: 'Yes' }, { label: 'No' }] } },
+      });
+      assert.deepEqual((await page.until('the queue box', box))?.text.slice(0, 2), ['In your queue · Decision', 'Round half cents to even?']);
+      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.until('the queue with s-invoice at the front', () => !document.querySelector('#task-sheet[open]') && location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-invoice');
+      await page.eval(() => history.back());
+      await page.until('the Wall again on Back', () => location.pathname === '/wall' && !document.querySelector('#task-sheet[open]'));
+
+      await page.goto(`${mock.url}/s/s-hooks/overview`);
+      assert.deepEqual((await page.until('the queue box', box))?.text.slice(0, 1), ['In your queue · Asked in the terminal']);
+    },
+  },
+  {
+    name: 'P5.2.22 the sheet\'s reply box: a message typed in Fix invoice PDF rounding and Enter shows a toast with Undo in the sheet, which stays open, and 5 s on answer goes out with "key":null and the text',
+    async run({ page, mock, shot }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet textarea');
+      await page.type('Also round the tax lines');
+      await page.key('Enter');
+      const [held] = await page.until('the undo toast', toastsOf, 'undo');
+      assert.deepEqual({ ...held, text: undefined }, { kind: 'undo', text: undefined, inSheet: true, hit: true });
+      assert.match(held.text, /^Sending “Also round the tax lines” to Fix invoice PDF rounding · [1-5] s\s+Undo\s+Z$/);
+      assert.deepEqual([await page.eval(sheetOpen), (await page.eval(replyIn, '#task-sheet'))?.value], [true, '']);
+      await shot('sheet-held');
+      const [sent] = await logged(mock, 'the message', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.sessionId, sent.status, sent.body], ['s-invoice', 204, { key: null, text: 'Also round the tax lines' }]);
+      assert.match(sent.raw ?? '', /"key":null/);
+      assert.equal(await page.eval(sheetOpen), true);
+    },
+  },
+  {
+    name: 'P5.2.23 Terminal posts a send held on its session at once, before it asks for the terminal',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('v');
+      await page.until('the Wall', tiles);
+      await page.click('[data-tile][data-session="s-cart"] button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Terminal');
+      const opened = Date.now();
+      const [focus] = await logged(mock, 'the terminal request', (e) => e.action === 'focus');
+      const sent = await actions(mock);
+      assert.deepEqual(sent.map((e) => [e.action, e.sessionId, e.status]), [['accept-advice', 's-cart', 204], ['focus', 's-cart', 204]]);
+      assert.ok(sent[0].at - opened < 1000 && focus.at - opened < 3000, `posted ${sent[0].at - opened} ms and focused ${focus.at - opened} ms after Terminal`);
+    },
+  },
+  {
+    name: 'P5.2.24 Enter in a menu\'s own answer, with every question answered, holds answer-menu with that answer',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await ready(page, 's-hooks');
+      await page.click('[data-card] input[aria-label="Your own answer: Backoff"]');
+      await page.type('Every 10 min, 6 tries');
+      await page.key('Enter');
+      await page.until('s-group at the front', frontIs, 's-group');
+      assert.match((await page.until('the undo toast', toastsOf, 'undo'))[0].text, /^Sending “Backoff: Every 10 min, 6 tries · Give up: Email the account owner, Disable the endpoint” to Retry failed webhooks/);
+      const [sent] = await logged(mock, 'the menu answer', (e) => e.action === 'answer-menu', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body], [204, {
+        toolUseId: 'toolu_01Hooks', answers: [{ labels: [], other: 'Every 10 min, 6 tries' }, { labels: ['Email the account owner', 'Disable the endpoint'], other: '' }],
+      }]);
+    },
+  },
+  {
+    name: 'P5.2.25 a reload loses nothing: the draft in a card\'s reply box, its attachment and the frozen choice come back',
+    scenario: 'freeze',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Ask the shopper', confidence: 71 });
+      await page.until('the late second opinion on option 3', () => !!document.querySelector('[data-card] [data-option="3"]')?.parentElement?.innerText.includes('Second opinion · 71%'));
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('only if stock allows');
+      await page.eval(pastePng, '[data-card] textarea');
+      await page.until('the picture uploaded', () => !!document.querySelector('[data-card] [data-state="ready"]'));
+      await page.goto(`${mock.url}/`);
+      await page.until('the card of s-cart', frontIs, 's-cart');
+      const kept = await page.until('the reply box', replyIn, '[data-card]');
+      assert.deepEqual({ ...kept, focused: undefined }, { value: 'only if stock allows', files: ['ready shot.png'], focused: undefined });
+      const frozen = await page.eval(() => [...document.querySelectorAll('[data-card] [data-frozen] [data-option]')].map((o) => (o as HTMLElement).dataset.option));
+      assert.deepEqual([frozen, (await page.eval(card))!.primary], [['1'], 'Send “Merge both carts” + your note']);
+      await page.until('the card to settle', still);
+      await shot('queue-after-reload');
+    },
+  },
+  {
+    name: 'P5.2.26 narrow window: with a send held, the queue has no sideways scroll, and both its primary and the undo toast stay in reach',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.until('the primary in reach', reachable, '[data-primary]', '');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.until('the undo toast in reach', reachable, '[data-toast][data-kind="undo"]', 'Sending');
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await page.until('the next primary in reach', reachable, '[data-primary]', '');
+      await shot('narrow-held');
+    },
+  },
+  {
+    name: 'P5.2.undo-sheet the toast\'s Undo takes back a message sent from a sheet over the queue: the text is back in its reply box, nothing goes out, and the card being read stays, with no word that anything stopped waiting',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.goto(`${mock.url}/s/s-invoice/overview`);
+      await page.until('the sheet over the queue', () => !!document.querySelector('#task-sheet:modal') && document.documentElement.dataset.view === 'queue');
+      await page.click('#task-sheet textarea');
+      await page.type('Also round the tax lines');
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await page.click('[data-toast][data-kind="undo"] button', 'Undo');
+      await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
+      await sleep(1000);
+      assert.deepEqual([await page.eval(toastsOf, 'info'), await page.eval(toastsOf, 'undo')], [null, null]);
+      await page.click('#task-sheet button[aria-label^="Back to"]');
+      await page.until('the card of s-cart', frontIs, 's-cart');
+      await sleep(HELD_MS - 1000);
+      assert.deepEqual(await actions(mock), []);
     },
   },
 ];

@@ -199,6 +199,18 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
         }
         throw new Error(`${what} never received a click`);
       },
+      // A real double click in the middle of the first visible match, the second press counted as the second click.
+      async dblclick(selector: string) {
+        const at = await until(`${selector} to take a double click`, () => run((selector: string) => {
+          const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => e.checkVisibility());
+          const r = el?.getBoundingClientRect();
+          return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+        }, selector));
+        await mouse('mouseMoved', at.x, at.y);
+        for (const clickCount of [1, 2]) {
+          for (const type of ['mousePressed', 'mouseReleased']) await cdp('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount });
+        }
+      },
       // Moves the pointer there, as a hover.
       hover: (x: number, y: number) => mouse('mouseMoved', x, y),
       async key(key: string) {
