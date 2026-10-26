@@ -3256,7 +3256,7 @@ export const checks: Check[] = [
   {
     name: 'P6.4 sixteen working agents (volume) at 1440×900: "16 working", every capsule 230 px wide or more and every name and step 80 px or more; the dock is 128 px tall at most and scrolls, the queue above keeps clear of it, and a capsule scrolled into view shows its whole card, over the dock\'s edge',
     scenario: 'volume',
-    async run({ page, mock, shot }) {
+    async run({ page, mock, look, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the dock', docked, 16);
       const dock = (await page.eval(dockState))!;
@@ -3268,7 +3268,8 @@ export const checks: Check[] = [
       }
       assert.ok(dock.box!.height <= 128, `the dock is ${dock.box!.height} px tall`);
       assert.ok(dock.grid!.scrollHeight > dock.grid!.clientHeight, 'the capsules do not scroll');
-      // Once P5 draws the card, it and the top of each option show above the dock.
+      // The card shows above the dock, and at 1440×900 so does the top of each option. In a narrower window the column
+      // beside the details is narrower and its options taller, so it scrolls to the ones below (plan §6, risk 2).
       const room = await page.eval(() => {
         const dock = document.querySelector('[data-dock]')!.getBoundingClientRect();
         const card = document.querySelector('[data-card]');
@@ -3277,13 +3278,19 @@ export const checks: Check[] = [
           const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(12, r.height / 2));
           return r.top < dock.top && !!hit && el.contains(hit);
         };
+        const column = card?.querySelector('[data-option]')?.closest<HTMLElement>('[data-side]');
         return {
           view: document.querySelector('main')!.getBoundingClientRect().bottom <= dock.top + 1,
           card: card && { above: card.getBoundingClientRect().bottom <= dock.top + 1, options: [...card.querySelectorAll('[data-option]')].map(shown) },
+          scrolls: !!column && column.scrollHeight > column.clientHeight,
         };
       });
       assert.equal(room.view, true, 'the queue runs under the dock');
-      if (room.card) assert.deepEqual(room.card, { above: true, options: room.card.options.map(() => true) });
+      if (room.card && look.width >= 1440) assert.deepEqual(room.card, { above: true, options: room.card.options.map(() => true) });
+      else if (room.card) {
+        assert.deepEqual({ above: room.card.above, first: room.card.options[0] }, { above: true, first: true });
+        if (room.card.options.includes(false)) assert.equal(room.scrolls, true, 'an option is out of sight and its column does not scroll');
+      }
       await shot('dock-volume');
 
       const last = dock.capsules.at(-1)!;
