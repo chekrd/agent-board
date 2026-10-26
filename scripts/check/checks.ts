@@ -3040,6 +3040,7 @@ export const checks: Check[] = [
       await ready(page, 's-cart');
       await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Ask the shopper', confidence: 71 });
       await page.until('the late second opinion on option 3', () => !!document.querySelector('[data-card] [data-option="3"]')?.parentElement?.innerText.includes('Second opinion · 71%'));
+      await page.until('the guard it restarted to end', unguarded);
       await page.key('w');
       await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
       await page.type('only if stock allows');
