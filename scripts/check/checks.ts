@@ -3832,4 +3832,98 @@ export const checks: Check[] = [
       assert.deepEqual(fails, []);
     },
   },
+  {
+    name: 'P7.send-capsules a send puts its capsule first, Sending in N s with Undo; two sends give two capsules, and each Undo takes back its own: the card comes back to the front with what its send took from the reply box; after the POST the capsule reads Sent, then turns into the working capsule with a fresh ring for about 2.6 s',
+    async run({ page, mock, shot }) {
+      const capsules = async () => ((await page.eval(dockState))?.capsules ?? []).map((c) => ({ session: c.session, state: c.state, line: c.line }));
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('only if stock allows');
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const [first] = await capsules();
+      assert.deepEqual({ ...first, line: undefined }, { session: 's-cart', state: 'held', line: undefined });
+      assert.match(first.line ?? '', /^Sending in [1-5] s$/);
+      assert.equal(await page.eval(() => [...document.querySelectorAll('[data-capsule][data-session="s-cart"] button')].some((b) => b.textContent === 'Undo')), true);
+
+      await ready(page, 's-hooks');
+      await page.key('Enter');
+      const pressed = Date.now();
+      await page.until('s-group at the front', frontIs, 's-group');
+      const two = await capsules();
+      assert.deepEqual(two.slice(0, 2).map((c) => [c.session, c.state]), [['s-hooks', 'held'], ['s-cart', 'held']]);
+      await shot('dock-sends');
+
+      await page.click('[data-capsule][data-session="s-cart"] button', 'Undo');
+      await page.until('s-cart back at the front', frontIs, 's-cart');
+      assert.deepEqual({ ...(await page.eval(replyIn, '[data-card]')), focused: undefined }, { value: 'only if stock allows', files: [], focused: undefined });
+      assert.deepEqual((await capsules()).filter((c) => c.state !== 'working').map((c) => [c.session, c.state]), [['s-hooks', 'held']]);
+
+      await page.until('Sent on the capsule', () => {
+        const c = document.querySelector<HTMLElement>('[data-capsule][data-session="s-hooks"]');
+        return c?.dataset.state === 'sent' && c.innerText.includes('Sent');
+      }, );
+      assert.ok(Date.now() - pressed >= 4500, 'the send went out before its 5 s');
+      await page.until('the working capsule, fresh', () => {
+        const c = document.querySelector<HTMLElement>('[data-capsule][data-session="s-hooks"]');
+        return c?.dataset.state === 'working' && c.hasAttribute('data-fresh');
+      });
+      const ringed = Date.now();
+      await page.until('the ring to end', () => !document.querySelector('[data-capsule][data-session="s-hooks"][data-fresh]'));
+      const ring = Date.now() - ringed;
+      assert.ok(ring > 1800 && ring < 3400, `the ring lasted ${ring} ms`);
+      const sent = await actions(mock);
+      assert.deepEqual(sent.map((e) => [e.action, e.sessionId, e.status]), [['answer-menu', 's-hooks', 204]]);
+    },
+  },
+  {
+    name: 'P7.keyboard with no pointer at all: ⏎ answers and Z takes it back, → skips and ← goes back; O opens Overview, 2 the Diff, J a file, Esc all files and Esc the queue; V the Wall, N its New task prompt, typing and Esc; ? Keys and Esc',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/`);
+      await page.eval(() => {
+        const w = window as unknown as { e2ePointer: number };
+        w.e2ePointer = 0;
+        for (const type of ['pointerdown', 'mousedown']) addEventListener(type, () => w.e2ePointer++, true);
+      });
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('z');
+      await page.until('s-cart back at the front', frontIs, 's-cart');
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('ArrowLeft');
+      await page.until('s-cart at the front', frontIs, 's-cart');
+
+      await page.key('o');
+      await page.until('Overview of s-cart', () => location.pathname === '/s/s-cart/overview' && !!document.querySelector('#task-sheet:modal [data-queued]'));
+      await page.key('2');
+      await page.until('the Diff', () => location.pathname === '/s/s-cart/diff' && document.querySelectorAll('section[data-file] diffs-container').length === 12);
+      await page.key('j');
+      await page.until('one file, whole', () => document.querySelectorAll('section[data-file]').length === 1 && !!document.querySelector('[data-theme="dark"] > div')?.textContent?.includes('← All files'));
+      await page.key('Escape');
+      await page.until('all files again', () => document.querySelectorAll('section[data-file]').length === 12);
+      assert.equal(await page.eval(sheetOpen), true);
+      await page.key('Escape');
+      await page.until('the queue', () => location.pathname === '/' && !document.querySelector('#task-sheet[open]') && !!document.querySelector('[data-card]'));
+
+      await page.key('v');
+      await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
+      await page.key('n');
+      await page.until('its prompt, focused', () => document.activeElement?.matches('#new-task-inline textarea'));
+      for (const ch of 'fix the login') await page.key(ch);
+      await page.key('Escape');
+      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')!.value, document.activeElement?.matches('#new-task-inline textarea')]), ['fix the login', false]);
+
+      await page.key('?');
+      await page.until('Keys', () => !!document.querySelector('#keys:modal'));
+      await page.key('Escape');
+      await page.until('Keys to close', () => !document.querySelector('#keys[open]'));
+      assert.equal(await page.eval(() => (window as unknown as { e2ePointer: number }).e2ePointer), 0);
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), [], 'the answer taken back went out');
+    },
+  },
 ];
