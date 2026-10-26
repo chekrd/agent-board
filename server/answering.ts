@@ -96,7 +96,9 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
       if (command) return { type: () => send(tty, text) };
       checkDecision(s, reply.key, !reply.choice);
       const about = s.question && reply.key === `q:${s.question.toolUseId}` ? `Re: "${s.question.title}"` : '';
-      const prompt = [about, reply.choice ? `My decision: ${reply.choice}.` : '', text].filter(Boolean).join(' — ');
+      const said = [about, reply.choice ? `My decision: ${reply.choice}.` : '', text].filter(Boolean).join(' — ');
+      // Claude Code would run an answer that starts with `!` in its shell, and one that starts with `/` as a command.
+      const prompt = /^[!/]/.test(said) ? `My reply: ${said}` : said;
       return { claim: { seen: reply.key, typed: !reply.choice, text: answerText(reply.choice, text, files.length) }, type: () => send(tty, prompt, files) };
     });
   }

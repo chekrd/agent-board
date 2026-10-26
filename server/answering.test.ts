@@ -162,8 +162,18 @@ test('a command is typed as is and never claims, whatever the page showed', asyn
 test('a slash word that is no command, or a command with files, is an answer', async () => {
   const w = world(session({ summary }));
   await w.answers.answer('s', { key: null, text: '/nope is my reply' });
-  assert.deepEqual([w.row().answered?.key, w.typed], ['s:t2', ['/nope is my reply']]);
+  assert.deepEqual([w.row().answered?.key, w.row().answered?.text, w.typed], ['s:t2', '/nope is my reply', ['My reply: /nope is my reply']]);
   await assert.rejects(w.answers.answer('s', { key: undefined, text: '/review', files: ['/u/a.png'] }), { code: 'out-of-date' });
+});
+
+test('an answer never reaches Claude Code starting with ! or /, which would run in its shell or as a command', async () => {
+  const bang = { ...advice, key: 's:t2', choice: null, answer: '!pnpm install && pnpm test' };
+  const w = world(session({ summary: { ...summary, decision: { ...summary.decision, options: [] } }, advice: bang }));
+  await w.answers.acceptAdvice('s', 7);
+  assert.deepEqual([w.typed, w.row().answered?.key, w.row().answered?.text], [['My reply: !pnpm install && pnpm test'], 's:t2', '!pnpm install && pnpm test']);
+  const files = world(session({ summary }));
+  await files.answers.answer('s', { key: 's:t2', text: '!important: the log', files: ['/u/log.txt'] });
+  assert.deepEqual(files.typed, ['My reply: !important: the log']);
 });
 
 test('nothing is claimed while Claude shows something in its terminal, or when the session ended', async () => {
