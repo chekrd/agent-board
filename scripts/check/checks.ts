@@ -3915,7 +3915,8 @@ export const checks: Check[] = [
 
       // The answer goes out 5 s after the press and the mock then types the menu, which can outlast a 5 s wait that
       // starts this soon after the press, as it does when no deal or Undo runs an animation.
-      await sleep(Math.max(0, HELD_MS - 1000 - (Date.now() - pressed)));
+      await sleep(Math.max(0, 4000 - (Date.now() - pressed)));
+      assert.deepEqual((await capsules()).filter((c) => c.session === 's-hooks').map((c) => c.state), ['held'], 'the send went out before its 5 s');
       await page.until('Sent on the capsule', () => {
         const c = document.querySelector<HTMLElement>('[data-capsule][data-session="s-hooks"]');
         return c?.dataset.state === 'sent' && c.innerText.includes('Sent');
