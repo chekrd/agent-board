@@ -3380,4 +3380,25 @@ export const checks: Check[] = [
       await page.until('the dialog to close', () => !document.querySelector('#new-task[open]'));
     },
   },
+  {
+    name: 'P7.phone-toast narrow window: the undo toast of a message sent from a sheet sits at the bottom of the window, clear of the sheet\'s head, and takes a click',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-invoice/overview`);
+      await page.until('the sheet', sheetOpen);
+      await page.click('#task-sheet textarea');
+      await page.type('Also round the tax lines');
+      await page.key('Enter');
+      const [toast] = await page.until('the undo toast', toastsOf, 'undo');
+      const at = await page.eval(() => {
+        const t = document.querySelector('[data-toast][data-kind="undo"]')!.getBoundingClientRect();
+        const head = document.querySelector('#task-sheet header')!.getBoundingClientRect();
+        return { clear: t.top >= head.bottom || t.bottom <= head.top, bottom: innerHeight - t.bottom, inside: t.left >= 0 && t.right <= innerWidth };
+      });
+      assert.deepEqual({ ...at, bottom: at.bottom <= 40, hit: toast.hit }, { clear: true, bottom: true, inside: true, hit: true });
+      await shot('phone-sheet-toast');
+      await page.click('[data-toast][data-kind="undo"] button', 'Undo');
+      await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
+    },
+  },
 ];
