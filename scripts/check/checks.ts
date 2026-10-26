@@ -3926,4 +3926,15 @@ export const checks: Check[] = [
       assert.deepEqual(await actions(mock), [], 'the answer taken back went out');
     },
   },
+  {
+    name: 'P7.contrast-volume with 45 cards waiting every text on the queue reads at 4.5:1 or more too: the meter\'s bars with their counts, and a dock of sixteen capsules',
+    scenario: 'volume45',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the bars', () => document.querySelectorAll('[data-bar]').length === 3);
+      await page.until('the dock', docked, 16);
+      await page.until('the page to settle', still);
+      assert.deepEqual(await page.eval(lowContrast, 4.5), []);
+    },
+  },
 ];
