@@ -485,6 +485,68 @@ const animations = () => {
   return [...w.e2eAnimations.entries()].map(([a, text]) => ({ text, end: Number(a.effect?.getComputedTiming().endTime) }));
 };
 
+// Text drawn at less than `min`:1 against what it is drawn on. The text's colour and the backgrounds of its element and
+// of those around it are composited in order, up to the dialog or popover it sits in, and each element's opacity
+// applies to all it draws; a gradient counts at each of its stops. A field counts with its value or its placeholder.
+// Left out: disabled controls, the primary while its guard ignores presses, text nobody can see, the page under a
+// modal dialog's scrim, and the diff's code, the user's Darcula in shadow roots this does not walk.
+const lowContrast = (min: number) => {
+  type C = [number, number, number, number];
+  const unread = new Set<string>();
+  const parse = (s: string): C => {
+    const rgb = s.match(/^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)$/);
+    if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])];
+    const srgb = s.match(/^color\(srgb ([-\d.e]+) ([-\d.e]+) ([-\d.e]+)(?: \/ ([-\d.e]+))?\)$/);
+    if (srgb) return [Number(srgb[1]) * 255, Number(srgb[2]) * 255, Number(srgb[3]) * 255, srgb[4] === undefined ? 1 : Number(srgb[4])];
+    unread.add(s);
+    return [0, 0, 0, 0];
+  };
+  const channel = (c: number) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+  const lum = (c: C) => 0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2]);
+  const ratio = (a: C, b: C) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const over = (c: C, under: C): C => [c[0] * c[3] + under[0] * (1 - c[3]), c[1] * c[3] + under[1] * (1 - c[3]), c[2] * c[3] + under[2] * (1 - c[3]), 1];
+  const mix = (a: C, b: C, t: number): C => [a[0] * t + b[0] * (1 - t), a[1] * t + b[1] * (1 - t), a[2] * t + b[2] * (1 - t), 1];
+  const ground = parse(getComputedStyle(document.body).backgroundColor);
+  // Every pair of text and background colour the text can show in, from layer `i` in.
+  const paint = (layers: Element[], i: number, under: C, text: C): { fg: C; bg: C }[] => {
+    const style = getComputedStyle(layers[i]);
+    const bg = over(parse(style.backgroundColor), under);
+    const stops = (style.backgroundImage.match(/rgba?\([^)]*\)|color\(srgb[^)]*\)/g) ?? []).map((s) => over(parse(s), bg));
+    const inner = [bg, ...stops].flatMap((g) => (i === layers.length - 1 ? [{ fg: over(text, g), bg: g }] : paint(layers, i + 1, g, text)));
+    const opacity = Number(style.opacity);
+    return opacity >= 1 ? inner : inner.map(({ fg, bg: b }) => ({ fg: mix(fg, under, opacity), bg: mix(b, under, opacity) }));
+  };
+  const layersOf = (el: Element) => {
+    const out: Element[] = [];
+    for (let e: Element | null = el; e; e = e.parentElement) {
+      out.unshift(e);
+      if (e.matches(':modal, :popover-open')) break;
+    }
+    return out;
+  };
+  const named = (el: Element) => {
+    const cls = typeof el.className === 'string' ? el.className.split(' ')[0] : '';
+    return `${el.tagName.toLowerCase()}${cls ? `.${cls.slice(cls.indexOf('_', 1) + 1)}` : ''}`;
+  };
+  const fails = new Set<string>();
+  const modal = !!document.querySelector('dialog:modal');
+  const test = (el: Element, text: string, color: string) => {
+    if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) || el.closest(':disabled, [aria-disabled="true"], [data-guarded]')) return;
+    if (modal && !el.closest('dialog:modal, :popover-open')) return;
+    const worst = Math.min(...paint(layersOf(el), 0, ground, parse(color)).map(({ fg, bg }) => ratio(fg, bg)));
+    if (worst < min) fails.add(`${worst.toFixed(2)}:1 "${text.trim().replace(/\s+/g, ' ').slice(0, 48)}" in ${named(el)} < ${el.parentElement ? named(el.parentElement) : ''}`);
+  };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.textContent?.trim() && n.parentElement) test(n.parentElement, n.textContent, getComputedStyle(n.parentElement).color);
+  }
+  for (const field of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type="checkbox"], [type="radio"], [type="file"]), textarea')) {
+    if (field.value) test(field, field.value, getComputedStyle(field).color);
+    else if (field.placeholder) test(field, field.placeholder, getComputedStyle(field, '::placeholder').color);
+  }
+  return [...fails, ...[...unread].map((s) => `a colour the audit cannot read: ${s}`)];
+};
+
 export const checks: Check[] = [
   {
     name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option on the card answers once and the tile turns working',
@@ -3598,6 +3660,176 @@ export const checks: Check[] = [
       const all = await page.eval(animations);
       assert.ok(all.length > 0, 'no animation was noted');
       assert.deepEqual(all.filter((a) => !(a.end <= 10)).map((a) => a.text), []);
+    },
+  },
+  {
+    name: 'P7.contrast-queue every text on the queue, its dock, hover card, peeks, meter chips and toasts reads at 4.5:1 or more: an ask with its reply box, command list and Elaborate, a menu, an end-of-turn choice with its failed Elaborate and a running and a failed second opinion, Needs focus, Your turn, a send held, a refusal and a card that no longer waits',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock }) {
+      const fails: string[] = [];
+      const audit = async (where: string) => {
+        await page.until('the page to settle', still);
+        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+      };
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await audit('ask');
+      await page.key('w');
+      await page.type('/re');
+      await page.until('the command list', () => document.querySelectorAll('[data-card] [role="option"]').length > 0);
+      await audit('reply box');
+      await page.key('Escape');
+      await page.key('Escape');
+      await page.key('y');
+      await page.until('the explanation', () => !!document.querySelector('[data-card] [data-elaborate="done"]'));
+      await audit('Elaborate');
+      await page.key('y');
+      await page.hover('[data-capsule][data-session="s-invoice"] button');
+      await page.until('the hover card', hoverCard, 's-invoice');
+      await audit('hover card');
+      await page.pointAt(720, 300);
+      await page.key('ArrowRight');
+      await ready(page, 's-hooks');
+      await audit('menu');
+      await page.key('ArrowRight');
+      await ready(page, 's-group');
+      await page.key('y');
+      await page.until('the failed explanation', () => !!document.querySelector('[data-card] [data-elaborate="failed"]'));
+      await audit('end of turn, Elaborate failed');
+      await mock.post('/mock/advice', { id: 's-group', state: 'thinking' });
+      await page.until('the running second opinion', () => !!document.querySelector('[data-card] [data-advice="running"]'));
+      await audit('second opinion running');
+      await mock.post('/mock/advice', { id: 's-group', state: 'failed' });
+      await page.until('the failed second opinion', () => !!document.querySelector('[data-card] [data-advice="failed"]'));
+      await audit('second opinion failed');
+      await page.key('ArrowRight');
+      await ready(page, 's-astro');
+      await audit('Needs focus');
+      await page.key('ArrowRight');
+      await ready(page, 's-reviews');
+      await audit('Your turn');
+      await page.click('[data-segment][data-session="s-cart"]');
+      await ready(page, 's-cart');
+      await page.click('[data-card] h1');
+      await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await audit('a send held');
+      await page.until('the refusal', toastsOf, 'error');
+      await page.until('the Not sent peek', () => document.querySelector('[data-peek="1"]')?.textContent?.includes('Not sent'));
+      await audit('refused');
+      await page.click('[data-segment][data-session="s-cart"]');
+      await page.until('the card marked Not sent', () => !!document.querySelector('[data-card] [data-not-sent]'));
+      await audit('Not sent on the card');
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 9 });
+      await page.until('Just in', () => !!document.querySelector('[data-justin]'));
+      await mock.post('/mock/patch', { id: 's-cart', patch: { question: null, status: 'working', activity: { step: 'Edit src/cart/mergeCarts.ts', since: Date.now() } } });
+      await page.until('the word that it no longer waits', toastsOf, 'info');
+      await audit('Just in, no longer waits');
+      assert.deepEqual(fails, []);
+    },
+  },
+  {
+    name: 'P7.contrast-wall-sheet every text on the Wall, archived tiles included, and in the sheet\'s Overview (working, decision, Needs focus), Diff and Artifacts tabs and its ⋯ menu reads at 4.5:1 or more',
+    async run({ page, mock }) {
+      const fails: string[] = [];
+      const audit = async (where: string) => {
+        await page.until('the page to settle', settled);
+        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+      };
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await page.click('details summary', 'Archived');
+      await page.until('the archived tile', () => document.querySelector('[data-tile][data-archived]')?.checkVisibility());
+      await audit('Wall');
+      for (const id of ['s-invoice', 's-cart', 's-astro']) {
+        await page.goto(`${mock.url}/s/${id}/overview`);
+        await page.until('the sheet', sheetOpen);
+        await page.until('its Overview', () => !!document.querySelector('#task-sheet [role="tabpanel"] section'));
+        await audit(`Overview of ${id}`);
+      }
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('the diff', () => document.querySelectorAll('section[data-file] diffs-container').length === 12);
+      await audit('Diff');
+      await page.goto(`${mock.url}/s/s-cart/artifacts`);
+      await page.until('the artifact', () => !!document.querySelector('#task-sheet iframe'));
+      await audit('Artifacts');
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await audit('the sheet\'s ⋯ menu');
+      assert.deepEqual(fails, []);
+    },
+  },
+  {
+    name: 'P7.contrast-dialogs every text in New task (its options and picker open), Repos (settings, a conversation list and a removal open), Keys, Delete worktree, the toasts in a sheet and the top bar\'s pills reads at 4.5:1 or more',
+    expectedErrors: [/status of 400/, /Finder is not available/, /WebSocket/, /ERR_CONNECTION/],
+    async run({ page, mock }) {
+      const fails: string[] = [];
+      const audit = async (where: string) => {
+        await page.until('the page to settle', settled);
+        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+      };
+      await openQueue(page, mock);
+      await page.key('n');
+      await page.until('New task', () => !!document.querySelector('#new-task:modal'));
+      await page.type('Add retries to the webhook worker');
+      await page.click('#new-task button', 'More options');
+      await audit('New task');
+      await page.click('#new-task select');
+      await page.until('the picker', () => document.querySelector('#new-task select')!.matches(':open'));
+      await audit('New task, its picker');
+      await page.key('Escape');
+      await page.key('Escape');
+      await page.until('New task to close', () => !document.querySelector('#new-task[open]'));
+
+      await page.click('button[data-repos]');
+      await page.until('Repos', () => !!document.querySelector('#workspace:modal section'));
+      await page.click('#workspace button', 'Settings');
+      await page.click('#workspace details summary', 'conversation');
+      await page.click('#workspace [data-worktree] button', 'Remove');
+      await audit('Repos');
+      await page.key('Escape');
+      await page.until('Repos to close', () => !document.querySelector('#workspace[open]'));
+
+      await page.key('?');
+      await page.until('Keys', () => !!document.querySelector('#keys:modal'));
+      await audit('Keys');
+      await page.key('Escape');
+
+      await page.click('[data-card] button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree li'));
+      await audit('Delete worktree');
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('dialog#delete-worktree[open]'));
+
+      await page.goto(`${mock.url}/s/s-invoice/overview`);
+      await page.until('the sheet', sheetOpen);
+      await page.click('#task-sheet textarea');
+      await page.type('Also round the tax lines');
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await mock.post('/mock/fail', { error: 'Finder is not available' });
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Open in Finder');
+      await page.until('the error toast', toastsOf, 'error');
+      await audit('toasts in the sheet');
+      await page.key('Escape');
+
+      const build = '/assets/index-contrast.js';
+      await page.eval((build: string) => {
+        const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
+        sessionStorage.setItem('agent-board:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
+      }, build);
+      await mock.post('/mock/ui-entry', { src: build });
+      await page.until('the reload pill', () => !!document.querySelector('[data-new-version]'));
+      await audit('the reload pill');
+      await mock.post('/mock/ui-entry', { src: null });
+      await mock.post('/mock/drop', { ms: 3000 });
+      await page.until('Reconnecting…', pillAt, 'reconnecting');
+      await audit('reconnecting');
+      await page.until('Live again', pillAt, 'live');
+      assert.deepEqual(fails, []);
     },
   },
 ];

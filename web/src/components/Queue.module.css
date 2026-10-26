@@ -74,7 +74,9 @@
     &[data-attention="decide"], &[data-attention="new"] { color: var(--accent-ink); }
     &[data-attention="focus"] { color: var(--prompt); }
     &[data-attention="idle"] { color: var(--idle); }
-    &[data-attention="not-sent"] { color: var(--danger); }
+    /* --danger reads at 4.3:1 on the light deck colours; a share of the text colour darkens it there, and lightens it
+       in dark. */
+    &[data-attention="not-sent"] { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
   }
 
   @media (max-width: 760px) {
