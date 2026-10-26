@@ -4,7 +4,7 @@ import { setImmediate as flush } from 'node:timers/promises';
 import { answering } from './answering.ts';
 import type { Advice, Session } from './db.ts';
 import { claim, decisionKey } from './decision.ts';
-import type { Keystroke } from './ghostty.ts';
+import { PartlyTyped, type Keystroke } from './ghostty.ts';
 
 const session = (patch: Partial<Session>): Session => ({
   id: 's', repoId: 1, worktree: '/w', cwd: '/w', pid: 1, tty: '/dev/ttys001', title: null, firstPrompt: null, status: 'idle',
@@ -21,8 +21,9 @@ const question = { toolUseId: 'q1', title: 'Which way?', details: 'd', options: 
 const menu = { toolUseId: 'm1', at: 2, questions: [{ question: 'Colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }] };
 const advice: Advice = { key: 'q:q1', state: 'done', startedAt: 1, activity: null, choice: 'A', answer: 'A, because it is smaller.', confidence: 80, reasoning: 'r', at: 7 };
 
-// A session behind a fake terminal. With `hold`, each send waits until the test lets it finish or fail.
-function world(s: Session, { hold = false } = {}) {
+// A session behind a fake terminal. With `hold`, each send waits until the test lets it finish or fail; with
+// `pressFails`, every press of keys fails with it.
+function world(s: Session, { hold = false, pressFails }: { hold?: boolean; pressFails?: Error } = {}) {
   let row = s;
   let notified = 0;
   const typed: string[] = [];
@@ -36,7 +37,10 @@ function world(s: Session, { hold = false } = {}) {
       typed.push(text);
       return hold ? new Promise((done, fail) => sends.push({ done: () => done(), fail })) : Promise.resolve();
     },
-    keys: async (_tty, strokes) => void pressed.push(strokes),
+    keys: async (_tty, strokes) => {
+      pressed.push(strokes);
+      if (pressFails) throw pressFails;
+    },
     notify: () => void notified++,
     decided: (id) => void decided.push(id),
     isCommand: async (_s, text) => text.startsWith('!') || text.split(' ')[0] === '/review',
@@ -184,6 +188,18 @@ test('a menu answer is checked before it is claimed, and two at once press the k
   assert.deepEqual(w.pressed, [[{ key: 'arrow_down' }, { key: 'enter' }]]);
   assert.deepEqual([w.row().answered?.key, w.row().answered?.text], ['m:m1', 'Colour: Blue']);
   assert.deepEqual(w.decided, ['s']);
+});
+
+test('a menu answer whose keys stopped part way stays answered, since the same keys again would pick from the wrong place; one that typed none is given back', async () => {
+  const blue = { toolUseId: 'm1', answers: [{ labels: ['Blue'], other: '' }] };
+  const w = world(session({ menu, status: 'waiting' }), { pressFails: new PartlyTyped('tmux failed after 1 of 2 keys') });
+  await assert.rejects(w.answers.answerMenu('s', blue), /^Error: the keys stopped part way through Claude's menu; finish it in the terminal$/);
+  assert.deepEqual([w.row().answered?.key, w.row().answered?.text, decisionKey(w.row()), w.decided], ['m:m1', 'Colour: Blue', null, ['s']]);
+  await assert.rejects(w.answers.answerMenu('s', blue), { code: 'answered' });
+  assert.equal(w.pressed.length, 1, 'the keys went out once');
+  const none = world(session({ menu, status: 'waiting' }), { pressFails: new Error('can\'t find pane: s') });
+  await assert.rejects(none.answers.answerMenu('s', blue), /can't find pane/);
+  assert.deepEqual([none.row().answered, decisionKey(none.row()), none.decided], [null, 'm:m1', []]);
 });
 
 test('accepting the second opinion is claimed like an answer: a second accept is refused while the first types', async () => {

@@ -115,7 +115,7 @@ export function answerText(choice: string | undefined, text: string, files: numb
 }
 
 export const menuAnswerText = (menu: Menu, answers: MenuAnswer[]) =>
-  menu.questions.map((q, i) => `${q.header || q.question}: ${answers[i]?.other?.trim() || answers[i]?.labels.join(', ')}`).join(' · ');
+  menu.questions.map((q, i) => `${q.header || q.question}: ${answers[i]?.other?.replace(/\s+/g, ' ').trim() || answers[i]?.labels.join(', ')}`).join(' · ');
 
 const PROMPT_LAG_MS = 30_000;
 

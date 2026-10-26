@@ -1,6 +1,6 @@
 import type { Session } from './db.ts';
 import { adviceToSend, answerText, checkDecision, claim, menuAnswerText, type AnswerStore } from './decision.ts';
-import type { Keystroke } from './ghostty.ts';
+import { PartlyTyped, type Keystroke } from './ghostty.ts';
 import { menuKeystrokes, type MenuAnswer } from './menu.ts';
 
 // Everything that touches the machine comes in as a dependency, so tests and the mock run this very code.
@@ -48,7 +48,9 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     return s;
   };
 
-  // Claimed before the keys go out, which takes up to 2 s, and given back if they fail.
+  // Claimed before the keys go out, which takes seconds for a menu, and given back if they fail. Keys that stopped part
+  // way have moved Claude's menu, so the same keys again would pick from the wrong place: that answer stands, and the
+  // menu still open in the terminal makes its card need focus.
   async function deliver(id: string, t: Typing) {
     if (!t.claim) return t.type();
     const { reopen } = claim(store, id, t.claim.seen, t.claim.typed, t.claim.text);
@@ -56,6 +58,10 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     try {
       await t.type();
     } catch (err) {
+      if (err instanceof PartlyTyped) {
+        decided(id);
+        throw new Error("the keys stopped part way through Claude's menu; finish it in the terminal", { cause: err });
+      }
       reopen();
       notify();
       throw err;

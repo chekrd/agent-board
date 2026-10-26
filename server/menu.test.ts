@@ -24,6 +24,10 @@ test('own text goes below the options, then Enter', () => {
   ]);
 });
 
+test('own text is one line: a newline or a tab in it would be Enter or Tab in the dialog', () => {
+  assert.deepEqual(menuKeystrokes(menu(question()), [{ labels: [], other: 'Purple,\n\tor violet ' }]).at(-2), { text: 'Purple, or violet' });
+});
+
 test('multiple choice toggles in order, Tab moves on, and the review step needs Enter', () => {
   assert.deepEqual(menuKeystrokes(menu(question(true)), [{ labels: ['Blue', 'Red'], other: '' }]), keys('enter', 'arrow_down', 'arrow_down', 'enter', 'tab', 'enter'));
 });

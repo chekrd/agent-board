@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
+import { PartlyTyped } from './ghostty.ts';
 import { keys, paste, type Tmux } from './tmuxInput.ts';
 
 const run = promisify(execFile);
@@ -75,4 +76,16 @@ test('text among keys is typed as written, without paste markers: a leading - an
   await keys(tmux, 'T', [{ key: 'arrow_down' }, { text: '-1 week is fine;' }, { key: 'enter' }, { text: '-> keep the cache' }]);
   const expected = '\x1b[B-1 week is fine;\r-> keep the cache';
   assert.equal(await received(expected), expected);
+});
+
+test('keys that fail once one has gone in are PartlyTyped; a failure at the first key is the error itself', async () => {
+  const failingAt = (call: number): Tmux => {
+    let calls = 0;
+    return async () => {
+      if (calls++ === call) throw new Error('can\'t find pane: T');
+    };
+  };
+  const strokes = [{ key: 'arrow_down' }, { text: 'Purple' }, { key: 'enter' }];
+  await assert.rejects(keys(failingAt(0), 'T', strokes), (err) => !(err instanceof PartlyTyped) && /can't find pane/.test(String(err)));
+  await assert.rejects(keys(failingAt(1), 'T', strokes), (err) => err instanceof PartlyTyped && /after 1 of 3 keys/.test(err.message));
 });

@@ -1,4 +1,4 @@
-import type { Keystroke } from './ghostty.ts';
+import { PartlyTyped, type Keystroke } from './ghostty.ts';
 
 // One tmux command; `input` goes to its stdin.
 export type Tmux = (args: string[], input?: string) => Promise<unknown>;
@@ -22,9 +22,14 @@ const KEYS: Record<string, string> = { enter: 'Enter', tab: 'Tab', escape: 'Esca
 
 // Text among the keys goes in as typed, without paste markers.
 export async function keys(tmux: Tmux, name: string, strokes: Keystroke[]) {
-  for (const k of strokes) {
-    if ('key' in k) await tmux(['send-keys', '-t', target(name), KEYS[k.key] ?? k.key]);
-    else await tmux(['paste-buffer', '-d', '-b', await load(tmux, name, k.text), '-t', target(name)]);
+  for (const [i, k] of strokes.entries()) {
+    try {
+      if ('key' in k) await tmux(['send-keys', '-t', target(name), KEYS[k.key] ?? k.key]);
+      else await tmux(['paste-buffer', '-d', '-b', await load(tmux, name, k.text), '-t', target(name)]);
+    } catch (err) {
+      if (i) throw new PartlyTyped(`tmux failed after ${i} of ${strokes.length} keys`, { cause: err });
+      throw err;
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
 }

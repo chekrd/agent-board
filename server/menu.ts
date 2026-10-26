@@ -15,7 +15,8 @@ export function menuKeystrokes(menu: Menu, answers: MenuAnswer[]) {
   const down = (n: number) => strokes.push(...Array.from({ length: n }, () => ({ key: 'arrow_down' })));
   menu.questions.forEach((q, i) => {
     const a = answers[i];
-    const other = a.other?.trim() ?? '';
+    // Typed into a one-line field, where a newline would be Enter and a tab Tab.
+    const other = a.other?.replace(/\s+/g, ' ').trim() ?? '';
     const picked = a.labels.map((l) => q.options.findIndex((o) => o.label === l));
     if (picked.includes(-1)) throw new Error(`unknown option for "${q.question}"`);
     if (q.multiSelect) {

@@ -11,13 +11,15 @@ async function script(body: string, ...args: string[]) {
 
 const NOT_FOUND = 'NOT_FOUND';
 
+class NoTab extends Error {}
+
 // Claude runs in a Ghostty terminal whose tty is the process's controlling tty.
 async function onTerminal(tty: string, body: string, ...args: string[]) {
   const out = await script(`set matches to (terminals whose tty is item 1 of argv)
 if (count of matches) is 0 then return "${NOT_FOUND}"
 set t to item 1 of matches
 ${body}`, tty, ...args);
-  if (out === NOT_FOUND) throw new Error(`no Ghostty tab runs ${tty}; the session may be in another terminal app or inside tmux`);
+  if (out === NOT_FOUND) throw new NoTab(`no Ghostty tab runs ${tty}; the session may be in another terminal app or inside tmux`);
   return out;
 }
 
@@ -32,8 +34,11 @@ export async function paste(tty: string, text: string) {
 
 export type Keystroke = { key: string } | { text: string };
 
+// Keys that failed after some of them went in, which moved what the terminal shows.
+export class PartlyTyped extends Error {}
+
 // Named keys rather than characters: `send key` goes through the keyboard layout, so a digit
-// would arrive as ě or š on a Czech one.
+// would arrive as ě or š on a Czech one. One script types them all, so one that fails may have typed some.
 export async function keys(tty: string, strokes: Keystroke[]) {
   const args = strokes.map((k) => ('key' in k ? `k:${k.key}` : `t:${k.text}`));
   await onTerminal(tty, `repeat with i from 2 to count of argv
@@ -44,7 +49,9 @@ export async function keys(tty: string, strokes: Keystroke[]) {
     input text (text 3 thru -1 of s) to t
   end if
   delay 0.2
-end repeat`, ...args);
+end repeat`, ...args).catch((err: unknown) => {
+    throw err instanceof NoTab ? err : new PartlyTyped('Ghostty failed while it typed the keys', { cause: err });
+  });
 }
 
 // Opens a tab in the front Ghostty window (or a new window) running the user's shell,
