@@ -16,11 +16,20 @@ export interface Route {
 
 const TABS: readonly string[] = ['overview', 'diff', 'artifacts'];
 
-// The sheet is a dialog over the view, and each view keeps its own scroll, so neither resets on a route change.
+const TASK_PATH = /^\/s\/([^/]+)(?:\/([^/]+)(?:\/([^/]+))?)?/;
+
+// What had focus when a task opened over the view, to have it back when the task closes.
+let opener: HTMLElement | null = null;
+export const openerOfTask = () => opener;
+
+// An open task covers the view, which keeps its own scroll, so neither resets on a route change.
 navigation.addEventListener('navigate', (event) => {
   const url = new URL(event.destination.url);
   if (!event.canIntercept || event.hashChange || event.downloadRequest !== null || event.navigationType === 'reload') return;
   if (url.origin !== location.origin || url.pathname.startsWith('/api')) return;
+  if (TASK_PATH.test(url.pathname) && !TASK_PATH.test(location.pathname)) {
+    opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  }
   event.intercept({ focusReset: 'manual', scroll: 'manual' });
 });
 
@@ -29,10 +38,10 @@ const subscribe = (fn: () => void) => {
   return () => navigation.removeEventListener('currententrychange', fn);
 };
 
-// A sheet opened on the board covers the view it was opened from; a sheet loaded cold covers the queue.
+// A task opened on the board covers the view it was opened from; a task loaded cold covers the queue.
 function parse(href: string, state: unknown): Route {
   const { pathname } = new URL(href);
-  const match = pathname.match(/^\/s\/([^/]+)(?:\/([^/]+)(?:\/([^/]+))?)?/);
+  const match = pathname.match(TASK_PATH);
   if (!match) return { view: pathname === '/wall' ? 'wall' : 'queue', sheet: null };
   const tab = (TABS.includes(match[2]) ? match[2] : 'overview') as Tab;
   const base = (state as { base?: string } | undefined)?.base;

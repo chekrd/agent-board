@@ -4,7 +4,7 @@ import { acceptance, choose, dismissal, freeze, kindOf, menuAnswer, primary as p
 import type { Action, Card as Keys } from '../keys.ts';
 import type { Request } from '../outbox.ts';
 import { queue, useQueue } from '../queue.ts';
-import { openSheet } from '../router.ts';
+import { openSheet, sessionPath } from '../router.ts';
 import { hold } from '../sends.ts';
 import type { MenuAnswer, RepoView, Session } from '../types.ts';
 import { useFront } from '../useKeys.ts';
@@ -61,6 +61,7 @@ const metaChip = (text: string, title?: string) => <span className={styles.chip}
 export function Card({ session, repos, deck, enter }: CardProps) {
   const q = useQueue();
   const article = useRef<HTMLElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
   const why = useRef<HTMLElement>(null);
   const { worktree, branch } = locate(repos, session);
   const name = sessionLabel(session, branch);
@@ -111,6 +112,11 @@ export function Card({ session, repos, deck, enter }: CardProps) {
   useLayoutEffect(() => {
     if (enter && !document.documentElement.dataset.deal) article.current!.dataset.enter = '';
   }, []);
+
+  // The card stays when its session moves on to another decision, which starts at its top.
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [kind, key]);
 
   useEffect(() => {
     if (whyOpen) why.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -266,7 +272,7 @@ export function Card({ session, repos, deck, enter }: CardProps) {
             {STATE_LABELS[attention]}
           </span>
           {q.updated.has(session.id) && <span className={styles.updated} data-updated>Updated just now</span>}
-          <span className={styles.name}>{name}</span>
+          <a className={styles.name} href={sessionPath(session.id)} title="Open the task on its own page" data-open-task>{name}</a>
           <span className={styles.spacer} />
           <nav className={styles.nav} aria-label="Open the task">
             <button type="button" onClick={() => openSheet(session.id, 'overview')}>Overview <kbd>O</kbd></button>
@@ -279,47 +285,49 @@ export function Card({ session, repos, deck, enter }: CardProps) {
         </div>
         <div className={styles.meta}>{meta}</div>
       </header>
-      {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
-      {learnings.length > 0 && (
-        <div className={styles.know} data-know>
-          <span className={styles.knowLabel}>Worth knowing</span>
-          {learnings.map((k) => <span key={k}>{k}</span>)}
-        </div>
-      )}
-      {menu && session.summary?.text && <p className={styles.brief}>{session.summary.text}</p>}
-      {decision && (
-        <DecisionBody
-          session={session}
-          decision={decision}
-          kind={kind as 'ask' | 'turn'}
-          advice={advice}
-          frozen={frozen}
-          accepting={primary.press !== null && !('intent' in primary.press) && primary.press.action === 'accept-advice'}
-          hidden={hidden}
-          onDetails={() => setHidden(!hidden)}
-          whyOpen={whyOpen}
-          whyRef={why}
-          onCloseWhy={() => setWhyOpen(false)}
-          onPick={pick}
-          onAccept={accept}
-          onEdit={edit}
-          composer={open ? composer : null}
-        />
-      )}
-      {menu && (
-        <MenuBody
-          session={session}
-          menu={menu}
-          picks={picks}
-          advice={advice}
-          onPick={pickInMenu}
-          onOther={(question, other) => setPicks(picks.map((p, i) => (i === question ? { labels: other ? [] : p.labels, other } : p)))}
-          onPicks={setPicks}
-          onSubmit={pressPrimary}
-        />
-      )}
-      {kind === 'prompt' && <PromptBody session={session} />}
-      {kind === 'idle' && <TurnBody session={session} composer={composer} />}
+      <div ref={scroll} className={styles.scroll} data-scroll>
+        {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
+        {learnings.length > 0 && (
+          <div className={styles.know} data-know>
+            <span className={styles.knowLabel}>Worth knowing</span>
+            {learnings.map((k) => <span key={k}>{k}</span>)}
+          </div>
+        )}
+        {menu && session.summary?.text && <p className={styles.brief}>{session.summary.text}</p>}
+        {decision && (
+          <DecisionBody
+            session={session}
+            decision={decision}
+            kind={kind as 'ask' | 'turn'}
+            advice={advice}
+            frozen={frozen}
+            accepting={primary.press !== null && !('intent' in primary.press) && primary.press.action === 'accept-advice'}
+            hidden={hidden}
+            onDetails={() => setHidden(!hidden)}
+            whyOpen={whyOpen}
+            whyRef={why}
+            onCloseWhy={() => setWhyOpen(false)}
+            onPick={pick}
+            onAccept={accept}
+            onEdit={edit}
+            composer={open ? composer : null}
+          />
+        )}
+        {menu && (
+          <MenuBody
+            session={session}
+            menu={menu}
+            picks={picks}
+            advice={advice}
+            onPick={pickInMenu}
+            onOther={(question, other) => setPicks(picks.map((p, i) => (i === question ? { labels: other ? [] : p.labels, other } : p)))}
+            onPicks={setPicks}
+            onSubmit={pressPrimary}
+          />
+        )}
+        {kind === 'prompt' && <PromptBody session={session} />}
+        {kind === 'idle' && <TurnBody session={session} composer={composer} />}
+      </div>
       <footer className={styles.foot}>
         <button
           type="button"

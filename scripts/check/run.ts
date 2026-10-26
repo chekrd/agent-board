@@ -29,6 +29,7 @@ if (!existsSync(join(resolve(args.dist), 'index.html'))) {
   console.error(`no UI build in ${args.dist}; run pnpm build first`);
   process.exit(2);
 }
+process.env.AGENT_BOARD_E2E_DIST = resolve(args.dist);
 
 const schemes = ['dark', 'light'] as const;
 const motions = args.matrix ? (['no-preference', 'reduce'] as const) : (['no-preference'] as const);

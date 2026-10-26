@@ -65,21 +65,12 @@
     &[data-length="long"] { font-size: clamp(23px, 0.9rem + 1vw, 29px); }
   }
 
-  /* The bottom of a column that scrolls fades out: the padding it fades over keeps the end of its text clear, and the
-     scroll padding what is scrolled into view. */
   .column {
     min-width: 0;
-    min-height: 0;
-    overflow: auto;
     display: flex;
     flex-direction: column;
-    padding-bottom: 22px;
-    scroll-padding-bottom: 22px;
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
-    scrollbar-width: thin;
-    scrollbar-color: var(--line-2) transparent;
-    &[data-side="left"] { gap: 16px; padding-right: 10px; }
-    &[data-side="right"] { gap: 10px; padding: 2px 6px 22px 2px; }
+    &[data-side="left"] { gap: 16px; }
+    &[data-side="right"] { gap: 10px; }
   }
 
   .progress {
@@ -95,13 +86,4 @@
   .reply { flex: none; display: flex; flex-direction: column; gap: 8px; }
 
   .body { font-size: 15.5px; line-height: 1.6; color: var(--text-2); }
-
-  @media (max-width: 760px) {
-    .column {
-      overflow: visible;
-      padding: 0;
-      mask-image: none;
-      &[data-side] { padding: 0; }
-    }
-  }
 }

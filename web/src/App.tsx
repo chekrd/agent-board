@@ -36,8 +36,13 @@ export function App() {
   return (
     <>
       <TopBar route={route} deck={deck} />
-      {route.view === 'queue' ? <Queue deck={deck} /> : <Wall deck={deck} />}
-      <TaskSheet route={route} />
+      {/* Under an open task the view stays, so it comes back as it was left. */}
+      <div className="views">
+        <div className="view" data-covered={!!route.sheet || undefined} inert={!!route.sheet}>
+          {route.view === 'queue' ? <Queue deck={deck} /> : <Wall deck={deck} />}
+        </div>
+        <TaskSheet route={route} />
+      </div>
       <NewTaskDialog repos={store.repos} />
       <WorkspaceDialog roots={store.roots} repos={store.repos} sessions={store.sessions} />
       <KeysDialog />

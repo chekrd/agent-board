@@ -10,6 +10,8 @@ export const DATA_DIR = join(homedir(), 'Library', 'Application Support', 'agent
 export const SESSIONS_DIR = join(DATA_DIR, 'sessions');
 export const SCRATCH_DIR = join(DATA_DIR, 'advisor');
 export const DB_PATH = join(DATA_DIR, 'state.db');
+// Written by the status line script; see the README.
+export const USAGE_FILE = join(DATA_DIR, 'usage.json');
 // No spaces in the path: Claude Code reads a pasted path as one file only when it has none.
 export const UPLOADS_DIR = join(homedir(), 'Library', 'Caches', 'agent-board', 'uploads');
 

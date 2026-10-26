@@ -14,7 +14,7 @@ export function Age({ at, prefix = '' }: { at: number; prefix?: string }) {
   return <>{prefix}{ago(at, useNow())}</>;
 }
 
-// One of the card's two columns, each of which scrolls on its own.
+// One of the card's two columns; the card scrolls both together.
 export function Column({ side, children }: { side: 'left' | 'right'; children: ReactNode }) {
   return <div className={parts.column} data-side={side}>{children}</div>;
 }

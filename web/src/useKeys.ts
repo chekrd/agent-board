@@ -5,7 +5,7 @@ import { openNewTask } from './components/NewTaskForm.tsx';
 import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action, type Card, type KeyContext, type Target } from './keys.ts';
 import { openPopovers } from './layers.ts';
 import { queue } from './queue.ts';
-import { go, showTab, viewPath, type Route } from './router.ts';
+import { closeSheet, go, showTab, viewPath, type Route } from './router.ts';
 import { undo } from './sends.ts';
 
 // The reply box's paperclip counts as part of its field: focus on it is still writing a reply.
@@ -140,6 +140,7 @@ export function useBoardKeys({ route, deck, repos, artifacts }: { route: Route; 
       else if (action.type === 'undo') undo();
       else if (action.type === 'tab') showTab(action.tab);
       else if (action.type === 'file') stepFile(action.step);
+      else if (action.type === 'back') closeSheet();
       else front?.act(action, e);
     },
   );

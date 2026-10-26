@@ -4,3 +4,4 @@ export type { Conversation, Menu, MenuQuestion } from '../../server/conversation
 export type { RepoView, WorktreeView } from '../../server/workspace.ts';
 export type { Command } from '../../server/commands.ts';
 export type { MenuAnswer } from '../../server/menu.ts';
+export type { Usage, UsageWindow } from '../../server/usage.ts';

@@ -73,7 +73,8 @@ export type Action =
   | { type: 'keys' }
   | { type: 'tab'; tab: Tab }
   | { type: 'file'; step: 1 | -1 }
-  | { type: 'close'; what: 'why' | 'composer' };
+  | { type: 'close'; what: 'why' | 'composer' }
+  | { type: 'back' };
 
 export const KEYS_DIALOG = 'keys';
 export const SHEET_DIALOG = 'task-sheet';
@@ -127,8 +128,8 @@ export const KEYS: readonly Row[] = [
   },
   { keys: 'J / K', help: 'In the diff: next or previous file', scopes: ['sheet'], repeats: true, matches: named('j', 'k'), act: (ctx, e) => (ctx.sheet?.tab === 'diff' ? { type: 'file', step: e.key.toLowerCase() === 'j' ? 1 : -1 } : null) },
   {
-    keys: 'Esc', help: 'Close what is open, then back to the queue', scopes: ['queue', 'wall'], matches: named('Escape'),
-    act: (ctx) => (ctx.view === 'wall' ? (ctx.deck ? { type: 'view', to: 'queue' } : null)
+    keys: 'Esc', help: 'Close what is open; from a task, back to where it was opened; then back to the queue', scopes: ['queue', 'wall', 'sheet'], matches: named('Escape'),
+    act: (ctx) => (ctx.sheet ? { type: 'back' } : ctx.view === 'wall' ? (ctx.deck ? { type: 'view', to: 'queue' } : null)
       : ctx.card?.why ? { type: 'close', what: 'why' } : ctx.card?.composing ? { type: 'close', what: 'composer' } : null),
   },
   { keys: '?', help: 'These keys', scopes: ['queue', 'wall', 'sheet'], matches: named('?'), act: () => ({ type: 'keys' }) },

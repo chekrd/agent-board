@@ -136,12 +136,12 @@ function Side({ direction, disabled }: { direction: 'previous' | 'next'; disable
         type="button"
         className={styles.round}
         aria-label={previous ? 'Previous card' : 'Skip to the next card'}
+        title={previous ? 'Previous card (←)' : 'Skip to the next card (→)'}
         disabled={disabled}
         onClick={() => (previous ? queue.previous() : queue.skip())}
       >
         <Icon name={previous ? 'arrow-left' : 'arrow-right'} size={22} />
       </button>
-      <span className={styles.caption}>{previous ? 'Previous' : 'Skip'} <kbd>{previous ? '←' : '→'}</kbd></span>
     </div>
   );
 }

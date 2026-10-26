@@ -4,7 +4,7 @@ import { wsUrl } from './api.ts';
 import { orderKey } from './order.ts';
 import { active } from './outbox.ts';
 import { sends } from './sends.ts';
-import type { RepoView, Session } from './types.ts';
+import type { RepoView, Session, Usage } from './types.ts';
 import { menuOpen } from './layers.ts';
 import { isEditable } from './useKeys.ts';
 import { attentionChangesAt } from './util.ts';
@@ -15,6 +15,7 @@ interface State {
   roots: string[];
   repos: RepoView[];
   sessions: Session[];
+  usage: Usage | null;
   link: Link;
   // The top bar offers to reload into a new build: in 15 s no moment came when reloading would lose nothing, or
   // reloading for that build already brought this tab back to the build it runs.
@@ -24,13 +25,13 @@ interface State {
 const RELOAD_CAP_MS = 15_000;
 const RELOADED_FOR = 'agent-board:reloaded-for';
 
-let state: State = { roots: [], repos: [], sessions: [], link: 'connecting', newVersion: false };
+let state: State = { roots: [], repos: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();
 let order = '';
 
-// On the queue the tiles' reorder would cut a card's own transition short, and under a sheet or dialog it has nothing
-// to show.
-const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector('dialog[open]');
+// On the queue the tiles' reorder would cut a card's own transition short, and under an open task or a dialog it has
+// nothing to show.
+const reorderShows = () => document.documentElement.dataset.view !== 'queue' && !document.querySelector('dialog[open], #task-sheet');
 
 // The state changes at once and only the redraw waits for a reorder's transition, so a set made meanwhile builds on
 // the newest state and is not undone when the transition applies.

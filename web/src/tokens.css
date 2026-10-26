@@ -83,6 +83,19 @@
     flex-direction: column;
     @media (max-width: 760px) { height: auto; min-height: 100%; }
   }
+  /* The view under the top bar, which an open task covers whole; in a narrow window the task covers the top bar too. */
+  .views {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    @media (max-width: 760px) { flex: none; }
+  }
+  .view {
+    display: contents;
+    &[data-covered] { visibility: hidden; }
+  }
   /* A narrow window scrolls the page under the queue card's sticky footer, which what scrolls into view has to clear. */
   :root[data-view="queue"] {
     @media (max-width: 760px) { scroll-padding-bottom: 130px; }

@@ -1,4 +1,5 @@
 import type { Session } from '../../server/db.ts';
+import type { Usage } from '../../server/usage.ts';
 import { menuAnswerText } from '../../server/decision.ts';
 import type { RepoView } from '../../server/workspace.ts';
 import { addFromTemplate, queue, repos, ROOTS, session, titleOf, type Template } from './fixtures.ts';
@@ -9,6 +10,7 @@ export interface Scenario {
   roots: string[];
   repos: RepoView[];
   sessions: Session[];
+  usage: Usage | null;
   flags: Record<string, Flag[]>;
 }
 
@@ -16,6 +18,7 @@ const MIN = 60_000;
 
 const base = (now: number, sessions: Session[]): Scenario => ({
   roots: ROOTS, repos: repos(now), sessions, flags: { 's-group': ['explainFails'], 's-stripe': ['lossFails'] },
+  usage: { fiveHour: { percent: 34, resetsAt: now + 133 * MIN }, sevenDay: { percent: 61, resetsAt: now + 3 * 24 * 60 * MIN }, at: now - MIN },
 });
 
 const withSession = (sessions: Session[], id: string, patch: Partial<Session>) => sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
@@ -97,7 +100,23 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
     }),
   ]),
 
-  long: (now) => base(now, queue(now).map((s) => (s.id !== 's-cart' || !s.question ? s : {
+  long: (now) => base(now, queue(now).map((s) => (s.id === 's-hooks' && s.menu ? {
+    ...s,
+    menu: {
+      ...s.menu,
+      questions: [
+        ...s.menu.questions,
+        {
+          header: 'Dead endpoints', question: 'When should an endpoint count as dead and stop getting deliveries at all?', multiSelect: false,
+          options: [
+            { label: 'After 3 deliveries give up', description: 'Counted per endpoint over a rolling 24 h; the owner re-enables it from the dashboard' },
+            { label: 'After 24 h of failures', description: 'Any delivery that succeeds in between resets the clock' },
+            { label: 'Never', description: 'Keep trying every new event; only the retries of each delivery stop' },
+          ],
+        },
+      ],
+    },
+  } : s.id !== 's-cart' || !s.question ? s : {
     ...s,
     question: {
       ...s.question,
@@ -131,7 +150,7 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
 
   zero: (now) => base(now, queue(now).filter((s) => s.status === 'working' || (s.status === 'exited' && !s.archived))),
   empty: (now) => base(now, []),
-  norepos: () => ({ roots: [], repos: [], sessions: [], flags: {} }),
+  norepos: () => ({ roots: [], repos: [], sessions: [], usage: null, flags: {} }),
 
   volume: (now) => crowd(now, { decide: 14, prompt: 3, idle: 7, working: 16, exited: 3 }),
   // The most items the meter still draws one segment each for.

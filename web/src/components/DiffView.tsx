@@ -176,8 +176,9 @@ export function DiffView({ worktree }: { worktree: string }) {
     };
   });
 
-  // Esc in one file goes back to all files and keeps the sheet open. A dialog or the ⋯ menu over the sheet takes the
-  // Esc first: cancelling it here would keep that layer open.
+  // Esc in one file goes back to all files and keeps the task open, so it runs before the board's keys, which would
+  // leave the task. A dialog or the ⋯ menu over the task takes the Esc first: cancelling it here would keep that layer
+  // open.
   useEffect(() => {
     if (!focused) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -185,8 +186,8 @@ export function DiffView({ worktree }: { worktree: string }) {
       e.preventDefault();
       showAll();
     };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
+    addEventListener('keydown', onKey, true);
+    return () => removeEventListener('keydown', onKey, true);
   });
 
   useEffect(() => {

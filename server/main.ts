@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
 import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { ARTIFACT_CSP, artifactFile } from './artifacts.ts';
-import { HOST, PORT, WEB_DIST } from './config.ts';
+import { HOST, PORT, USAGE_FILE, WEB_DIST } from './config.ts';
 import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
 import { Refusal } from './decision.ts';
@@ -19,6 +19,7 @@ import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
+import { watchUsage } from './usage.ts';
 import { notify, onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
 
 const run = promisify(execFile);
@@ -43,7 +44,10 @@ app.onError((err, c) => {
   return c.json({ error: err instanceof Error ? err.message : String(err), ...(err instanceof Refusal && { code: err.code }) }, 400);
 });
 
-app.get('/api/state', (c) => c.json(snapshot()));
+const usage = watchUsage(USAGE_FILE, notify);
+const state = () => ({ ...snapshot(), usage: usage.current() });
+
+app.get('/api/state', (c) => c.json(state()));
 
 app.all('/mcp', (c) => handleMcp(c.req.raw));
 app.all('/mcp/advisor/:token', (c) => handleAdvisorMcp(c.req.raw, c.req.param('token')));
@@ -219,7 +223,7 @@ app.get('/api/diff', async (c) => {
 const index = join(WEB_DIST, 'index.html');
 const ui = watchEntry(() => readEntry(index), notify);
 
-const message = () => JSON.stringify({ ...snapshot(), uiEntry: ui.settled() });
+const message = () => JSON.stringify({ ...state(), uiEntry: ui.settled() });
 
 app.get('/ws/events', upgradeWebSocket(() => {
   let off: (() => void) | undefined;

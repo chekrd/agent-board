@@ -103,7 +103,10 @@ function shown(s: Session) {
   return old;
 }
 
-const snapshot = () => ({ roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown) });
+const snapshot = () => ({
+  roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
+  ...(!args.legacy && { usage: state.usage }),
+});
 
 // As in server/main.ts: every snapshot names the entry the polls have taken, and a socket that opens first reads
 // index.html, which can only cast doubt on it. On --legacy only a socket that opens is told an entry, what that read
@@ -586,6 +589,11 @@ route('POST', '/mock/patch', ({ body }) => {
   merge(s, body.patch ?? {});
   push();
   return s;
+});
+route('POST', '/mock/usage', ({ body }) => {
+  state.usage = body.usage ?? null;
+  push();
+  return NONE;
 });
 route('POST', '/mock/add', ({ body }) => {
   const { template, id, rank, repoId = 1, flags, ...fields } = body;

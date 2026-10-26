@@ -1,0 +1,34 @@
+@layer components {
+  .usage { display: flex; align-items: center; gap: 12px; }
+
+  .window {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    white-space: nowrap;
+    --level: var(--ok);
+    &[data-level="mid"] { --level: var(--prompt); }
+    &[data-level="high"] { --level: var(--danger); }
+  }
+
+  .label { font-weight: 650; }
+
+  .track { width: 38px; height: 5px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+
+  .fill { display: block; height: 100%; border-radius: inherit; background: var(--level); }
+
+  .percent {
+    min-width: 3ch;
+    font-weight: 650;
+    color: var(--text-2);
+    [data-level="high"] > & { color: var(--danger); }
+  }
+
+  @media (max-width: 760px) {
+    .usage { gap: 8px; }
+    .track { display: none; }
+  }
+}
