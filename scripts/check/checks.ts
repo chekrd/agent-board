@@ -24,6 +24,8 @@ export interface Check {
   name: string;
   // Runs in the narrow window (390×844) instead of the wide ones.
   narrow?: boolean;
+  // Runs with this motion preference in every look.
+  motion?: Look['motion'];
   scenario?: string;
   // Console errors the check provokes on purpose.
   expectedErrors?: RegExp[];
@@ -459,6 +461,28 @@ const narrowCard = () => {
     sliver: shown(document.querySelector('[data-sliver]')),
     footRows: new Set([...c.querySelectorAll('footer button')].filter(shown).map((b) => Math.round(b.getBoundingClientRect().top))).size,
   };
+};
+
+// Starts noting every animation the page runs, with when it ends after it starts; `animations()` stops and returns them.
+const noteAnimations = () => {
+  const w = window as unknown as { e2eAnimations: Map<Animation, string>; e2eNoting: boolean };
+  w.e2eAnimations = new Map();
+  w.e2eNoting = true;
+  const tick = () => {
+    for (const a of document.getAnimations()) {
+      const name = a instanceof CSSAnimation ? a.animationName : a instanceof CSSTransition ? `transition of ${a.transitionProperty}` : 'animation';
+      const target = (a.effect as KeyframeEffect | null)?.target;
+      const where = target ? `${target.tagName.toLowerCase()}${(a.effect as KeyframeEffect).pseudoElement ?? ''}` : '';
+      w.e2eAnimations.set(a, `${name} on ${where}: ${Math.round(Number(a.effect?.getComputedTiming().endTime) * 100) / 100} ms`);
+    }
+    if (w.e2eNoting) requestAnimationFrame(tick);
+  };
+  tick();
+};
+const animations = () => {
+  const w = window as unknown as { e2eAnimations: Map<Animation, string>; e2eNoting: boolean };
+  w.e2eNoting = false;
+  return [...w.e2eAnimations.entries()].map(([a, text]) => ({ text, end: Number(a.effect?.getComputedTiming().endTime) }));
 };
 
 export const checks: Check[] = [
@@ -3546,6 +3570,34 @@ export const checks: Check[] = [
       await page.until('the dialog to settle', settled);
       await sideways('Keys');
       assert.equal(await page.eval(inside, '#keys'), true);
+    },
+  },
+  {
+    name: 'P7.reduced-motion with reduced motion a card change runs no animation longer than 10 ms: skip, previous, a peek, an answer, its Undo and the answer again until its capsule rings',
+    motion: 'reduce',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(noteAnimations);
+      await page.key('ArrowRight');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('ArrowLeft');
+      await page.until('s-cart at the front', frontIs, 's-cart');
+      await page.click('[data-peek="1"] > span');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('ArrowLeft');
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('z');
+      await ready(page, 's-cart');
+      await page.key('Enter');
+      await sleep(HELD_MS);
+      await page.until('the answered capsule ringing', () => !!document.querySelector('[data-capsule][data-session="s-cart"][data-fresh]'));
+      await sleep(300);
+      const all = await page.eval(animations);
+      assert.ok(all.length > 0, 'no animation was noted');
+      assert.deepEqual(all.filter((a) => !(a.end <= 10)).map((a) => a.text), []);
     },
   },
 ];

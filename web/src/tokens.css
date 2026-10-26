@@ -221,6 +221,7 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after, ::backdrop, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
       animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
       animation-iteration-count: 1 !important;
       /* Not a 0.01 ms duration: transition-property defaults to all, so that would make every change of every element a transition. */
       transition: none !important;

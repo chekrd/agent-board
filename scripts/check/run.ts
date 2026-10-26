@@ -38,10 +38,14 @@ const looks = (sizes: number[][], inSchemes: readonly Look['scheme'][] = schemes
 
 const pattern = args.only ? new RegExp(args.only, 'i') : null;
 const chosen = checks.filter((c) => !pattern || pattern.test(c.name));
-const runs: [Check, Look][] = [
-  ...looks(wide).flatMap((look) => chosen.filter((c) => !c.narrow).map((c): [Check, Look] => [c, look])),
-  ...looks(narrow, args.matrix ? schemes : ['dark']).flatMap((look) => chosen.filter((c) => c.narrow).map((c): [Check, Look] => [c, look])),
-];
+// A check that asks for a motion runs with it, and once per look where the run has that motion too.
+const looksOf = (c: Check, look: Look): Look[] => {
+  if (!c.motion || c.motion === look.motion) return [look];
+  return (motions as readonly string[]).includes(c.motion) ? [] : [{ ...look, motion: c.motion }];
+};
+const runsIn = (all: Look[], narrowOnes: boolean) =>
+  all.flatMap((look) => chosen.filter((c) => !!c.narrow === narrowOnes).flatMap((c) => looksOf(c, look).map((l): [Check, Look] => [c, l])));
+const runs: [Check, Look][] = [...runsIn(looks(wide), false), ...runsIn(looks(narrow, args.matrix ? schemes : ['dark']), true)];
 if (!runs.length) {
   console.error(`no check matches ${args.only}`);
   process.exit(2);

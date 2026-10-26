@@ -46,8 +46,4 @@
   @keyframes deck-peek-in {
     from { transform: translateY(-20px); opacity: 0; }
   }
-
-  @media (prefers-reduced-motion: reduce) {
-    ::view-transition-old(deck-card), ::view-transition-new(deck-card) { animation-delay: 0s !important; }
-  }
 }
