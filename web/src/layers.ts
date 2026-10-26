@@ -1,9 +1,14 @@
 import type { SyntheticEvent } from 'react';
 
-// The `popover` attribute of each open popover.
-export const openPopovers = () => [...document.querySelectorAll<HTMLElement>(':popover-open')].map((p) => p.popover ?? 'auto');
+// The `popover` attribute of each open popover. A select's open picker light-dismisses as an auto popover does, and
+// counts as one.
+export const openPopovers = () => [
+  ...[...document.querySelectorAll<HTMLElement>(':popover-open')].map((p) => p.popover ?? 'auto'),
+  ...(document.querySelector('select:open') ? ['auto'] : []),
+];
 
-// The ⋯ menu is the one light-dismiss (auto) popover; toasts and hover cards are manual or hint popovers.
+// The ⋯ menu and New task's repository picker are the light-dismiss (auto) layers; toasts and hover cards are manual
+// or hint popovers.
 export const menuOpen = () => openPopovers().includes('auto');
 
 // C draws a transparent catcher under the ⋯ menu and under New task's repository picker, so a press beside either
@@ -14,7 +19,7 @@ export const menuOpen = () => openPopovers().includes('auto');
 let caught = false;
 
 function beside(target: EventTarget | null) {
-  if (!menuOpen() && !document.querySelector('select:open')) return false;
+  if (!menuOpen()) return false;
   const el = target instanceof Element ? target : null;
   if (el?.closest(':popover-open, select:open')) return false;
   return !el?.closest('button')?.popoverTargetElement?.matches(':popover-open');

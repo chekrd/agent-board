@@ -4116,4 +4116,34 @@ export const checks: Check[] = [
       assert.equal((await actions(mock)).length, 1);
     },
   },
+  {
+    name: 'shell-3 keys typed into New task\'s open repository picker on the Wall are the picker\'s: Esc closes only it, V, ? and Z do nothing, and a send held meanwhile still goes out',
+    async run({ page, mock }) {
+      const openPicker = async () => {
+        await page.click('#new-task-inline select');
+        await page.until('the picker, focused', () => !!document.querySelector('#new-task-inline select:open') && document.activeElement?.tagName === 'OPTION');
+      };
+      const where = () => ({ path: location.pathname, picker: !!document.querySelector('select:open'), modal: !!document.querySelector('dialog:modal') });
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      const pressed = Date.now();
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('v');
+      await page.until('the Wall', () => location.pathname === '/wall' && !!document.querySelector('#new-task-inline select'));
+      await openPicker();
+      for (const key of ['v', '?', 'z']) {
+        await page.key(key);
+        await sleep(200);
+        assert.deepEqual(await page.eval(where), { path: '/wall', picker: true, modal: false }, `${key} in the picker`);
+      }
+      assert.equal((await page.eval(toastsOf, 'undo'))?.length, 1, 'z took back the held send');
+      await page.key('Escape');
+      await page.until('the picker to close', () => !document.querySelector('select:open'));
+      await sleep(200);
+      assert.deepEqual(await page.eval(where), { path: '/wall', picker: false, modal: false });
+      const [sent] = await logged(mock, 'the held answer', (e) => e.action === 'answer', POSTED_MS - (Date.now() - pressed));
+      assert.deepEqual([sent.sessionId, sent.body.choice, sent.status], ['s-cart', 'Keep the account cart', 204]);
+    },
+  },
 ];

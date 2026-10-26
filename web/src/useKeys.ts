@@ -12,7 +12,8 @@ import { undo } from './sends.ts';
 const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"])';
 const CONTROL = 'button, a[href], input, select, summary';
 
-export const isEditable = (el: EventTarget | null) => el instanceof Element && el.matches(EDITABLE);
+// An open picker puts focus on one of its options.
+export const isEditable = (el: EventTarget | null) => el instanceof Element && !!el.closest(EDITABLE);
 
 function target(el: EventTarget | null): Target {
   const at = el instanceof Element ? el : null;
