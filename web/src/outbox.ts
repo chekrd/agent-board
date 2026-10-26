@@ -36,12 +36,16 @@ export interface Item<R = unknown> extends Request {
   // The session as the press found it, to tell from a later snapshot that the send took.
   status: SessionStatus;
   lastTurn: string | null;
+  // When the board last answered the session, by the press.
+  answeredAt: number | null;
   restore: R;
   dueAt: number;
   state: State;
   sentAt?: number;
   error?: string;
   code?: string;
+  // Left by a page that went away before it knew whether the post landed; `dueAt` is when it counts as not sent.
+  adopted?: true;
 }
 
 export interface Outgoing {
@@ -62,7 +66,9 @@ export interface Timers {
 
 export const NO_ANSWER_MS = 30_000;
 export const CONFIRM_MS = 15_000;
+export const ADOPTED_MS = 3000;
 export const NO_ANSWER = "No answer from Agent Board; check the session's terminal before sending again";
+export const NOT_SENT = 'the page closed before it went out';
 
 export const active = (i: Item) => i.state === 'held' || i.state === 'sending' || i.state === 'waiting';
 
@@ -103,6 +109,7 @@ function fold(due: readonly Item[]): Folded[] {
 //                  ├─400─▶ failed   ├─network error─▶ waiting ─reconnected()─▶ sending   └─30 s, no answer─▶ failed
 // A held item the snapshot shows the server would refuse fails unposted, or is `answered` when another window
 // answered it. Failed and answered items stay until take(), for the page to say so and restore from `restore`.
+// A page going away flushes what it has not posted; a page that comes after adopts what it left unconfirmed.
 export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<unknown>; onChange?: () => void; holdMs?: number; timers?: Partial<Timers> }) {
   const holdMs = o.holdMs ?? 5000;
   const now = () => (o.timers?.now ?? Date.now)();
@@ -226,6 +233,38 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
     return open !== null && open !== i.key;
   }
 
+  // The newest snapshot's sessions, which the adopted items are judged against when their time is up.
+  let latest: readonly Session[] | null = null;
+
+  // Whether an adopted item reached the server, as far as a snapshot tells: its decision was answered, by it or from
+  // elsewhere; a dismissal's question closed; or the board answered a note's session after the press, or the session
+  // moved on.
+  function wentOut(i: Item<R>, s: Session) {
+    if (i.action === 'dismiss') return decisionKey(s) !== i.key;
+    if (i.key !== null) return s.answered?.key === i.key;
+    return (s.answered?.at ?? null) !== i.answeredAt || (s.status !== i.status && s.status !== 'idle') || s.lastTurn !== i.lastTurn;
+  }
+
+  // What became of each adopted item, as a snapshot shows it: it went out, the server would refuse it now, or, while
+  // the server would still take it, nothing reached the server by its `dueAt`.
+  function judge(sessions: readonly Session[]) {
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    let changed = false;
+    const next = items.flatMap((i) => {
+      if (!i.adopted || i.state !== 'sent') return [i];
+      const s = byId.get(i.sessionId);
+      if (s && wentOut(i, s)) {
+        changed = true;
+        return [];
+      }
+      const v = verdict(i, s) ?? (now() >= i.dueAt ? { state: 'failed' as const, error: NOT_SENT, code: 'not-sent' } : null);
+      if (!v) return [i];
+      changed = true;
+      return [{ ...i, ...v }];
+    });
+    if (changed) set(next);
+  }
+
   return {
     items: () => items,
 
@@ -236,7 +275,7 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
         ...request, body, id, sessionId: s.id,
         key: request.action === 'answer-menu' ? `m:${body.toolUseId}` : (body.key ?? null),
         typed: request.action === 'answer' && !body.choice,
-        command: !!request.command, status: s.status, lastTurn: s.lastTurn, restore, dueAt: now() + holdMs, state: 'held',
+        command: !!request.command, status: s.status, lastTurn: s.lastTurn, answeredAt: s.answered?.at ?? null, restore, dueAt: now() + holdMs, state: 'held',
       };
       set([...items, item]);
       schedule(id, holdMs, () => send(id));
@@ -263,6 +302,8 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
     // The early check, on every snapshot: what the server would refuse fails here, with nothing posted. Commands
     // are typed before any check, so none is held back. Returns the items it failed or found answered.
     reconcile(sessions: readonly Session[]) {
+      latest = sessions;
+      judge(sessions);
       const byId = new Map(sessions.map((s) => [s.id, s]));
       const judged = items.map((i) => {
         const v = i.command || (i.state !== 'held' && i.state !== 'waiting') ? null : verdict(i, byId.get(i.sessionId));
@@ -278,7 +319,7 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
 
     confirm(sessions: readonly Session[]) {
       const byId = new Map(sessions.map((s) => [s.id, s]));
-      const done = items.filter((i) => i.state === 'sent' && took(i, byId.get(i.sessionId)));
+      const done = items.filter((i) => i.state === 'sent' && !i.adopted && took(i, byId.get(i.sessionId)));
       for (const i of done) clear(i.id);
       if (done.length) set(items.filter((i) => !done.includes(i)));
     },
@@ -296,15 +337,40 @@ export function createOutbox<R = unknown>(o: { post: (out: Outgoing) => Promise<
     },
 
     // The page is going away: hands every item not posted yet to `send` once, a session's notes folded in. That
-    // includes one queued behind its session's post under way, whose turn would never come.
-    flush(send: (out: Folded) => void) {
+    // includes one queued behind its session's post under way, whose turn would never come. A page that stays, as a
+    // frozen one that resumes, hears back: a post that failed leaves its items waiting or failed, as any other does.
+    flush(send: (out: Folded) => unknown) {
       const due = items.filter((i) => i.state === 'held' || i.state === 'waiting' || (i.state === 'sending' && !posting.has(i.id)));
       if (!due.length) return;
-      for (const out of fold(due)) send(out);
+      const posts = fold(due).map((out) => [out, send(out)] as const);
       const at = now();
       for (const i of due) clear(i.id);
       set(items.flatMap((i) => (!due.includes(i) ? [i] : i.command ? [] : [{ ...i, state: 'sent' as const, sentAt: at }])));
       for (const i of due) if (!i.command) schedule(i.id, CONFIRM_MS, () => drop(i.id));
+      for (const [out, posted] of posts) {
+        Promise.resolve(posted).catch((err) => {
+          for (const id of out.ids) {
+            if (find(id)?.state !== 'sent') continue;
+            clear(id);
+            refused(id, err);
+          }
+        });
+      }
+    },
+
+    // Takes over what a page that went away left unconfirmed, as its storage kept it. None of it posts again: each
+    // item waits as a send not yet confirmed, out of the deck, until the snapshots show what became of it, and one the
+    // server would still take by ADOPTED_MS after it was due never reached it.
+    adopt(list: readonly Item<R>[]) {
+      if (!list.length) return;
+      const at = now();
+      const adopted = list.map((i) => ({ ...i, id: `send-${++seq}`, state: 'sent' as const, sentAt: at, dueAt: Math.max(i.dueAt, at) + ADOPTED_MS, adopted: true as const }));
+      set([...items, ...adopted]);
+      for (const i of adopted) {
+        later(() => {
+          if (latest) judge(latest);
+        }, i.dueAt - at);
+      }
     },
 
     idle() {

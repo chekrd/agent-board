@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
 import { setImmediate as settle } from 'node:timers/promises';
 import { deckOf, kindOf } from './deck.ts';
-import { createOutbox, NO_ANSWER, type Folded, type Outgoing, type Request } from './outbox.ts';
+import { ADOPTED_MS, CONFIRM_MS, createOutbox, NO_ANSWER, NOT_SENT, type Folded, type Outgoing, type Request } from './outbox.ts';
 import { menu, question, session, turn } from './testing.ts';
 import type { Session } from './types.ts';
 
@@ -383,4 +383,62 @@ test('every change is reported, so a view of the items can re-render', (t) => {
   box.hold(cart, answer('q:q1', { choice: 'Keep' }), '');
   box.undo();
   assert.equal(changes(), 2);
+});
+
+test('a page that stays after a flush, as a frozen one that resumes, hears back: a post that failed leaves its item waiting or failed, not sent', async (t) => {
+  const { box, posts, tick } = outbox(t);
+  box.hold(cart, answer('q:q1', { choice: 'Keep' }), 'cart draft');
+  box.hold(group, answer('s:t1', { choice: 'Ship' }), 'group draft');
+  const flushed: ((err: unknown) => void)[] = [];
+  box.flush(() => new Promise((_, fail) => flushed.push(fail)));
+  assert.deepEqual(box.items().map((i) => i.state), ['sent', 'sent']);
+  flushed[0](new TypeError('Failed to fetch'));
+  flushed[1](refusal('this question is no longer open', 'stale'));
+  await settle();
+  tick(CONFIRM_MS);
+  assert.deepEqual(box.items().map((i) => [i.state, i.restore]), [['waiting', 'cart draft'], ['failed', 'group draft']]);
+  box.reconnected();
+  assert.deepEqual(posts.map((p) => p.out.sessionId), ['cart'], 'the waiting one goes out again once the board is back');
+});
+
+test('what a page that went away left unconfirmed is adopted: out of the deck and never posted again, gone once a snapshot shows it went out, and failed with what it took once the server would refuse it or, still open 3 s after it was due, never got it', (t) => {
+  const { box, posts, tick, states } = outbox(t);
+  const gone = createOutbox<string>({ post: () => new Promise(() => {}) });
+  gone.hold(cart, answer('q:q1', { choice: 'Keep', text: 'and log it' }), 'cart draft');
+  gone.hold(group, note('Ship it after lunch'), 'group draft');
+  gone.hold(hooks, menuAnswer, 'hooks draft');
+  gone.hold(reviews, note('Bump the version'), 'reviews draft');
+  gone.flush(() => {});
+  const asks = session('asks', { status: 'waiting', question: question('q7') });
+  gone.hold(asks, answer('q:q7', { choice: 'Merge' }), 'asks draft');
+  box.adopt(gone.items());
+  assert.deepEqual(states(), ['sent', 'sent', 'sent', 'sent', 'sent']);
+  assert.deepEqual([...box.busy()].toSorted(), ['asks', 'cart', 'group', 'hooks', 'reviews']);
+  box.flush(() => assert.fail('an adopted item was flushed'));
+  box.reconnected();
+  box.sendNow('cart');
+
+  box.reconcile([
+    { ...cart, answered: { key: 'q:q1', text: 'Keep', at: 5 } },
+    group,
+    hooks,
+    { ...reviews, status: 'working', lastTurn: 't2' },
+    { ...asks, question: question('q8') },
+  ]);
+  assert.deepEqual(box.items().map((i) => [i.restore, i.state, i.code]), [
+    ['group draft', 'sent', undefined],
+    ['hooks draft', 'sent', undefined],
+    ['asks draft', 'failed', 'stale'],
+  ], 'the answer and the note that went out are gone, and the answer to a question asked again is refused at once');
+  box.confirm([{ ...group, status: 'working' }, { ...hooks, menu: null }]);
+  assert.equal(box.items().length, 3, 'confirm does not judge what was adopted');
+
+  tick(ADOPTED_MS + 5000);
+  assert.deepEqual(box.items().map((i) => [i.restore, i.state, i.error]), [
+    ['group draft', 'failed', NOT_SENT],
+    ['hooks draft', 'failed', NOT_SENT],
+    ['asks draft', 'failed', 'this question is no longer open'],
+  ]);
+  tick(60_000);
+  assert.equal(posts.length, 0);
 });

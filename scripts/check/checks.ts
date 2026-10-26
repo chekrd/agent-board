@@ -339,6 +339,27 @@ const watchDeals = () => {
 };
 const dealt = () => (window as unknown as { e2eDeals?: string[] }).e2eDeals ?? [];
 
+// Writes `text` in s-cart's reply box and sends it with Enter, which deals the card and brings up s-hooks.
+async function replyOnCart(page: Page, mock: Mock, text: string) {
+  await openQueue(page, mock);
+  await ready(page, 's-cart');
+  await page.key('w');
+  await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+  await page.type(text);
+  await page.key('Enter');
+  await page.until('s-hooks at the front', frontIs, 's-hooks');
+}
+
+// A reply to s-cart the page never knew to have gone out comes back as Not sent, and Show brings up its card with the
+// text in the reply box.
+async function cartNotSent(page: Page, text: string) {
+  const [error] = await until('the Not sent toast', () => page.eval(toastsOf, 'error'), 15_000);
+  assert.equal(error.text, 'Not sent to Merge guest cart on login: the page closed before it went out\nShow');
+  await page.click('[data-toast] button', 'Show');
+  await page.until('s-cart at the front', frontIs, 's-cart');
+  assert.equal((await page.eval(replyIn, '[data-card]'))?.value, text);
+}
+
 // A one-pixel PNG on disk, for a file chooser, in a folder of its own that `remove` deletes.
 function pngOnDisk() {
   const dir = mkdtempSync(join(tmpdir(), 'agent-board-png-'));
@@ -4027,6 +4048,72 @@ export const checks: Check[] = [
       assert.deepEqual(await page.eval(() => [location.pathname, !!document.querySelector('#task-sheet:modal')]), ['/s/s-astro/overview', true]);
       await sleep(Math.max(0, HELD_MS - (Date.now() - clicked)));
       assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'client-2.landed a reload while a reply is held flushes it, and the page after the reload, seeing it answered, brings nothing back',
+    async run({ page, mock }) {
+      await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
+      const pressed = Date.now();
+      await page.goto(`${mock.url}/`);
+      const [sent] = await logged(mock, 'the reply the reload flushed', (e) => e.action === 'answer');
+      assert.deepEqual([sent.sessionId, sent.status, sent.body.text], ['s-cart', 204, 'Merge them, but keep the account cart quantities']);
+      await page.until('the board', () => !!document.querySelector('[data-card]'));
+      await sleep(Math.max(0, 9000 - (Date.now() - pressed)));
+      assert.equal(await page.eval(toastsOf, 'error'), null);
+      assert.deepEqual(await page.eval(() => [sessionStorage.getItem('agent-board:sends'), sessionStorage.getItem('agent-board:drafts')]), ['[]', '[]']);
+      assert.equal((await actions(mock)).length, 1);
+    },
+  },
+  {
+    name: 'client-2.refused a reply held through a reload whose flushed post the server refuses comes back after the reload as Not sent, with its text in the reply box, and nothing posts again',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock }) {
+      await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
+      await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
+      await sleep(500);
+      await page.goto(`${mock.url}/`);
+      const [refused] = await logged(mock, 'the refused post', (e) => e.action === 'answer');
+      assert.deepEqual([refused.sessionId, refused.status, refused.code], ['s-cart', 400, 'stale']);
+      await cartNotSent(page, 'Merge them, but keep the account cart quantities');
+      assert.equal((await actions(mock)).length, 1);
+    },
+  },
+  {
+    name: 'client-2.unreachable a reply waiting for an unreachable board through a reload comes back as Not sent once the board is back, with its text in the reply box, and never posts',
+    expectedErrors: [/WebSocket/, /ERR_/],
+    async run({ page, mock }) {
+      await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
+      await mock.post('/mock/drop', { ms: 9000 });
+      try {
+        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Agent Board')), 9000);
+        await page.goto(`${mock.url}/`).catch(() => {});
+      } finally {
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 15_000);
+      }
+      await page.goto(`${mock.url}/`);
+      await cartNotSent(page, 'Merge them, but keep the account cart quantities');
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'client-2.freeze a reply waiting for an unreachable board when the page is frozen and resumes still goes out once the board is back',
+    expectedErrors: [/WebSocket/, /ERR_/],
+    async run({ page, mock }) {
+      await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
+      await mock.post('/mock/drop', { ms: 7000 });
+      try {
+        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Agent Board')), 9000);
+        await page.lifecycle('frozen');
+        await sleep(300);
+        await page.lifecycle('active');
+      } finally {
+        await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 15_000);
+      }
+      const [sent] = await logged(mock, 'the reply, once the board is back', (e) => e.action === 'answer', 10_000);
+      assert.deepEqual([sent.sessionId, sent.status, sent.body.text], ['s-cart', 204, 'Merge them, but keep the account cart quantities']);
+      await sleep(1000);
+      assert.equal((await actions(mock)).length, 1);
     },
   },
 ];

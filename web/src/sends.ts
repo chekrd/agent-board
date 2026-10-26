@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { sessionAction } from './api.ts';
-import { putBack, release, takeDraft, type Draft } from './components/Composer.tsx';
+import { keptBack, keptDraft, putBack, release, takeDraft, type Draft, type KeptDraft } from './components/Composer.tsx';
 import { dismissToast, toast } from './components/Toasts.tsx';
-import { createOutbox, NO_ANSWER_MS, type Item, type Outgoing, type Request } from './outbox.ts';
+import { active, createOutbox, NO_ANSWER_MS, type Item, type Outgoing, type Request } from './outbox.ts';
 import { queue } from './queue.ts';
 import { go, openSheet } from './router.ts';
 import type { Session } from './types.ts';
@@ -34,6 +34,31 @@ export interface Restore {
 
 const subscribers = new Set<() => void>();
 
+const KEPT = 'agent-board:sends';
+
+type Kept = Omit<Item<Restore>, 'restore'> & { restore: Omit<Restore, 'draft'> & { draft: KeptDraft | null } };
+
+// What the outbox holds that the server may not have yet, a command aside, mirrored to sessionStorage: a page that goes
+// away before its sends land leaves them to the next, which tells from the snapshots whether each went out.
+function keep() {
+  const kept: Kept[] = sends.items().filter((i) => !i.command && (active(i) || i.state === 'sent'))
+    .map((i) => ({ ...i, restore: { ...i.restore, draft: i.restore.draft && keptDraft(i.restore.draft) } }));
+  try {
+    sessionStorage.setItem(KEPT, JSON.stringify(kept));
+  } catch {
+    // A page without storage keeps them in memory only.
+  }
+}
+
+function kept(): Item<Restore>[] {
+  try {
+    const list = JSON.parse(sessionStorage.getItem(KEPT) ?? '[]') as Kept[];
+    return list.map((i) => ({ ...i, restore: { ...i.restore, draft: i.restore.draft && keptBack(i.restore.draft) } }));
+  } catch {
+    return [];
+  }
+}
+
 // The page's outbox. Every answering request goes through hold(); opening a session's terminal posts what it holds
 // first, so a held answer is not pasted into a terminal someone is typing in.
 export const sends = createOutbox<Restore>({
@@ -41,6 +66,7 @@ export const sends = createOutbox<Restore>({
   holdMs: HOLD_MS,
   onChange: () => {
     review();
+    keep();
     for (const fn of subscribers) fn();
   },
 });
@@ -131,10 +157,12 @@ export function undo(id?: string) {
 
 // The page is going away or being frozen: whatever has not been posted yet goes now. Not on visibilitychange,
 // since whoever comes back within 5 s can still take it back.
-const flush = () => sends.flush((o) => void post(o).catch(() => {}));
+const flush = () => sends.flush(post);
 
 addEventListener('pagehide', flush);
 document.addEventListener('freeze', flush);
+
+sends.adopt(kept());
 
 const subscribe = (fn: () => void) => {
   subscribers.add(fn);

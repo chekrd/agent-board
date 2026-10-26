@@ -248,6 +248,8 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
         await cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
       },
       type: (text: string) => cdp('Input.insertText', { text }),
+      // Freezes the page, as a browser does to a tab in the background, or lets it run again.
+      lifecycle: (state: 'frozen' | 'active') => cdp('Page.setWebLifecycleState', { state }),
       async shot(file: string) {
         const { data } = await cdp('Page.captureScreenshot', { format: 'png' });
         await mkdir(dirname(file), { recursive: true });

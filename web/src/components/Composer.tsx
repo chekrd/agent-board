@@ -22,12 +22,23 @@ export interface Draft {
 const STORED = 'agent-board:drafts';
 const EMPTY: Draft = { text: '', files: [] };
 
-type Kept = [string, { text: string; files: { name: string; path: string }[] }][];
+// A draft as storage keeps it: the text and the files that finished uploading.
+export interface KeptDraft {
+  text: string;
+  files: { name: string; path: string }[];
+}
+
+export const keptDraft = (d: Draft): KeptDraft => ({ text: d.text, files: d.files.flatMap((f) => (f.path ? [{ name: f.name, path: f.path }] : [])) });
+
+export const keptBack = (d: KeptDraft): Draft => ({
+  text: d.text,
+  files: d.files.map((f) => ({ id: crypto.randomUUID(), name: f.name, path: f.path, preview: null, error: null })),
+});
 
 function stored(): [string, Draft][] {
   try {
-    const kept = JSON.parse(sessionStorage.getItem(STORED) ?? '[]') as Kept;
-    return kept.map(([id, d]) => [id, { text: d.text, files: d.files.map((f) => ({ id: crypto.randomUUID(), name: f.name, path: f.path, preview: null, error: null })) }]);
+    const kept = JSON.parse(sessionStorage.getItem(STORED) ?? '[]') as [string, KeptDraft][];
+    return kept.map(([id, d]) => [id, keptBack(d)]);
   } catch {
     return [];
   }
@@ -39,9 +50,9 @@ let drafts = new Map<string, Draft>(stored());
 const subscribers = new Set<() => void>();
 
 function save() {
-  const kept: Kept = [...drafts].flatMap(([id, d]): Kept => {
-    const files = d.files.flatMap((f) => (f.path ? [{ name: f.name, path: f.path }] : []));
-    return d.text || files.length ? [[id, { text: d.text, files }]] : [];
+  const kept = [...drafts].flatMap(([id, d]): [string, KeptDraft][] => {
+    const k = keptDraft(d);
+    return k.text || k.files.length ? [[id, k]] : [];
   });
   try {
     sessionStorage.setItem(STORED, JSON.stringify(kept));
