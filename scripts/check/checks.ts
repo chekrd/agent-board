@@ -2861,6 +2861,26 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P5.2.n16 commands skip the early check: /compact held on s-cart goes out although a new question replaced the card\'s decision meanwhile',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('/compact');
+      await page.until('the command list', () => [...document.querySelectorAll('[data-card] [role="option"] code')].some((c) => c.textContent === '/compact'));
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await mock.post('/mock/patch', { id: 's-cart', patch: { question: { toolUseId: 'toolu_02', title: 'Merge the carts for app logins too?', options: [{ label: 'Yes' }, { label: 'No' }] } } });
+      // The card keeps its decision while focus is in its reply box.
+      await page.click('[data-card] h1');
+      await page.until('the new decision on the card', () => document.querySelector<HTMLElement>('[data-card]')?.dataset.key === 'q:toolu_02');
+      const [sent] = await logged(mock, 'the command', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([sent.status, sent.body], [204, { key: 'q:toolu_01Cart', text: '/compact' }]);
+      assert.equal(await page.eval(toastsOf, 'error'), null);
+    },
+  },
+  {
     name: 'P5.2.undo-sheet the toast\'s Undo takes back a message sent from a sheet over the queue: the text is back in its reply box, nothing goes out, and the card being read stays, with no word that anything stopped waiting',
     async run({ page, mock }) {
       await openQueue(page, mock);
