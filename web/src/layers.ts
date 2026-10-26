@@ -42,3 +42,16 @@ addEventListener('pointercancel', release, true);
 export function keepUnderLayer(e: SyntheticEvent) {
   if (caught) e.preventDefault();
 }
+
+// A double click is aimed at one thing. When its first click took that away, as an Undo takes its toast or its send
+// capsule, the clicks after it would press whatever came under the pointer, a peek or another capsule, so they are
+// swallowed.
+let firstClick: Element | null = null;
+addEventListener('click', (e) => {
+  if (e.detail > 1 && firstClick && !firstClick.isConnected) {
+    e.preventDefault();
+    e.stopPropagation();
+  } else if (e.detail <= 1) {
+    firstClick = e.target instanceof Element ? e.target : null;
+  }
+}, true);

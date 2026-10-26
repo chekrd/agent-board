@@ -4342,4 +4342,48 @@ export const checks: Check[] = [
       await page.until('the queue', () => location.pathname === '/' && !document.querySelector('#task-sheet[open]'));
     },
   },
+  {
+    name: 'shell-6 with reduced motion a double click on a toast\'s Undo brings the card back and stays on it, as the second click does not press the peek that came under it',
+    motion: 'reduce',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      const undo = await page.until('the toast\'s Undo', () => {
+        const b = [...document.querySelectorAll<HTMLElement>('[data-toast][data-kind="undo"] button')].find((x) => x.textContent?.startsWith('Undo'));
+        const r = b?.getBoundingClientRect();
+        return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+      });
+      await page.pointAt(undo.x, undo.y, true);
+      await sleep(110);
+      assert.equal(await page.eval((x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('[data-peek]'), undo.x, undo.y), true, 'no peek under the Undo once it went');
+      await page.pointAt(undo.x, undo.y, true, 2);
+      await sleep(400);
+      assert.equal(await page.eval(frontIs, 's-cart'), true);
+      await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'shell-6.dock a double click on a send capsule\'s Undo takes the send back, and the second click does not open the capsule that came under it',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.until('the deal to end', () => !document.documentElement.dataset.deal);
+      const undo = await page.until('the capsule\'s Undo', () => {
+        const b = [...document.querySelectorAll<HTMLElement>('[data-capsule][data-session="s-cart"] button')].find((x) => x.textContent === 'Undo');
+        const r = b?.getBoundingClientRect();
+        return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+      });
+      await page.pointAt(undo.x, undo.y, true);
+      await sleep(110);
+      await page.pointAt(undo.x, undo.y, true, 2);
+      await sleep(600);
+      assert.deepEqual(await page.eval(() => [location.pathname, !!document.querySelector('#task-sheet[open]')]), ['/', false]);
+      assert.equal(await page.eval(frontIs, 's-cart'), true);
+    },
+  },
 ];
