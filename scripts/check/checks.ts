@@ -3898,10 +3898,13 @@ export const checks: Check[] = [
       assert.deepEqual({ ...(await page.eval(replyIn, '[data-card]')), focused: undefined }, { value: 'only if stock allows', files: [], focused: undefined });
       assert.deepEqual((await capsules()).filter((c) => c.state !== 'working').map((c) => [c.session, c.state]), [['s-hooks', 'held']]);
 
+      // The answer goes out 5 s after the press and the mock then types the menu, which can outlast a 5 s wait that
+      // starts this soon after the press, as it does when no deal or Undo runs an animation.
+      await sleep(Math.max(0, HELD_MS - 1000 - (Date.now() - pressed)));
       await page.until('Sent on the capsule', () => {
         const c = document.querySelector<HTMLElement>('[data-capsule][data-session="s-hooks"]');
         return c?.dataset.state === 'sent' && c.innerText.includes('Sent');
-      }, );
+      });
       assert.ok(Date.now() - pressed >= 4500, 'the send went out before its 5 s');
       await page.until('the working capsule, fresh', () => {
         const c = document.querySelector<HTMLElement>('[data-capsule][data-session="s-hooks"]');
