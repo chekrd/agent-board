@@ -27,6 +27,15 @@
     [data-level="high"] > & { color: var(--danger); }
   }
 
+  /* Below 1500 px the meter needs the room, so the share's colour alone tells the level. */
+  @media (max-width: 1500px) {
+    .track { display: none; }
+    .percent { color: var(--level); }
+    [data-level="low"] > .percent { color: var(--text-2); }
+  }
+
+  .reset { font-size: 12px; color: var(--muted); }
+
   @media (max-width: 760px) {
     .usage { gap: 8px; }
     .track { display: none; }

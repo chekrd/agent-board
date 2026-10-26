@@ -69,3 +69,7 @@ export function attentionChangesAt(s: Session) {
   const at = answeredMenuAt(s);
   return at === null ? null : at + MENU_GRACE_MS;
 }
+
+// Every time the board shows is on the 24-hour clock, whatever the locale's habit: 14:05, with the weekday when asked.
+export const clock = (at: number, weekday = false) =>
+  new Date(at).toLocaleString([], { ...(weekday && { weekday: 'short' as const }), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });

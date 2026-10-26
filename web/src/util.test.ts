@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
-import { attentionChangesAt, attentionOf, decisionOf, menuStuck } from './util.ts';
+import { attentionChangesAt, attentionOf, clock, decisionOf, menuStuck } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -33,4 +33,11 @@ test('a menu answered from the board counts as working for 10 s, then needs focu
   const unanswered = { ...answered, answered: { key: 'q:other', text: 'x', at: 100_000 } };
   assert.equal(attentionOf(unanswered, 100_000), 'decide');
   assert.equal(attentionChangesAt(unanswered), null);
+});
+
+test('clock shows a time on the 24-hour clock, with the weekday when asked', () => {
+  const at = new Date(2026, 9, 26, 14, 5).getTime();
+  assert.equal(clock(at), '14:05');
+  assert.equal(clock(new Date(2026, 9, 26, 0, 7).getTime()), '00:07');
+  assert.match(clock(at, true), /^Mon,? 14:05$/);
 });

@@ -112,7 +112,7 @@
   @media (max-width: 760px) {
     .bar {
       grid-template-columns: minmax(0, 1fr) auto;
-      grid-template-areas: "start end" "middle usage";
+      grid-template-areas: "start end" "middle middle" "usage usage";
       row-gap: 2px;
       height: auto;
       padding: 10px 16px 4px;

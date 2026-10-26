@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store.ts';
 import type { Usage as Reading, UsageWindow } from '../types.ts';
+import { clock } from '../util.ts';
 import styles from './Usage.module.css';
 
 const WINDOWS = [
-  { key: 'fiveHour', label: '5h', name: '5-hour limit', when: { hour: '2-digit', minute: '2-digit' } },
-  { key: 'sevenDay', label: '7d', name: 'Weekly limit', when: { weekday: 'short', hour: '2-digit', minute: '2-digit' } },
+  { key: 'fiveHour', label: '5h', name: '5-hour limit', weekday: false },
+  { key: 'sevenDay', label: '7d', name: 'Weekly limit', weekday: true },
 ] as const;
+
+// The reset as the top bar shows it: the time alone when it is today, with the weekday otherwise.
+function resetLabel(at: number, now: number) {
+  return clock(at, new Date(at).toDateString() !== new Date(now).toDateString());
+}
 
 const levelOf = (percent: number) => (percent >= 80 ? 'high' : percent >= 50 ? 'mid' : 'low');
 
@@ -28,7 +34,7 @@ function useNow(usage: Reading | null) {
 export function Usage() {
   const { usage } = useStore();
   const now = useNow(usage);
-  const read = usage ? new Date(usage.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  const read = usage ? clock(usage.at) : '';
   return (
     <div className={styles.usage} role="group" aria-label="Plan usage limits" data-usage>
       {WINDOWS.map((w) => {
@@ -44,7 +50,7 @@ export function Usage() {
         }
         const reset = win.resetsAt !== null && win.resetsAt <= now;
         const percent = reset ? 0 : Math.round(win.percent);
-        const at = win.resetsAt && new Date(win.resetsAt).toLocaleString([], w.when);
+        const at = win.resetsAt && clock(win.resetsAt, w.weekday);
         const title = reset
           ? `${w.name}: reset at ${at}, with no reading since`
           : `${w.name}: ${percent}% used${at ? ` · resets ${at}` : ''} · read at ${read}`;
@@ -55,6 +61,7 @@ export function Usage() {
               <span className={styles.fill} style={{ width: `${Math.min(percent, 100)}%` }} />
             </span>
             <span className={styles.percent}>{percent}%</span>
+            {!reset && win.resetsAt !== null && <span className={styles.reset} data-reset aria-hidden>↻ {resetLabel(win.resetsAt, now)}</span>}
           </span>
         );
       })}

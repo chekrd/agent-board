@@ -3,6 +3,7 @@ import { useQueue } from '../queue.ts';
 import type { Route } from '../router.ts';
 import { reloadNow, useStore, type Link } from '../store.ts';
 import type { Session } from '../types.ts';
+import { clock } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import { Meter } from './Meter.tsx';
 import { openNewTask } from './NewTaskForm.tsx';
@@ -12,13 +13,12 @@ import { openRepos } from './WorkspaceDialog.tsx';
 
 const LINK_TEXT: Record<Link, string> = { connecting: 'Connecting…', live: 'Live', reconnecting: 'Reconnecting…' };
 
-const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function ConnectionPill({ link }: { link: Link }) {
   const [lostAt, setLostAt] = useState(0);
   useEffect(() => setLostAt(link === 'reconnecting' ? Date.now() : 0), [link]);
   const title = link === 'reconnecting' && lostAt
-    ? `Lost the connection to Agent Board at ${time(lostAt)}; what you see may be out of date. Answers you send wait and go out once it is back.`
+    ? `Lost the connection to Agent Board at ${clock(lostAt)}; what you see may be out of date. Answers you send wait and go out once it is back.`
     : undefined;
   return (
     <span className={styles.link} data-link={link} title={title}>

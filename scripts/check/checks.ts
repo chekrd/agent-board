@@ -4458,22 +4458,24 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'usage the top bar shows the 5-hour and weekly limits on the queue and the Wall, each with its share, its level and its reset time on hover; a new reading shows at once, a passed reset shows 0 % and no reading shows –',
+    name: 'usage the top bar shows the 5-hour and weekly limits on the queue and the Wall, each with its share, its level and its reset time, the weekday too when it is not today; a new reading shows at once, a passed reset shows 0 % and no reading shows –',
     async run({ page, mock, shot }) {
       const usage = () => [...document.querySelectorAll<HTMLElement>('header [data-usage] [data-window]')].map((w) => ({
         window: w.dataset.window, text: w.innerText.replace(/\s+/g, ' ').trim(), level: w.dataset.level ?? null, title: w.title,
       }));
       await openQueue(page, mock);
       const queue = await page.eval(usage);
-      assert.deepEqual(queue.map((w) => ({ window: w.window, text: w.text, level: w.level })), [{ window: '5h', text: '5h 34%', level: 'low' }, { window: '7d', text: '7d 61%', level: 'mid' }]);
-      assert.match(queue[0].title, /^5-hour limit: 34% used · resets \d\d:\d\d(?: [AP]M)? · read at \d\d:\d\d(?: [AP]M)?$/);
-      assert.match(queue[1].title, /^Weekly limit: 61% used · resets \w+ \d\d:\d\d(?: [AP]M)? · read at \d\d:\d\d(?: [AP]M)?$/);
+      assert.deepEqual(queue.map((w) => ({ window: w.window, level: w.level })), [{ window: '5h', level: 'low' }, { window: '7d', level: 'mid' }]);
+      assert.match(queue[0].text, /^5h 34% ↻ (?:\w+ )?\d\d:\d\d$/);
+      assert.match(queue[1].text, /^7d 61% ↻ \w+ \d\d:\d\d$/);
+      assert.match(queue[0].title, /^5-hour limit: 34% used · resets \d\d:\d\d · read at \d\d:\d\d$/);
+      assert.match(queue[1].title, /^Weekly limit: 61% used · resets \w+ \d\d:\d\d · read at \d\d:\d\d$/);
       assert.equal(await page.eval(whole, 'header [data-usage]'), true, 'the usage limits do not show whole');
       await shot('usage');
 
       await page.goto(`${mock.url}/wall`);
       await page.until('the Wall', () => !!document.querySelector('[data-tile]'));
-      assert.deepEqual((await page.eval(usage)).map((w) => w.text), ['5h 34%', '7d 61%']);
+      assert.deepEqual((await page.eval(usage)).map((w) => w.text.split(' ↻')[0]), ['5h 34%', '7d 61%']);
 
       const now = Date.now();
       await mock.post('/mock/usage', { usage: { fiveHour: { percent: 87.4, resetsAt: now - 1000 }, sevenDay: { percent: 92.6, resetsAt: now + 3_600_000 }, at: now } });
@@ -4481,8 +4483,10 @@ export const checks: Check[] = [
         const w = [...document.querySelectorAll<HTMLElement>('header [data-usage] [data-window]')];
         return w[1]?.innerText.includes('93%') ? w.map((x) => ({ text: x.innerText.replace(/\s+/g, ' ').trim(), level: x.dataset.level, title: x.title })) : null;
       });
-      assert.deepEqual(after.map((w) => ({ text: w.text, level: w.level })), [{ text: '5h 0%', level: 'low' }, { text: '7d 93%', level: 'high' }]);
-      assert.match(after[0].title, /^5-hour limit: reset at \d\d:\d\d(?: [AP]M)?, with no reading since$/);
+      assert.deepEqual(after.map((w) => ({ text: w.text.split(' ↻')[0], level: w.level })), [{ text: '5h 0%', level: 'low' }, { text: '7d 93%', level: 'high' }]);
+      assert.equal(after[0].text, '5h 0%', 'a passed reset still shows its time');
+      assert.match(after[1].text, /^7d 93% ↻ (?:\w+ )?\d\d:\d\d$/);
+      assert.match(after[0].title, /^5-hour limit: reset at \d\d:\d\d, with no reading since$/);
 
       await mock.post('/mock/usage', { usage: null });
       await page.goto(`${mock.url}/wall`);
@@ -4493,12 +4497,13 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'usage.narrow the top bar shows both limits as shares without their bars, whole, beside the actions',
+    name: 'usage.narrow the top bar shows both limits as shares with their reset times and without their bars, whole, beside the actions',
     narrow: true,
     async run({ page, mock }) {
       await openQueue(page, mock);
       const shown = await page.eval(() => [...document.querySelectorAll<HTMLElement>('header [data-usage] [data-window]')].map((w) => w.innerText.replace(/\s+/g, ' ').trim()));
-      assert.deepEqual(shown, ['5h 34%', '7d 61%']);
+      assert.deepEqual(shown.map((t) => t.split(' ↻')[0]), ['5h 34%', '7d 61%']);
+      assert.ok(shown.every((t) => / ↻ /.test(t)), 'a reset time is missing');
       assert.equal(await page.eval(whole, 'header [data-usage]'), true, 'the usage limits do not show whole');
       assert.equal(await page.eval(() => document.scrollingElement!.scrollWidth <= innerWidth), true, 'the page scrolls sideways');
     },
