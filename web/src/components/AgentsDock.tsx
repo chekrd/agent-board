@@ -4,7 +4,7 @@ import { answeredOf, confirmed, dockOf, lineOf, type Capsule } from '../dock.ts'
 import { useNow } from '../now.ts';
 import { queue, useQueue } from '../queue.ts';
 import { openSheet } from '../router.ts';
-import { HOLD_MS, sends, useSends } from '../sends.ts';
+import { HOLD_MS, undo, useBusy, useSends } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { attentionOf, locate, sessionLabel } from '../util.ts';
@@ -19,6 +19,7 @@ const narrow = matchMedia('(max-width: 760px)');
 export function AgentsDock() {
   const { sessions, repos, link } = useStore();
   const items = useSends();
+  const busy = useBusy();
   const { fresh } = useQueue();
   const before = useRef(items);
 
@@ -31,7 +32,7 @@ export function AgentsDock() {
   const { capsules, working, ended } = dockOf(sessions, items);
   // With nothing in the deck the queue shows the Wall, which has every agent on it, as C does; a send on its way
   // keeps the dock up for its Undo.
-  if (!deckOf(sessions, sends.busy()).length && !capsules.some((c) => c.send)) return null;
+  if (!deckOf(sessions, busy).length && !capsules.some((c) => c.send)) return null;
   const nameOf = (s: Session) => sessionLabel(s, locate(repos, s).branch);
 
   return (
@@ -122,7 +123,7 @@ function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: Re
         {clock && <span className={styles.clock} data-clock>{clock}</span>}
       </button>
       {c.state === 'held' && (
-        <button type="button" className={styles.undo} onClick={() => sends.undo(c.send!.id)}>
+        <button type="button" className={styles.undo} onClick={() => undo(c.send!.id)}>
           Undo
         </button>
       )}
