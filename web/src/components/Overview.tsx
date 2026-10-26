@@ -91,8 +91,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
           {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
         </div>
         <aside className={styles.aside}>
-          <section>
-            <h3 className={styles.label}>Facts</h3>
+          <section aria-label="Facts">
             <dl className={styles.facts}>
               <dt>Task</dt>
               <dd>{session.firstPrompt ?? '—'}</dd>
