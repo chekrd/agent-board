@@ -328,25 +328,26 @@ export function Card({ session, repos, deck, enter }: CardProps) {
           <span className={styles.primaryLabel}>{primary.label}</span>
           <kbd>↵</kbd>
         </button>
-        {decision && (
-          <>
-            <button type="button" className={styles.secondary} aria-pressed={composing} onClick={() => (composing ? closeComposer() : compose())}>
-              Write my own <kbd>W</kbd>
-            </button>
-            <button type="button" className={styles.secondary} aria-pressed={whyOpen} title="A model reads the code and explains the background and each choice" onClick={toggleWhy}>
-              Elaborate <kbd>Y</kbd>
-            </button>
-          </>
-        )}
-        {kind === 'idle' && (
-          <button type="button" className={styles.secondary} onClick={archiveIt}>Archive <kbd>X</kbd></button>
-        )}
-        <span className={styles.spacer} />
-        {kind === 'ask' && <button type="button" className={styles.dismiss} title="Clear the question without answering it" onClick={dismiss}>Dismiss</button>}
         <span className={styles.steps}>
           <button type="button" aria-label="Previous card" disabled={deck < 2} onClick={() => queue.previous()}><Icon name="arrow-left" size={18} /></button>
           <button type="button" aria-label="Skip to the next card" disabled={deck < 2} onClick={() => queue.skip()}><Icon name="arrow-right" size={18} /></button>
         </span>
+        <div className={styles.actions}>
+          {decision && (
+            <>
+              <button type="button" className={styles.secondary} aria-pressed={composing} onClick={() => (composing ? closeComposer() : compose())}>
+                Write my own <kbd>W</kbd>
+              </button>
+              <button type="button" className={styles.secondary} aria-pressed={whyOpen} title="A model reads the code and explains the background and each choice" onClick={toggleWhy}>
+                Elaborate <kbd>Y</kbd>
+              </button>
+            </>
+          )}
+          {kind === 'idle' && (
+            <button type="button" className={styles.secondary} onClick={archiveIt}>Archive <kbd>X</kbd></button>
+          )}
+          {kind === 'ask' && <button type="button" className={styles.dismiss} title="Clear the question without answering it" onClick={dismiss}>Dismiss</button>}
+        </div>
       </footer>
     </article>
   );

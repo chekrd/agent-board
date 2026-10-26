@@ -194,8 +194,11 @@
     &[aria-pressed="true"] { border-color: var(--text-2); background: var(--raised); }
   }
 
+  .actions { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
   .dismiss {
     height: 42px;
+    margin-left: auto;
     padding: 0 12px;
     border: 0;
     border-radius: 11px;
@@ -208,12 +211,12 @@
 
   .steps {
     display: none;
-    gap: 8px;
+    gap: 6px;
     button {
       display: grid;
       place-items: center;
       width: 44px;
-      height: 44px;
+      height: 46px;
       padding: 0;
       border: 1px solid var(--line-2);
       border-radius: 12px;
@@ -222,7 +225,8 @@
     }
   }
 
-  /* A narrow window scrolls the page instead of the card, so the footer sticks to the bottom of the window. */
+  /* A narrow window scrolls the page instead of the card, so the footer sticks to the bottom of the window: the
+     primary with Previous and Skip on one row, and the other actions, without their keys, on a second. */
   @media (max-width: 760px) {
     .card { flex: none; max-height: none; border-radius: 20px; }
     .head { padding: 18px 18px 0; }
@@ -232,7 +236,21 @@
     .know, .notSent { margin: 10px 18px 0; }
     .brief { padding: 0 18px; }
     .cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 22px; padding: 14px 18px 16px; }
-    .foot { position: sticky; bottom: 0; z-index: 1; padding: 11px 18px 14px; border-radius: 0 0 20px 20px; }
-    .steps { display: flex; margin-left: auto; }
+    .foot {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 10px 14px 12px;
+      border-radius: 0 0 20px 20px;
+      kbd { display: none; }
+    }
+    .primary { height: 46px; padding: 0 14px 0 16px; }
+    .steps { display: flex; }
+    .actions { grid-column: 1 / -1; gap: 8px; &:empty { display: none; } }
+    .secondary { height: 38px; padding: 0 12px; font-size: 14px; }
+    .dismiss { height: 38px; padding: 0 10px; }
   }
 }

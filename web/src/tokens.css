@@ -97,6 +97,10 @@
     flex-direction: column;
     @media (max-width: 760px) { height: auto; min-height: 100%; }
   }
+  /* A narrow window scrolls the page under the queue card's sticky footer, which what scrolls into view has to clear. */
+  :root[data-view="queue"] {
+    @media (max-width: 760px) { scroll-padding-bottom: 130px; }
+  }
   body {
     background: var(--ground);
     color: var(--text);

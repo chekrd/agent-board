@@ -427,6 +427,40 @@ const openCards = () => [...document.querySelectorAll('[data-hovercard]:popover-
 
 const docked = (n: number) => document.querySelectorAll('[data-dock] [data-capsule]').length === n;
 
+// The card's primary shows whole in the window at the top of the page's scroll and at its bottom, and whether the page
+// scrolls at all, which the second needs to mean anything.
+const primaryAtEnds = () => {
+  const page = document.scrollingElement!;
+  const inView = () => {
+    const r = document.querySelector('[data-primary]')!.getBoundingClientRect();
+    return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
+  };
+  page.scrollTop = 0;
+  const top = inView();
+  page.scrollTop = page.scrollHeight;
+  const bottom = inView();
+  const scrolls = page.scrollTop > 0;
+  page.scrollTop = 0;
+  return { top, bottom, scrolls };
+};
+
+// The card in a narrow window: whether its columns, or a menu's questions, stand one under the other, which peeks
+// and slivers show, and how many rows the footer's buttons take.
+const narrowCard = () => {
+  const c = document.querySelector('[data-card]')!;
+  const stacked = (els: Element[]) => {
+    const rs = els.map((e) => e.getBoundingClientRect());
+    return rs.every((r, i) => i === 0 || (Math.abs(r.left - rs[0].left) < 1 && r.top >= rs[i - 1].bottom - 1));
+  };
+  const shown = (el: Element | null) => !!el?.checkVisibility();
+  return {
+    stacked: stacked([...c.querySelectorAll('[data-side]')]) && stacked([...c.querySelectorAll('section[role="group"]')]),
+    peeks: [...document.querySelectorAll<HTMLElement>('[data-peek]')].filter(shown).map((p) => p.dataset.peek),
+    sliver: shown(document.querySelector('[data-sliver]')),
+    footRows: new Set([...c.querySelectorAll('footer button')].filter(shown).map((b) => Math.round(b.getBoundingClientRect().top))).size,
+  };
+};
+
 export const checks: Check[] = [
   {
     name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option on the card answers once and the tile turns working',
@@ -3419,6 +3453,99 @@ export const checks: Check[] = [
       });
       assert.ok(at.hint <= at.fade && at.hint <= at.foot, `the hint line ends at ${at.hint}, the fade starts at ${at.fade} and the footer at ${at.foot}`);
       await shot('queue-composer');
+    },
+  },
+  {
+    name: 'P7.phone-card narrow window: every kind of card is one column with one peek, its footer takes at most two rows, and the primary shows at the top and the bottom of the page; the reply box scrolls into view above the footer',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      for (const id of ['s-cart', 's-hooks', 's-group', 's-astro', 's-reviews']) {
+        await page.until(`the card of ${id}`, frontIs, id);
+        await page.until('the card to settle', still);
+        const shape = await page.eval(narrowCard);
+        assert.deepEqual({ ...shape, footRows: shape.footRows <= 2 }, { stacked: true, peeks: ['1'], sliver: false, footRows: true }, `${id}: ${JSON.stringify(shape)}`);
+        assert.deepEqual(await page.eval(primaryAtEnds), { top: true, bottom: true, scrolls: true }, id);
+        assert.deepEqual(await page.eval(sidewaysScroll), [], id);
+        if (id === 's-cart') await shot('phone-ask');
+        if (id === 's-hooks') await shot('phone-menu');
+        await page.key('ArrowRight');
+      }
+      await page.until('s-anchors at the front', frontIs, 's-anchors');
+      await page.click('[data-segment][data-session="s-cart"]');
+      await ready(page, 's-cart');
+      await page.click('[data-card] footer button', 'Write my own');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await sleep(200);
+      const reply = await page.eval(() => {
+        const hint = [...document.querySelectorAll('[data-card] section p')].find((p) => p.textContent?.startsWith('Enter sends'))!.getBoundingClientRect();
+        const box = document.querySelector('[data-card] textarea')!.getBoundingClientRect();
+        const foot = document.querySelector('[data-card] footer')!.getBoundingClientRect();
+        return { box: box.top >= 0 && box.bottom <= foot.top, hint: hint.bottom <= foot.top };
+      });
+      assert.deepEqual(reply, { box: true, hint: true });
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await shot('phone-reply');
+    },
+  },
+  {
+    name: 'P7.phone-sideways narrow window: nothing scrolls sideways on the Wall, in the sheet\'s tabs, in New task, Repos, Keys, Delete worktree or the ⋯ menu, and each dialog fits the window; only the diff\'s code and the artifacts list scroll sideways, by design',
+    narrow: true,
+    async run({ page, mock, shot }) {
+      const inside = (selector: string) => {
+        const r = document.querySelector(selector)!.getBoundingClientRect();
+        return r.left >= -1 && r.right <= innerWidth + 1;
+      };
+      const sideways = async (where: string, byDesign?: RegExp) =>
+        assert.deepEqual((await page.eval(sidewaysScroll)).filter((s) => !byDesign?.test(s)), [], where);
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await sideways('the Wall');
+      await shot('phone-wall');
+      for (const tab of ['diff', 'artifacts', 'overview']) {
+        await page.goto(`${mock.url}/s/s-cart/${tab}`);
+        await page.until('the sheet', sheetOpen);
+        await page.until('the sheet to settle', settled);
+        if (tab === 'diff') await page.until('the diff', () => document.querySelectorAll('section[data-file] diffs-container').length === 12);
+        await sideways(`the sheet's ${tab}`, tab === 'diff' ? /^div\.\w+_diffs$/ : tab === 'artifacts' ? /^div\.\w+_list$/ : undefined);
+        assert.equal(await page.eval(inside, '#task-sheet'), true);
+        await shot(`phone-sheet-${tab}`);
+      }
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await sideways('the ⋯ menu');
+      assert.equal(await page.eval(inside, ':popover-open'), true, 'the ⋯ menu');
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the delete dialog', () => !!document.querySelector('dialog#delete-worktree li'));
+      await page.until('the dialog to settle', settled);
+      await sideways('Delete worktree');
+      assert.equal(await page.eval(inside, 'dialog#delete-worktree'), true);
+      await shot('phone-delete');
+      await page.key('Escape');
+
+      await openQueue(page, mock);
+      await page.key('n');
+      await page.until('New task', () => !!document.querySelector('#new-task:modal'));
+      await page.click('#new-task button', 'More options');
+      await page.until('the dialog to settle', settled);
+      await sideways('New task');
+      assert.equal(await page.eval(inside, '#new-task'), true);
+      await shot('phone-new-task');
+      await page.key('Escape');
+      await page.until('New task to close', () => !document.querySelector('#new-task[open]'));
+      await page.click('button[data-repos]');
+      await page.until('Repos', () => !!document.querySelector('#workspace:modal section'));
+      await page.until('the dialog to settle', settled);
+      await sideways('Repos');
+      assert.equal(await page.eval(inside, '#workspace'), true);
+      await shot('phone-repos');
+      await page.key('Escape');
+      await page.until('Repos to close', () => !document.querySelector('#workspace[open]'));
+      await page.key('?');
+      await page.until('Keys', () => !!document.querySelector('#keys:modal'));
+      await page.until('the dialog to settle', settled);
+      await sideways('Keys');
+      assert.equal(await page.eval(inside, '#keys'), true);
     },
   },
 ];
