@@ -297,6 +297,16 @@ const whole = (selector: string) => {
   return true;
 };
 
+// The element starts in view in a column of the card that scrolls to the rest of it.
+const startsInColumn = (selector: string) => {
+  const el = document.querySelector(selector);
+  const column = el?.closest('[data-side]');
+  if (!el || !column || column.scrollHeight <= column.clientHeight) return false;
+  const r = el.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + Math.min(24, r.width / 2), r.top + Math.min(12, r.height / 2));
+  return !!hit && el.contains(hit);
+};
+
 // The peeks behind the card, each with its place, session and text.
 const peeks = () => [...document.querySelectorAll<HTMLElement>('[data-peek]')].map((p) => ({ peek: p.dataset.peek, session: p.dataset.session, text: p.innerText.trim() }));
 
@@ -1907,8 +1917,8 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.3 the whole card fits the window and the page does not scroll: Worth knowing, the headline, the brief, the details, all three options with their descriptions and the suggestion show',
-    async run({ page, mock, shot }) {
+    name: 'P5.1.3 the whole card fits the window and the page does not scroll: Worth knowing, the headline, the brief, the details, all three options with their descriptions and the suggestion show; in a narrower window each starts in view, in a column that scrolls to the rest',
+    async run({ page, mock, look, shot }) {
       await openQueue(page, mock);
       await page.until('the card to settle', still);
       const fit = await page.eval(() => ({ card: !!document.querySelector('[data-card]'), scroll: document.scrollingElement!.scrollHeight, height: innerHeight }));
@@ -1917,7 +1927,12 @@ export const checks: Check[] = [
         '[data-card]', '[data-card] [data-know]', '[data-card] h1', '[data-card] h1 + p', '[data-card] section[aria-label="Claude\'s details"]',
         '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-primary]',
       ];
-      for (const selector of parts) assert.equal(await page.eval(whole, selector), true, `${selector} does not show whole`);
+      // In a narrower window the columns are narrower and their text longer, so each scrolls to what does not fit (I§3).
+      for (const selector of parts) {
+        if (await page.eval(whole, selector)) continue;
+        assert.ok(look.width < 1440, `${selector} does not show whole`);
+        assert.equal(await page.eval(startsInColumn, selector), true, `${selector} does not start in view in a column that scrolls`);
+      }
       const options = await page.eval(() => [...document.querySelectorAll<HTMLElement>('[data-card] [data-option]')].map((o) => o.innerText.split('\n').slice(0, 2)));
       assert.deepEqual(options.map((o) => o[0]), ['1', '2', '3']);
       const text = (await page.eval(card))!.text;
