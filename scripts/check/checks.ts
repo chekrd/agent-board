@@ -3309,4 +3309,25 @@ export const checks: Check[] = [
       assert.equal((await stateOf(mock, 's-reviews')).archived, true);
     },
   },
+  {
+    name: 'P7.skip-ends-wait a click on Skip that ends a wait for typing brings up the card that waited and skips nothing; the next click skips',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('Let me think');
+      await mock.post('/mock/patch', { id: 's-cart', patch: { question: null, status: 'working', activity: { step: 'Edit src/cart/mergeCarts.ts', since: Date.now() } } });
+      await page.until('s-cart to leave the deck', () => !document.querySelector('[data-segment][data-session="s-cart"]'));
+      assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-card]')?.dataset.session), 's-cart', 'the card did not wait for the typing');
+      await page.eval(watchDeals);
+      await page.click('main button[aria-label="Skip to the next card"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await sleep(700);
+      assert.deepEqual([await page.eval(() => document.querySelector<HTMLElement>('[data-card]')?.dataset.session), await page.eval(dealt)], ['s-hooks', []]);
+      await page.click('main button[aria-label="Skip to the next card"]');
+      await page.until('s-group at the front', frontIs, 's-group');
+      assert.deepEqual(await page.eval(dealt), ['back']);
+    },
+  },
 ];

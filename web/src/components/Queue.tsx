@@ -32,6 +32,7 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
   const q = useQueue();
   const region = useRef<HTMLDivElement>(null);
   const cardFocused = useRef(false);
+  const pressing = useRef(false);
   const [typing, setTyping] = useState(false);
   const arranged = arrange(deck, q);
   const live = arranged[0] ?? null;
@@ -55,19 +56,44 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
     if (cardFocused.current && (!active || active === document.body)) region.current?.querySelector<HTMLElement>('[data-card]')?.focus({ preventScroll: true });
   }, [shown?.id]);
 
+  // A press that ends the wait brings up the card that waited: a skip or previous in that press was aimed at the card
+  // before it, so it does nothing.
+  const type = (on: boolean) => {
+    if (!on && typing && differs(shown, live) && pressing.current) queue.holdMoves(true);
+    setTyping(on);
+  };
+  useEffect(() => {
+    const down = () => {
+      pressing.current = true;
+    };
+    // Once the press's click has run.
+    const up = () => setTimeout(() => {
+      pressing.current = false;
+      queue.holdMoves(false);
+    });
+    addEventListener('pointerdown', down, true);
+    addEventListener('pointerup', up, true);
+    addEventListener('pointercancel', up, true);
+    return () => {
+      removeEventListener('pointerdown', down, true);
+      removeEventListener('pointerup', up, true);
+      removeEventListener('pointercancel', up, true);
+    };
+  }, []);
+
   const onFocus = (e: FocusEvent) => {
-    setTyping(isEditable(e.target));
+    type(isEditable(e.target));
     cardFocused.current = !!(e.target as Element).closest('[data-card]');
   };
   const onBlur = (e: FocusEvent) => {
     const to = e.relatedTarget as Element | null;
     // Focus went to the page, or the window lost it and the field gets it back with the window.
     if (!to) {
-      if (document.hasFocus()) setTyping(false);
+      if (document.hasFocus()) type(false);
       return;
     }
     const inside = !!region.current?.contains(to);
-    setTyping(inside && isEditable(to));
+    type(inside && isEditable(to));
     cardFocused.current = inside && !!to.closest('[data-card]');
   };
 

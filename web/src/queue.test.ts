@@ -198,6 +198,21 @@ test('skip and previous go by the order as the last move left it, with no new de
   assert.deepEqual(deals, ['back', 'enter-back', 'back', 'back', 'enter-back', 'enter-back', 'enter-back']);
 });
 
+test('while moves are held, skip and previous do nothing and a jump still goes', () => {
+  const { q, deals } = world();
+  q.sync([a, b, c]);
+  q.holdMoves(true);
+  q.skip();
+  q.previous();
+  assert.equal(q.state().front, 'a');
+  q.jump('c');
+  assert.equal(q.state().front, 'c');
+  q.holdMoves(false);
+  q.skip();
+  assert.equal(q.state().front, 'a');
+  assert.deepEqual(deals, ['enter', 'back']);
+});
+
 test('a session the page takes out of the deck leaves sideways from the front, and quietly from elsewhere; neither says it no longer waits', () => {
   const { q, deals } = world();
   q.sync([a, b, c]);

@@ -191,6 +191,10 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
   const move = (front: string, deal: Deal) => transition(() => void arrangeAround(front), deal);
 
+  // Skip and previous are off for the rest of the press that ended a wait for typing: the card that waited has just
+  // come up, and the press was aimed at the one before it.
+  let still = false;
+
   function deal(way: Deal, change: () => void) {
     if (state.front && (way === 'down' || way === 'side')) own.add(state.front);
     const guardUntil = guard();
@@ -214,11 +218,14 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
     skip() {
       const next = state.order[1];
-      if (next) move(next, 'back');
+      if (next && !still) move(next, 'back');
     },
     previous() {
       const last = state.order.at(-1);
-      if (last && last !== state.front) move(last, 'enter-back');
+      if (last && last !== state.front && !still) move(last, 'enter-back');
+    },
+    holdMoves(on: boolean) {
+      still = on;
     },
     jump(id: string) {
       if (id !== state.front && deck.some((s) => s.id === id)) move(id, 'enter');
