@@ -146,5 +146,20 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     });
   }
 
-  return { answer, answerMenu, acceptAdvice, dismiss, type };
+  // Resolves once nothing more waits to be typed into the session, so that a terminal shown for it takes no keys in the
+  // middle of a send; after `ms` at most, so one that hangs cannot keep it shut. The longest menu answer, four
+  // questions of four picks, types for about 7 s.
+  async function settled(id: string, ms = 10_000) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<true>((done) => {
+      timer = setTimeout(() => done(true), ms);
+    });
+    try {
+      for (let turn = turns.get(id); turn; turn = turns.get(id)) if (await Promise.race([turn, late])) return;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return { answer, answerMenu, acceptAdvice, dismiss, type, settled };
 }

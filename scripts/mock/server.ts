@@ -318,7 +318,7 @@ const actions: Record<string, (s: Session, body: any) => void | Promise<void>> =
   'retry-advice': (s) => retryAdvice(s),
   'stop-advice': (s) => stopAdvice(s),
   elaborate: (s) => elaborate(s),
-  focus: () => {},
+  focus: (s) => answers.settled(s.id),
   finder: () => {},
   vscode: () => {},
   quit: (s) => later(300, () => update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null })),

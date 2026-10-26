@@ -214,6 +214,7 @@ async function syncLive() {
 }
 
 export async function focus(id: string) {
+  await answers.settled(id);
   const s = must(id);
   if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: id });
   else await terminal.show(s.tty, s.id, s.cwd);

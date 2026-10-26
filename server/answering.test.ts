@@ -271,6 +271,34 @@ test('typing that answers nothing is checked when its turn comes: a prompt Claud
   assert.deepEqual(ended.typed, []);
 });
 
+test('settled waits for the send that types and the one queued behind it, and for one that hangs only until its cap', async () => {
+  const w = world(session({ summary }), { hold: true });
+  await w.answers.settled('s', 60_000);
+  const answer = w.answers.answer('s', { key: 's:t2', choice: 'Ship' });
+  const note = w.answers.answer('s', { key: null, text: 'Also bump the version' });
+  await flush();
+  assert.deepEqual(w.typed, ['My decision: Ship.']);
+  let open = false;
+  const settled = w.answers.settled('s', 60_000).then(() => void (open = true));
+  await flush();
+  assert.equal(open, false, 'the answer types');
+  w.sends[0].done();
+  await answer;
+  await flush();
+  assert.deepEqual([w.typed.length, open], [2, false], 'the note types now');
+  w.sends[1].done();
+  await note;
+  await settled;
+  assert.equal(open, true);
+  const hung = w.answers.answer('s', { key: null, text: 'One more' });
+  await flush();
+  const started = Date.now();
+  await w.answers.settled('s', 50);
+  assert.ok(Date.now() - started >= 40, 'the cap, not the send, ended the wait');
+  w.sends[2].done();
+  await hung;
+});
+
 test('dismiss closes the decision through decided and types nothing', () => {
   const w = world(session({ question }));
   w.answers.dismiss('s', 'q:q1');
