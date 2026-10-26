@@ -195,7 +195,9 @@ export function Card({ session, repos, deck, enter }: CardProps) {
     const r = acceptance(session);
     if (r && !queue.guarded()) send(r);
   };
-  const archiveIt = () => archive(session, name);
+  const archiveIt = () => {
+    if (!queue.guarded()) archive(session, name);
+  };
 
   const keys: Keys = {
     kind,

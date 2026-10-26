@@ -145,8 +145,8 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
     // `fn` runs in the page: it can use only its arguments, which must be JSON.
     const run = <A extends unknown[], T>(fn: (...args: A) => T, ...args: A): Promise<Awaited<T>> => evaluate(`(${fn})(...${JSON.stringify(args)})`);
 
-    const mouse = (type: string, x: number, y: number) =>
-      cdp('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: type === 'mouseMoved' ? 0 : 1 });
+    const mouse = (type: string, x: number, y: number, count = 1) =>
+      cdp('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: type === 'mouseMoved' ? 0 : count });
 
     // The params of the next `method` event once it has fired, false until then.
     const nextEvent = (method: string) => {
@@ -234,12 +234,12 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
         await mouse('mouseMoved', at.x, at.y);
       },
       // Moves the pointer to a point of the viewport, and with `click` clicks there: on a dialog's backdrop, say, which no
-      // selector reaches.
-      async pointAt(x: number, y: number, click = false) {
+      // selector reaches. A `count` of 2 makes the click the second of a double click.
+      async pointAt(x: number, y: number, click = false, count = 1) {
         await mouse('mouseMoved', x, y);
         if (!click) return;
-        await mouse('mousePressed', x, y);
-        await mouse('mouseReleased', x, y);
+        await mouse('mousePressed', x, y, count);
+        await mouse('mouseReleased', x, y, count);
       },
       async key(key: string) {
         const k = KEYS[key] ?? { code: /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, keyCode: key.toUpperCase().charCodeAt(0), text: key };

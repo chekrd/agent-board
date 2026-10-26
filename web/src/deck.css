@@ -5,6 +5,10 @@
 
   :root[data-deal] { view-transition-name: none; }
 
+  /* The page under the flying card takes clicks, the toast's Undo among them; the card that came up waits out its
+     guard. */
+  :root[data-deal]::view-transition { pointer-events: none; }
+
   :root[data-deal]::view-transition-group(deck-card) { animation: none; }
 
   :root[data-deal="back"]::view-transition-old(deck-card) { animation: deck-leave-back 0.32s cubic-bezier(0.5, 0, 0.75, 0) both; }

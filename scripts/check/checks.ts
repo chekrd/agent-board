@@ -4178,4 +4178,40 @@ export const checks: Check[] = [
       assert.equal((await actions(mock)).length, 1);
     },
   },
+  {
+    name: 'shell-2 the page under a dealt card takes clicks: the toast\'s Undo clicked while the card is still flying takes the send back; and a click on Archive within the guard of the card that came up does nothing, as X does',
+    async run({ page, mock }) {
+      const middle = (selector: string, text: string) => {
+        const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => (e.textContent ?? '').includes(text));
+        const r = el?.getBoundingClientRect();
+        return r && document.documentElement.dataset.deal ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+      };
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(() => {
+        const w = window as unknown as { e2eClicks: { deal: string | null; on: string }[] };
+        w.e2eClicks = [];
+        addEventListener('click', (e) => w.e2eClicks.push({ deal: document.documentElement.dataset.deal ?? null, on: (e.target as Element).closest('button')?.textContent ?? (e.target as Element).tagName }), true);
+      });
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      const undo = await page.until('the Undo of the toast while the card is dealt', middle, '[data-toast][data-kind="undo"] button', 'Undo');
+      await page.pointAt(undo.x, undo.y, true);
+      await page.until('s-cart back at the front', frontIs, 's-cart');
+      const clicks = await page.eval(() => (window as unknown as { e2eClicks: { deal: string | null; on: string }[] }).e2eClicks);
+      assert.deepEqual(clicks.at(-1), { deal: 'down', on: 'UndoZ' });
+
+      await page.click('[data-segment][data-session="s-reviews"]');
+      await ready(page, 's-reviews');
+      await page.click('[data-card] footer button', 'Archive');
+      await page.until('s-anchors up, still guarded', () =>
+        document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-anchors' && !document.documentElement.dataset.deal && !!document.querySelector('[data-primary][data-guarded]'));
+      await page.click('[data-card] footer button', 'Archive');
+      assert.equal(await page.eval(() => !!document.querySelector('[data-primary][data-guarded]')), true, 'the click came after the guard');
+      await sleep(600);
+      assert.equal(await page.eval(frontIs, 's-anchors'), true);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['archive', 's-reviews']]);
+      await sleep(HELD_MS);
+      assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['archive', 's-reviews']]);
+    },
+  },
 ];
