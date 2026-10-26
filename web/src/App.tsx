@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { AgentsDock } from './components/AgentsDock.tsx';
 import { DeleteWorktreeDialog } from './components/DeleteWorktreeDialog.tsx';
 import { KeysDialog } from './components/KeysDialog.tsx';
 import { NewTaskDialog } from './components/NewTaskForm.tsx';
@@ -38,7 +37,6 @@ export function App() {
     <>
       <TopBar route={route} deck={deck} />
       {route.view === 'queue' ? <Queue deck={deck} /> : <Wall deck={deck} />}
-      {route.view === 'queue' && <AgentsDock />}
       <TaskSheet route={route} />
       <NewTaskDialog repos={store.repos} />
       <WorkspaceDialog roots={store.roots} repos={store.repos} sessions={store.sessions} />

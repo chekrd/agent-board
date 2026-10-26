@@ -1,10 +1,9 @@
 import { useEffect, useRef, type FocusEvent } from 'react';
-import { deckOf } from '../deck.ts';
 import { answeredOf, confirmed, dockOf, lineOf, type Capsule } from '../dock.ts';
 import { useNow } from '../now.ts';
 import { queue, useQueue } from '../queue.ts';
 import { openSheet } from '../router.ts';
-import { HOLD_MS, undo, useBusy, useSends } from '../sends.ts';
+import { HOLD_MS, undo, useSends } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { attentionOf, locate, sessionLabel } from '../util.ts';
@@ -16,10 +15,11 @@ import { PrChip, PrDot } from './Status.tsx';
 const HOVER_MS = 150;
 const narrow = matchMedia('(max-width: 760px)');
 
-export function AgentsDock() {
+// Under the queue's card. Without one the queue shows the Wall, which has every agent on it, as C does; a send on its
+// way keeps the dock up for its Undo.
+export function AgentsDock({ card }: { card: boolean }) {
   const { sessions, repos, link } = useStore();
   const items = useSends();
-  const busy = useBusy();
   const { fresh } = useQueue();
   const before = useRef(items);
 
@@ -30,9 +30,7 @@ export function AgentsDock() {
 
   if (link === 'connecting') return null;
   const { capsules, working, ended } = dockOf(sessions, items);
-  // With nothing in the deck the queue shows the Wall, which has every agent on it, as C does; a send on its way
-  // keeps the dock up for its Undo.
-  if (!deckOf(sessions, busy).length && !capsules.some((c) => c.send)) return null;
+  if (!card && !capsules.some((c) => c.send)) return null;
   const nameOf = (s: Session) => sessionLabel(s, locate(repos, s).branch);
 
   return (

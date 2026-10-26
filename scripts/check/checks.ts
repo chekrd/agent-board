@@ -3330,4 +3330,20 @@ export const checks: Check[] = [
       assert.deepEqual(await page.eval(dealt), ['back']);
     },
   },
+  {
+    name: 'P7.dock-waits typing in New task on the resting Wall holds the dock back with the queue: a card that arrives meanwhile brings neither until focus leaves the prompt',
+    scenario: 'zero',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/`);
+      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
+      await page.click('#new-task-inline textarea');
+      await page.type('Add retries');
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
+      await page.until('the arrival in the meter', () => !!document.querySelector('[data-segment][data-session="s-new"]'));
+      await sleep(400);
+      assert.deepEqual(await page.eval(() => [!!document.querySelector('[data-dock]'), !!document.querySelector('[data-card]')]), [false, false]);
+      await page.key('Escape');
+      await page.until('the card and the dock', () => !!document.querySelector('[data-card]') && !!document.querySelector('[data-dock]'));
+    },
+  },
 ];

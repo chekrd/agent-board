@@ -5,6 +5,7 @@ import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { isEditable } from '../useKeys.ts';
 import { attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
+import { AgentsDock } from './AgentsDock.tsx';
 import { Card } from './Card.tsx';
 import { Icon } from './Icon.tsx';
 import styles from './Queue.module.css';
@@ -122,6 +123,7 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
       ) : (
         <Wall deck={deck} />
       )}
+      <AgentsDock card={!!shown} />
     </div>
   );
 }
