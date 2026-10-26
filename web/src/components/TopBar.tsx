@@ -7,6 +7,7 @@ import { clock } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import { Meter } from './Meter.tsx';
 import { openNewTask } from './NewTaskForm.tsx';
+import { ThemeMenu } from './ThemeMenu.tsx';
 import styles from './TopBar.module.css';
 import { Usage } from './Usage.tsx';
 import { openRepos } from './WorkspaceDialog.tsx';
@@ -47,6 +48,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
         {deck.length > 0 && <Meter deck={deck} repos={repos} current={onQueue ? shown : null} />}
       </div>
       <div className={styles.usage}><Usage /></div>
+      <div className={styles.theme}><ThemeMenu /></div>
       <div className={styles.end}>
         <button type="button" className={styles.ghost} data-repos aria-label="Repos" onClick={openRepos}>
           <Icon name="folder" size={17} />

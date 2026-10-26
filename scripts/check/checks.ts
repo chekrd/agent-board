@@ -4590,4 +4590,42 @@ export const checks: Check[] = [
       assert.deepEqual(box, [0, 0, true, true, true]);
     },
   },
+  {
+    name: 'theme the top bar\'s theme menu offers System, Light and Dark: each recolours the page at once against what the system prefers, the choice outlasts a reload, and System follows the system again',
+    async run({ page, mock, look, shot }) {
+      const now = () => ({
+        theme: document.documentElement.dataset.theme ?? 'system',
+        scheme: getComputedStyle(document.documentElement).colorScheme,
+        ground: getComputedStyle(document.body).backgroundColor,
+        checked: document.querySelector<HTMLElement>('[data-theme-option][aria-checked="true"]')?.dataset.themeOption,
+        label: document.querySelector('[data-theme-button]')?.getAttribute('aria-label'),
+      });
+      const pick = async (theme: string) => {
+        await page.click('[data-theme-button]');
+        await page.until('the theme menu', () => !!document.querySelector('#theme-menu:popover-open'));
+        await page.click(`[data-theme-option="${theme}"]`);
+        await page.until('the menu to close', () => !document.querySelector('#theme-menu:popover-open'));
+      };
+      await openQueue(page, mock);
+      const system = await page.eval(now);
+      assert.deepEqual({ ...system, ground: undefined }, { theme: 'system', scheme: 'light dark', ground: undefined, checked: 'system', label: 'Theme: System' });
+      const other = look.scheme === 'dark' ? 'light' : 'dark';
+
+      await pick(other);
+      const forced = await page.eval(now);
+      assert.deepEqual({ theme: forced.theme, scheme: forced.scheme, checked: forced.checked, label: forced.label }, { theme: other, scheme: other, checked: other, label: `Theme: ${other[0].toUpperCase()}${other.slice(1)}` });
+      assert.notEqual(forced.ground, system.ground, 'the page did not recolour');
+      await shot(`theme-${other}`);
+
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      assert.deepEqual((await page.eval(now)).theme, other, 'the theme did not outlast a reload');
+
+      await pick(look.scheme);
+      assert.equal((await page.eval(now)).scheme, look.scheme);
+      await pick('system');
+      const back = await page.eval(now);
+      assert.deepEqual({ theme: back.theme, ground: back.ground }, { theme: 'system', ground: system.ground });
+    },
+  },
 ];

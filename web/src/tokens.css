@@ -10,6 +10,7 @@
   :root, [data-theme="dark"] {
     color-scheme: light dark;
     &[data-theme="dark"] { color-scheme: dark; }
+    &[data-theme="light"] { color-scheme: light; }
     --ground: light-dark(#eeeae1, #110f0c);
     --ground-2: light-dark(#e7e2d7, #0c0b09);
     --deck-1: light-dark(#e2dccf, #1e1b17);

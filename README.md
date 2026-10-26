@@ -50,4 +50,4 @@ State lives in `~/Library/Application Support/agent-board/` (`state.db`, per-ses
 - Needs tmux and Ghostty 1.3+ (AppleScript), and macOS Automation permission for the server to control Ghostty; no screen recording.
 - Brand-new folders trigger Claude's "trust this folder" prompt once. Claude registers itself only after it, so a hidden session shows as waiting on its start-up prompt; answer it through **Terminal**.
 - A Claude running in another terminal app or in your own tmux still shows up, but Terminal and answering need it to be a hidden session or the foreground process of a Ghostty tab.
-- Light/dark follows the system.
+- Light/dark follows the system until the top bar's theme button picks Light or Dark; the choice is kept in that browser, and System follows the system again.
