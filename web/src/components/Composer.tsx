@@ -157,7 +157,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
   const id = session.id;
   const draft = useDraft(id);
   const field = useRef<HTMLTextAreaElement>(null);
-  const box = useRef<HTMLDivElement>(null);
+  const section = useRef<HTMLElement>(null);
   const [picked, setPicked] = useState(0);
   const [closed, setClosed] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -166,14 +166,15 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
   const matches = query === null || !commands ? [] : rank(commands, query);
   const listed = matches.length > 0;
 
+  // The whole box comes into view, its hint line under the field included.
   useEffect(() => {
     if (!focus) return;
     field.current?.focus();
-    box.current?.scrollIntoView({ block: 'nearest' });
+    section.current?.scrollIntoView({ block: 'nearest' });
   }, [focus]);
 
   useEffect(() => {
-    if (listed) box.current?.scrollIntoView({ block: 'nearest' });
+    if (listed) section.current?.scrollIntoView({ block: 'nearest' });
   }, [listed]);
 
   const setText = (text: string) => editDraft(id, (d) => ({ ...d, text }));
@@ -228,7 +229,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
   };
 
   return (
-    <section className={styles.composer} aria-label={label} onDragOver={onDragOver} onDrop={onDrop}>
+    <section ref={section} className={styles.composer} aria-label={label} onDragOver={onDragOver} onDrop={onDrop}>
       <div className={styles.head}>
         <h3 className={styles.label}>{label}</h3>
         {note && <span className={styles.note} role="status">{note}</span>}
@@ -273,7 +274,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
           ))}
         </div>
       )}
-      <div ref={box} className={styles.box}>
+      <div className={styles.box}>
         <textarea
           ref={field}
           rows={1}

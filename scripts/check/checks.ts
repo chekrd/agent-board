@@ -3401,4 +3401,24 @@ export const checks: Check[] = [
       await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
     },
   },
+  {
+    name: 'P7.reply-hint with the reply box and its command list open, the hint line under the box shows whole, above the column\'s faded edge and the footer',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.key('w');
+      await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+      await page.type('/re');
+      await page.until('the command list', () => document.querySelectorAll('[data-card] [role="option"]').length > 0);
+      await sleep(200);
+      const at = await page.eval(() => {
+        const hint = [...document.querySelectorAll('[data-card] section p')].find((p) => p.textContent?.startsWith('Enter sends'))!.getBoundingClientRect();
+        const column = document.querySelector('[data-card] [data-side="right"]')!.getBoundingClientRect();
+        const foot = document.querySelector('[data-card] footer')!.getBoundingClientRect();
+        return { hint: Math.round(hint.bottom), fade: Math.round(column.bottom - 22), foot: Math.round(foot.top) };
+      });
+      assert.ok(at.hint <= at.fade && at.hint <= at.foot, `the hint line ends at ${at.hint}, the fade starts at ${at.fade} and the footer at ${at.foot}`);
+      await shot('queue-composer');
+    },
+  },
 ];
