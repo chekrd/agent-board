@@ -22,7 +22,6 @@ interface Branch {
   worktree: string | null;
 }
 
-const INLINE = 'new-task-inline';
 const DIALOG = 'new-task';
 const STORED = 'agent-board:new-task';
 const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, start: true, more: false };
@@ -37,7 +36,7 @@ function stored(): Fields {
   }
 }
 
-// Both hosts show the same fields, so a prompt begun on the Wall is there over the queue, and a reload keeps it.
+// A prompt begun and closed is there when New task opens again, and a reload keeps it.
 let fields = stored();
 // They share the branch list too: both are mounted at once, and one read serves them.
 let branches: { repoId: number; list: Branch[] } | null = null;
@@ -74,17 +73,15 @@ const subscribe = (fn: () => void) => {
   return () => void subscribers.delete(fn);
 };
 
-// On the Wall, the queue's resting one included, the form is already on the page; over the queue it opens as a dialog.
+// New task opens as a dialog over either view.
 export function openNewTask() {
-  const inline = document.querySelector<HTMLTextAreaElement>(`#${INLINE} textarea`);
-  if (inline) return inline.focus();
   const dialog = document.getElementById(DIALOG) as HTMLDialogElement | null;
   if (!dialog) return;
   if (!dialog.open) dialog.showModal();
   dialog.querySelector('textarea')?.focus();
 }
 
-function NewTaskForm({ repos, accent, inline, done }: { repos: RepoView[]; accent: boolean; inline: boolean; done?: () => void }) {
+function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
@@ -125,8 +122,6 @@ function NewTaskForm({ repos, accent, inline, done }: { repos: RepoView[]; accen
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (valid && !pending) e.currentTarget.form?.requestSubmit();
-    } else if (e.key === 'Escape' && inline) {
-      e.currentTarget.blur();
     }
   };
 
@@ -172,7 +167,7 @@ function NewTaskForm({ repos, accent, inline, done }: { repos: RepoView[]; accen
         <button type="button" className={styles.more} aria-expanded={f.more} onClick={() => edit({ more: !f.more })}>
           More options <Icon name="chevron-down" size={14} />
         </button>
-        <button type="submit" className={styles.create} data-accent={accent || undefined} disabled={!valid || pending}>
+        <button type="submit" className={styles.create} disabled={!valid || pending}>
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
         </button>
       </div>
@@ -223,19 +218,11 @@ function NewTaskForm({ repos, accent, inline, done }: { repos: RepoView[]; accen
   );
 }
 
-export function NewTaskInline({ repos, accent }: { repos: RepoView[]; accent: boolean }) {
-  return (
-    <section id={INLINE} aria-label="New task" className={styles.inline}>
-      <NewTaskForm repos={repos} accent={accent} inline />
-    </section>
-  );
-}
-
 export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
   return (
     <dialog id={DIALOG} ref={dialog} closedby="any" aria-label="New task" className={styles.dialog} onCancel={keepUnderLayer}>
-      {repos.length > 0 && <NewTaskForm repos={repos} accent={false} inline={false} done={() => dialog.current?.close()} />}
+      {repos.length > 0 && <NewTaskForm repos={repos} done={() => dialog.current?.close()} />}
     </dialog>
   );
 }

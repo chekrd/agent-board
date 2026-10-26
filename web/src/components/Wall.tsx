@@ -4,7 +4,6 @@ import { useStore } from '../store.ts';
 import type { Session } from '../types.ts';
 import { attentionOf } from '../util.ts';
 import { Icon } from './Icon.tsx';
-import { NewTaskInline } from './NewTaskForm.tsx';
 import styles from './Wall.module.css';
 import { WallTile } from './WallTile.tsx';
 
@@ -27,7 +26,6 @@ export function Wall({ deck }: { deck: readonly Session[] }) {
 
   return (
     <main className={styles.wall} data-resting={(!!sessions.length && !deck.length) || undefined}>
-      {repos.length > 0 && <NewTaskInline repos={repos} accent={!deck.length} />}
       <header className={styles.head}>
         <div className={styles.titles}>
           <h1>{title}</h1>

@@ -252,8 +252,8 @@ const reloadState = (until: 'pill' | 'reconnecting' | null) => {
     pill: document.querySelector<HTMLElement>('[data-new-version]')?.innerText.trim() ?? null,
     link: document.querySelector<HTMLElement>('[data-link]')?.dataset.link ?? null,
     marker: (window as unknown as Probe).e2eMarker ?? null,
-    prompt: document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value ?? null,
-    typing: document.activeElement === document.querySelector('#new-task-inline textarea'),
+    prompt: document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value ?? null,
+    typing: document.activeElement === document.querySelector('dialog#new-task textarea'),
   };
   return (until === 'pill' && !state.pill) || (until === 'reconnecting' && state.link !== 'reconnecting') ? null : state;
 };
@@ -315,6 +315,13 @@ const peeks = () => [...document.querySelectorAll<HTMLElement>('[data-peek]')].m
 const segmentsNow = () => [...document.querySelectorAll<HTMLElement>('[data-segment]')].map((s) => ({
   session: s.dataset.session, current: s.hasAttribute('data-current'), new: s.hasAttribute('data-new'), width: Math.round(s.getBoundingClientRect().width),
 }));
+
+// New task from the top bar, its prompt focused.
+async function openNewTask(page: Page) {
+  await page.click('header button[aria-label="New task"]');
+  await page.until('the New task dialog, its prompt focused', () =>
+    !!document.querySelector<HTMLDialogElement>('dialog#new-task')?.open && document.activeElement === document.querySelector('dialog#new-task textarea'));
+}
 
 async function openQueue(page: Page, mock: Mock, front = 's-cart') {
   await page.goto(`${mock.url}/`);
@@ -959,7 +966,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-gate a new build reloads the board when nothing is focused; a focused prompt holds it until a click outside, the New task dialog until it closes; the page\'s own entry never reloads it, nor a build it already reloaded for',
+    name: 'P3.reload-gate a new build reloads the board when nothing is focused; New task holds it until it closes, on the Wall as over the queue, even with nothing focused in it; the page\'s own entry never reloads it, nor a build it already reloaded for',
     async run({ page, mock, shot }) {
       const mark = () => page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
       const marked = () => page.eval(() => (window as unknown as { probe?: number }).probe === 1);
@@ -988,18 +995,19 @@ export const checks: Check[] = [
       assert.equal(await marked(), true, 'its own entry reloaded the page');
 
       await page.goto(`${mock.url}/wall`);
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Ship it after lunch');
       await mark();
       await newBuild(2);
       await sleep(3000);
       const typing = await page.eval(() => [
-        (window as unknown as { probe?: number }).probe, document.activeElement?.tagName, document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
+        (window as unknown as { probe?: number }).probe, document.activeElement?.tagName, document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value,
       ]);
       assert.deepEqual(typing, [1, 'TEXTAREA', 'Ship it after lunch']);
       await shot('draft-holds-reload');
-      await page.click('main h1');
-      await reloaded('once focus left the prompt');
+      await page.key('Escape');
+      await reloaded('once New task closed on the Wall');
 
       await page.goto(`${mock.url}/`);
       await page.click('button', 'New task');
@@ -1027,21 +1035,22 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P3.reload-offline a new build waits for the server: focus leaving a prompt while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
+    name: 'P3.reload-offline a new build waits for the server: New task closing while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
     expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Ship it after lunch');
       await page.eval(() => void ((window as unknown as { probe?: number }).probe = 1));
       await mock.post('/mock/ui-entry', { src: '/assets/index-offline.js' });
       await mock.post('/mock/drop', { ms: 4000 });
       try {
         await page.until('the server to drop the page', () => fetch('/').then(() => false, () => true));
-        await page.click('main h1');
+        await page.key('Escape');
         await sleep(1500);
         const kept = await page.eval(() => [
-          (window as unknown as { probe?: number }).probe, document.activeElement === document.body, document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
+          (window as unknown as { probe?: number }).probe, !document.querySelector('dialog#new-task[open]'), document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value,
         ]);
         assert.deepEqual(kept, [1, true, 'Ship it after lunch'], 'reloaded while the server could not be reached');
         await shot('offline-holds-reload');
@@ -1066,7 +1075,7 @@ export const checks: Check[] = [
           return false;
         }
       }, 10_000);
-      await page.until('the Wall', () => document.querySelector('#new-task-inline textarea') !== null);
+      await page.until('the Wall', () => document.querySelectorAll('[data-tile]').length > 0);
     },
   },
   {
@@ -1448,20 +1457,20 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches as chips with the hint',
+    name: 'P4.10 New task opened on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches as chips with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
-      const submit = () => document.querySelector('#new-task-inline textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+      const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
       await page.goto(`${mock.url}/wall`);
-      await page.until('the New task form', () => !!document.querySelector('#new-task-inline textarea'));
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Fix the login redirect');
       await page.eval(() => {
-        const repo = document.querySelector<HTMLSelectElement>('#new-task-inline select')!;
+        const repo = document.querySelector<HTMLSelectElement>('dialog#new-task select')!;
         repo.value = '1';
         repo.dispatchEvent(new Event('change', { bubbles: true }));
       });
-      await page.click('#new-task-inline input[placeholder="fix-login-redirect"]');
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
       await page.type('fix-login');
       await shot('new-task-wall');
       await page.eval(submit);
@@ -1473,30 +1482,30 @@ export const checks: Check[] = [
       await page.until('its sheet', () => !!document.querySelector('#task-sheet') && /^\/s\/[^/]+\/overview$/.test(location.pathname) &&
         document.querySelector('#task-sheet h2')?.textContent === 'fix-login');
       await page.click('#task-sheet button[aria-label^="Back to"]');
-      await page.until('an empty form', () => !document.querySelector('#task-sheet') && document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value === '');
-
-      await page.click('#new-task-inline textarea');
+      await page.until('the Wall', () => !document.querySelector('#task-sheet') && location.pathname === '/wall');
+      await openNewTask(page);
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')!.value), '', 'the form kept the created task');
       await page.type('Try a refused name');
-      await page.click('#new-task-inline input[placeholder="fix-login-redirect"]');
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
       await page.type('fail');
       await page.eval(submit);
-      const error = await page.until('the inline error', () => document.querySelector('#new-task-inline [role="alert"]')?.textContent);
+      const error = await page.until('the inline error', () => document.querySelector('dialog#new-task [role="alert"]')?.textContent);
       assert.match(error, /cannot be created here/);
-      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('#new-task-inline textarea, #new-task-inline input')].map((f) => f.value)), ['Try a refused name', 'fail']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('dialog#new-task textarea, dialog#new-task input')].map((f) => f.value)), ['Try a refused name', 'fail']);
 
-      await page.click('#new-task-inline button', 'More options');
-      await page.click('#new-task-inline label', 'Existing branch');
+      await page.click('dialog#new-task button', 'More options');
+      await page.click('dialog#new-task label', 'Existing branch');
       await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
       const chips = await page.until('the branch chips', () => {
-        const list = [...document.querySelectorAll('#new-task-inline [aria-label="Branches"] button')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
+        const list = [...document.querySelectorAll('dialog#new-task [aria-label="Branches"] button')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
         return list.length && list;
       });
       for (const chip of [['main', 'main checkout'], ['guest-cart-merge', 'own worktree'], ['release/2026.10', '']]) assert.deepEqual(chips.find((c) => c[0] === chip[0]), chip);
-      const hint = () => document.querySelector('#new-task-inline form > p:not([role])')?.textContent;
+      const hint = () => document.querySelector('dialog#new-task form > p:not([role])')?.textContent;
       assert.equal(await page.eval(hint), 'Switches ~/code/storefront to the branch and starts Claude there.');
-      await page.click('#new-task-inline [aria-label="Branches"] button', 'guest-cart-merge');
+      await page.click('dialog#new-task [aria-label="Branches"] button', 'guest-cart-merge');
       await page.until('the hint for a branch with its own worktree', () =>
-        document.querySelector('#new-task-inline form > p:not([role])')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
+        document.querySelector('dialog#new-task form > p:not([role])')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
       await shot('new-task-existing-branch');
     },
   },
@@ -1650,7 +1659,8 @@ export const checks: Check[] = [
     name: 'P4.17 the reload pill: a new build announced while the New task prompt has focus offers "New version · Reload" after 15 s with the link live; the page\'s own build clears it, another arms it again, and the pill itself reloads while the prompt keeps focus, noting the build it reloaded for',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Fix the login redirect');
       await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
       const own = await page.eval(() => document.querySelector('script[type="module"][src]')!.getAttribute('src')!);
@@ -1671,7 +1681,7 @@ export const checks: Check[] = [
       // Clicked from the page, so the prompt keeps focus: the gate stays shut, and only the pill can reload.
       const typing = await page.eval(() => {
         setTimeout(() => document.querySelector<HTMLButtonElement>('[data-new-version]')!.click());
-        return document.activeElement === document.querySelector('#new-task-inline textarea');
+        return document.activeElement === document.querySelector('dialog#new-task textarea');
       });
       assert.equal(typing, true, 'the prompt lost focus before the pill was clicked');
       await until('the page to reload', async () => {
@@ -1681,7 +1691,7 @@ export const checks: Check[] = [
           return false;
         }
       });
-      await page.until('the prompt kept through the reload', () => document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value === 'Fix the login redirect');
+      await page.until('the prompt kept through the reload', () => document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value === 'Fix the login redirect');
       assert.equal(await page.eval(() => {
         const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
         return sessionStorage.getItem('agent-board:reloaded-for') === `${entry} ${new URL('/assets/index-next2.js', location.href).href}`;
@@ -1693,7 +1703,8 @@ export const checks: Check[] = [
     expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock }) {
       await page.goto(`${mock.url}/wall`);
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Fix the login redirect');
       await mock.post('/mock/ui-entry', { src: '/assets/index-next1.js' });
       await until('the reload pill', () => page.eval(() => !!document.querySelector('[data-new-version]')), 20_000);
@@ -1708,7 +1719,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.18 New task keeps one set of fields: a prompt typed on the Wall is in the dialog N opens over the queue, and a reload keeps it',
+    name: 'P4.18 New task keeps its fields: a prompt typed in it on the Wall and closed is there when N opens it over the queue, and a reload keeps it',
     async run({ page, mock, shot }) {
       const dialogPrompt = () => {
         const d = document.querySelector<HTMLDialogElement>('dialog#new-task');
@@ -1716,8 +1727,11 @@ export const checks: Check[] = [
         return d?.open && prompt && { value: prompt.value, focused: document.activeElement === prompt };
       };
       await page.goto(`${mock.url}/wall`);
-      await page.click('#new-task-inline textarea');
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.type('Typed on the Wall');
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('dialog#new-task[open]'));
       await page.click('nav[aria-label="View"] a', 'Queue');
       await page.until('the queue', () => location.pathname === '/');
       await page.key('n');
@@ -1785,28 +1799,29 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.branches-once New task\'s two hosts share one read of the branch list: Existing branch and a change of repository each ask the server once, and the dialog shows the same chips',
+    name: 'P4.branches-once New task reads a repository\'s branch list once: Existing branch and a change of repository each ask the server once',
     async run({ page, mock }) {
       const reads = async (repo: number) => (await mock.log()).filter((e) => e.method === 'GET' && e.path === `/api/repos/${repo}/branches`).length;
       const chips = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
       const pick = (repo: string) => {
-        const select = document.querySelector<HTMLSelectElement>('#new-task-inline select')!;
+        const select = document.querySelector<HTMLSelectElement>('dialog#new-task select')!;
         select.value = repo;
         select.dispatchEvent(new Event('change', { bubbles: true }));
       };
       await page.goto(`${mock.url}/wall`);
-      await page.until('the New task form', () => !!document.querySelector('#new-task-inline textarea'));
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
       await page.eval(pick, '1');
-      await page.click('#new-task-inline button', 'More options');
-      await page.click('#new-task-inline label', 'Existing branch');
-      await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), '#new-task-inline');
+      await page.click('dialog#new-task button', 'More options');
+      await page.click('dialog#new-task label', 'Existing branch');
+      await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), 'dialog#new-task');
       await sleep(300);
       assert.equal(await reads(1), 1);
       await page.eval(pick, '2');
-      await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), '#new-task-inline');
+      await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), 'dialog#new-task');
       await sleep(300);
       assert.deepEqual([await reads(1), await reads(2)], [1, 1]);
-      assert.deepEqual(await page.eval(chips, 'dialog#new-task'), await page.eval(chips, '#new-task-inline'));
+      assert.ok((await page.eval(chips, 'dialog#new-task')).includes('webhook-retries'));
     },
   },
   {
@@ -2370,12 +2385,12 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.21 typing in New task on the resting Wall while a session arrives: the queue waits, so "we fix 3 x" and Enter stay in the prompt; nothing is held, archived or undone; once focus leaves, the card comes up',
+    name: 'P5.1.21 typing in New task over the resting Wall while a session arrives: "we fix 3 x" and Enter stay in the prompt, which keeps focus while the card comes up under the dialog; nothing is held, archived or undone',
     scenario: 'zero',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
-      await page.click('#new-task-inline textarea');
+      await openNewTask(page);
       await page.type('Fix the login ');
       await mock.post('/mock/add', { template: 'idle', id: 's-idle' });
       await page.until('the arrival in the meter', () => !!document.querySelector('[data-segment][data-session="s-idle"]'));
@@ -2383,17 +2398,16 @@ export const checks: Check[] = [
       await page.key('Enter');
       await sleep(300);
       const held = await page.eval(() => ({
-        sub: document.querySelector('main h1 + p')?.textContent,
-        card: !!document.querySelector('[data-card]'),
-        value: document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')?.value,
-        focused: document.activeElement === document.querySelector('#new-task-inline textarea'),
+        open: !!document.querySelector('dialog#new-task:modal'),
+        value: document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value,
+        focused: document.activeElement === document.querySelector('dialog#new-task textarea'),
         toasts: [...document.querySelectorAll('[data-toast]')].length,
       }));
-      assert.deepEqual(held, { sub: '1 finished turn waits in the queue.', card: false, value: 'Fix the login we fix 3 x\n', focused: true, toasts: 0 });
+      assert.deepEqual(held, { open: true, value: 'Fix the login we fix 3 x\n', focused: true, toasts: 0 });
       assert.deepEqual((await mock.log()).filter((e) => e.path.startsWith('/api/sessions/')), []);
-      await shot('queue-waits-for-typing');
-      await page.click('main h1');
-      await page.until('the card once focus left', frontIs, 's-idle');
+      await shot('typing-over-an-arrival');
+      await page.key('Escape');
+      await page.until('the card once New task closed', frontIs, 's-idle');
       await sleep(300);
       assert.deepEqual((await mock.log()).filter((e) => e.path.startsWith('/api/sessions/')), []);
     },
@@ -3568,19 +3582,17 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P7.dock-waits typing in New task on the resting Wall holds the dock back with the queue: a card that arrives meanwhile brings neither until focus leaves the prompt',
+    name: 'P7.dock-waits typing in New task over the resting Wall: a card that arrives meanwhile brings the queue and the dock under the dialog, and the prompt keeps focus and text',
     scenario: 'zero',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/`);
       await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
-      await page.click('#new-task-inline textarea');
+      await openNewTask(page);
       await page.type('Add retries');
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
       await page.until('the arrival in the meter', () => !!document.querySelector('[data-segment][data-session="s-new"]'));
-      await sleep(400);
-      assert.deepEqual(await page.eval(() => [!!document.querySelector('[data-dock]'), !!document.querySelector('[data-card]')]), [false, false]);
-      await page.key('Escape');
       await page.until('the card and the dock', () => !!document.querySelector('[data-card]') && !!document.querySelector('[data-dock]'));
+      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value, document.activeElement === document.querySelector('dialog#new-task textarea')]), ['Add retries', true]);
     },
   },
   {
@@ -4000,7 +4012,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P7.keyboard with no pointer at all: ⏎ answers and Z takes it back, → skips and ← goes back; O opens Overview, 2 the Diff, J a file, Esc all files and Esc the queue; V the Wall, N its New task prompt, typing and Esc; ? Keys and Esc',
+    name: 'P7.keyboard with no pointer at all: ⏎ answers and Z takes it back, → skips and ← goes back; O opens Overview, 2 the Diff, J a file, Esc all files and Esc the queue; V the Wall, N New task, typing and Esc; ? Keys and Esc',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/`);
       await page.eval(() => {
@@ -4033,10 +4045,11 @@ export const checks: Check[] = [
       await page.key('v');
       await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
       await page.key('n');
-      await page.until('its prompt, focused', () => document.activeElement?.matches('#new-task-inline textarea'));
+      await page.until('its prompt, focused', () => document.activeElement?.matches('dialog#new-task textarea'));
       for (const ch of 'fix the login') await page.key(ch);
       await page.key('Escape');
-      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLTextAreaElement>('#new-task-inline textarea')!.value, document.activeElement?.matches('#new-task-inline textarea')]), ['fix the login', false]);
+      await page.until('New task to close', () => !document.querySelector('dialog#new-task[open]') && !document.activeElement?.closest('dialog#new-task'));
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')!.value), 'fix the login');
 
       await page.key('?');
       await page.until('Keys', () => !!document.querySelector('#keys:modal'));
@@ -4209,11 +4222,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'shell-3 keys typed into New task\'s open repository picker on the Wall are the picker\'s: Esc closes only it, V, ? and Z do nothing, and a send held meanwhile still goes out',
+    name: 'shell-3 keys typed into New task\'s open repository picker over the Wall are the picker\'s: Esc closes only it, V, ? and Z do nothing, and a send held meanwhile still goes out',
     async run({ page, mock }) {
       const openPicker = async () => {
-        await page.click('#new-task-inline select');
-        await page.until('the picker, focused', () => !!document.querySelector('#new-task-inline select:open') && document.activeElement?.tagName === 'OPTION');
+        await page.click('dialog#new-task select');
+        await page.until('the picker, focused', () => !!document.querySelector('dialog#new-task select:open') && document.activeElement?.tagName === 'OPTION');
       };
       const where = () => ({ path: location.pathname, picker: !!document.querySelector('select:open'), modal: !!document.querySelector('dialog:modal') });
       await openQueue(page, mock);
@@ -4222,18 +4235,19 @@ export const checks: Check[] = [
       const pressed = Date.now();
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       await page.key('v');
-      await page.until('the Wall', () => location.pathname === '/wall' && !!document.querySelector('#new-task-inline select'));
+      await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
+      await openNewTask(page);
       await openPicker();
       for (const key of ['v', '?', 'z']) {
         await page.key(key);
         await sleep(200);
-        assert.deepEqual(await page.eval(where), { path: '/wall', picker: true, modal: false }, `${key} in the picker`);
+        assert.deepEqual(await page.eval(where), { path: '/wall', picker: true, modal: true }, `${key} in the picker`);
       }
       assert.equal((await page.eval(toastsOf, 'undo'))?.length, 1, 'z took back the held send');
       await page.key('Escape');
       await page.until('the picker to close', () => !document.querySelector('select:open'));
       await sleep(200);
-      assert.deepEqual(await page.eval(where), { path: '/wall', picker: false, modal: false });
+      assert.deepEqual(await page.eval(where), { path: '/wall', picker: false, modal: true });
       const [sent] = await logged(mock, 'the held answer', (e) => e.action === 'answer', POSTED_MS - (Date.now() - pressed));
       assert.deepEqual([sent.sessionId, sent.body.choice, sent.status], ['s-cart', 'Keep the account cart', 204]);
     },
