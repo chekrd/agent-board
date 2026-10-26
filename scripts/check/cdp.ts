@@ -148,11 +148,12 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
     const mouse = (type: string, x: number, y: number) =>
       cdp('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount: type === 'mouseMoved' ? 0 : 1 });
 
+    // The params of the next `method` event once it has fired, false until then.
     const nextEvent = (method: string) => {
-      let fired = false;
+      let fired: any = false;
       const fn = (e: CdpEvent) => {
         if (e.sessionId !== sessionId || e.method !== method) return;
-        fired = true;
+        fired = e.params ?? {};
         listeners.delete(fn);
       };
       listeners.add(fn);
@@ -198,6 +199,14 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
           await sleep(100);
         }
         throw new Error(`${what} never received a click`);
+      },
+      // Picks `files` in the file chooser that a real click on `selector` opens, as a person choosing them does.
+      async chooseFiles(selector: string, files: string[]) {
+        await cdp('Page.setInterceptFileChooserDialog', { enabled: true });
+        const opened = nextEvent('Page.fileChooserOpened');
+        await this.click(selector);
+        const { backendNodeId } = await until('the file chooser', opened);
+        await cdp('DOM.setFileInputFiles', { files, backendNodeId });
       },
       // A real double click in the middle of the first visible match, the second press counted as the second click.
       async dblclick(selector: string) {

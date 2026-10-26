@@ -8,7 +8,8 @@ import { queue } from './queue.ts';
 import { go, showTab, viewPath, type Route } from './router.ts';
 import { undo } from './sends.ts';
 
-const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="file"])';
+// The reply box's paperclip counts as part of its field: focus on it is still writing a reply.
+const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"])';
 const CONTROL = 'button, a[href], input, select, summary';
 
 export const isEditable = (el: EventTarget | null) => el instanceof Element && el.matches(EDITABLE);

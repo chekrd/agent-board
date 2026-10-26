@@ -267,7 +267,14 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
               <span className={styles.name}>{f.name}</span>
               {!f.path && !f.error && <span className={styles.spinner} aria-hidden />}
               {f.error && <span className={styles.failed}>failed</span>}
-              <button type="button" aria-label={`Remove ${f.name}`} onClick={() => detach(id, f)}>
+              <button
+                type="button"
+                aria-label={`Remove ${f.name}`}
+                onClick={() => {
+                  detach(id, f);
+                  field.current?.focus();
+                }}
+              >
                 <Icon name="close" size={12} />
               </button>
             </span>
@@ -287,13 +294,20 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
           onFocus={() => setFocused(true)}
         />
         <label className={styles.attach} title="Attach files; pasting or dropping them works too">
+          {/* The chooser leaves focus on the input, picked or cancelled; React has no onCancel for an input. */}
           <input
+            ref={(input) => {
+              const back = () => field.current?.focus();
+              input?.addEventListener('cancel', back);
+              return () => input?.removeEventListener('cancel', back);
+            }}
             type="file"
             multiple
             aria-label="Attach files"
             onChange={(e) => {
               attach(id, [...(e.currentTarget.files ?? [])]);
               e.currentTarget.value = '';
+              field.current?.focus();
             }}
           />
           <Icon name="paperclip" size={18} />

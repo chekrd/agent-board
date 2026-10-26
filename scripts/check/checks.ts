@@ -339,6 +339,14 @@ const watchDeals = () => {
 };
 const dealt = () => (window as unknown as { e2eDeals?: string[] }).e2eDeals ?? [];
 
+// A one-pixel PNG on disk, for a file chooser, in a folder of its own that `remove` deletes.
+function pngOnDisk() {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-board-png-'));
+  const file = join(dir, 'shot.png');
+  writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  return { file, remove: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
 // Pastes a one-pixel PNG into the reply box, as a screenshot from the clipboard comes.
 const pastePng = (selector: string) => {
   const field = document.querySelector<HTMLTextAreaElement>(selector)!;
@@ -3935,6 +3943,41 @@ export const checks: Check[] = [
       await page.until('the dock', docked, 16);
       await page.until('the page to settle', still);
       assert.deepEqual(await page.eval(lowContrast, 4.5), []);
+    },
+  },
+  {
+    name: 'client-1 the paperclip keeps the keys in the reply box: after a file is picked or one is removed the field has focus and takes 2 and e as text, and with focus on the paperclip itself 2 and x do nothing',
+    async run({ page, mock }) {
+      const png = pngOnDisk();
+      try {
+        await openQueue(page, mock);
+        await ready(page, 's-cart');
+        await page.key('w');
+        await page.until('the reply box, focused', () => document.activeElement?.matches('[data-card] textarea'));
+        await page.type('keep the quantities');
+        await page.chooseFiles('[data-card] input[type="file"]', [png.file]);
+        await page.until('the picked file, uploaded', () => !!document.querySelector('[data-card] [data-state="ready"]'));
+        assert.equal((await page.eval(replyIn, '[data-card]'))?.focused, true, 'focus stayed on the paperclip');
+        for (const key of [' ', '2', ' ', 'e']) await page.key(key);
+        assert.deepEqual(await page.eval(replyIn, '[data-card]'), { value: 'keep the quantities 2 e', files: ['ready shot.png'], focused: true });
+
+        await page.click('[data-card] button[aria-label="Remove shot.png"]');
+        assert.equal((await page.eval(replyIn, '[data-card]'))?.focused, true, 'focus fell to the page');
+        await page.key('2');
+        assert.deepEqual(await page.eval(replyIn, '[data-card]'), { value: 'keep the quantities 2 e2', files: [], focused: true });
+
+        await page.key('Tab');
+        await page.until('the paperclip, focused', () => document.activeElement?.matches('[data-card] input[type="file"]'));
+        await page.key('2');
+        await page.key('x');
+        await sleep(300);
+        assert.equal(await page.eval(toastsOf, 'undo'), null, 'a key on the paperclip held a send');
+        assert.equal(await page.eval(frontIs, 's-cart'), true);
+        await sleep(HELD_MS);
+        assert.deepEqual(await actions(mock), []);
+      } finally {
+        png.remove();
+      }
     },
   },
 ];
