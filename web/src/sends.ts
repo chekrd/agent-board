@@ -4,7 +4,7 @@ import { keptBack, keptDraft, putBack, release, takeDraft, type Draft, type Kept
 import { dismissToast, toast } from './components/Toasts.tsx';
 import { active, createOutbox, NO_ANSWER_MS, type Item, type Outgoing, type Request } from './outbox.ts';
 import { queue } from './queue.ts';
-import { go, openSheet } from './router.ts';
+import { openSheet, showQueue } from './router.ts';
 import type { Session } from './types.ts';
 
 export const HOLD_MS = 5000;
@@ -85,7 +85,7 @@ function heldText(i: Item<Restore>) {
 function show(id: string) {
   if (!queue.state().order.includes(id)) return openSheet(id, 'overview');
   queue.jump(id);
-  go('/');
+  showQueue();
 }
 
 function announce(i: Item<Restore>) {

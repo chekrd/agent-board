@@ -4297,4 +4297,27 @@ export const checks: Check[] = [
       assert.deepEqual([sent.sessionId, sent.body.adviceAt], ['s-cart', advice.at]);
     },
   },
+  {
+    name: 'shell-4 Show on a Not sent toast inside a sheet over the queue closes the sheet onto the queue a step back, as Esc does, so Back does not open it again',
+    expectedErrors: [/status of 400/],
+    async run({ page, mock }) {
+      const history = () => ({
+        entries: window.navigation.entries().map((e) => new URL(e.url!).pathname),
+        index: window.navigation.currentEntry?.index,
+        sheet: !!document.querySelector('#task-sheet[open]'),
+      });
+      await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option]', 'Keep the account cart');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('o');
+      await page.until('the sheet of s-hooks', () => location.pathname === '/s/s-hooks/overview' && !!document.querySelector('#task-sheet:modal'));
+      await page.until('the Not sent toast in the sheet', () => !!document.querySelector('#task-sheet [data-toast][data-kind="error"] button'));
+      await page.click('#task-sheet [data-toast][data-kind="error"] button', 'Show');
+      await page.until('s-cart at the front, the sheet closed', () =>
+        document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-cart' && !document.querySelector('#task-sheet[open]') && location.pathname === '/');
+      assert.deepEqual(await page.eval(history), { entries: ['/', '/s/s-hooks/overview'], index: 0, sheet: false });
+    },
+  },
 ];

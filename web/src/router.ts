@@ -90,3 +90,9 @@ export function closeSheetToQueue() {
   if (current().view === 'queue') closeSheet();
   else go(viewPath('queue'), { history: 'replace' });
 }
+
+// The queue, from wherever the page is: an open sheet closes onto it, and the Wall goes to it.
+export function showQueue() {
+  if (current().sheet) closeSheetToQueue();
+  else go(viewPath('queue'));
+}
