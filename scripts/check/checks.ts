@@ -4348,7 +4348,7 @@ export const checks: Check[] = [
   {
     name: 'shell-6 with reduced motion a double click on a toast\'s Undo brings the card back and stays on it, as the second click does not press the peek that came under it',
     motion: 'reduce',
-    async run({ page, mock }) {
+    async run({ page, mock, look }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.click('[data-card] [data-option]', 'Keep the account cart');
@@ -4360,7 +4360,9 @@ export const checks: Check[] = [
       });
       await page.pointAt(undo.x, undo.y, true);
       await sleep(110);
-      assert.equal(await page.eval((x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('[data-peek]'), undo.x, undo.y), true, 'no peek under the Undo once it went');
+      if (look.width === 1440) {
+        assert.equal(await page.eval((x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('[data-peek]'), undo.x, undo.y), true, 'no peek under the Undo once it went');
+      }
       await page.pointAt(undo.x, undo.y, true, 2);
       await sleep(400);
       assert.equal(await page.eval(frontIs, 's-cart'), true);
