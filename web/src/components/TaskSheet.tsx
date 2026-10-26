@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { SHEET_DIALOG } from '../keys.ts';
+import { useOuterClick } from '../layers.ts';
 import { closeSheet, showTab, type Route, type Tab } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
-import { menuOpen } from '../useKeys.ts';
 import { attentionOf, locate, sessionLabel } from '../util.ts';
 import { Artifacts } from './Artifacts.tsx';
 import { DiffView } from './DiffView.tsx';
@@ -20,7 +20,7 @@ import { toast } from './Toasts.tsx';
 export function TaskSheet({ route }: { route: Route }) {
   const { sessions, repos, link } = useStore();
   const dialog = useRef<HTMLDialogElement>(null);
-  const menuAtPress = useRef(false);
+  const outerClick = useOuterClick();
   const sheet = route.sheet;
   const session = sheet ? sessions.find((s) => s.id === sheet.id) : undefined;
   const name = session ? sessionLabel(session, locate(repos, session).branch) : 'Task';
@@ -43,13 +43,6 @@ export function TaskSheet({ route }: { route: Route }) {
     closeSheet();
   }, [gone]);
 
-  // A click beside the sheet while its ⋯ menu is open closes only the menu. By the time that click asks the sheet to
-  // close, the menu has closed already, so the press notes whether one was open.
-  const press = () => {
-    menuAtPress.current = menuOpen();
-  };
-  const release = () => setTimeout(() => (menuAtPress.current = false));
-
   return (
     <dialog
       id={SHEET_DIALOG}
@@ -58,10 +51,7 @@ export function TaskSheet({ route }: { route: Route }) {
       tabIndex={-1}
       className={styles.sheet}
       aria-label={name}
-      onPointerDownCapture={press}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onCancel={(e) => menuAtPress.current && e.preventDefault()}
+      {...outerClick}
       onClose={closeSheet}
     >
       <span className={styles.grabber} aria-hidden />

@@ -3346,4 +3346,38 @@ export const checks: Check[] = [
       await page.until('the card and the dock', () => !!document.querySelector('[data-card]') && !!document.querySelector('[data-dock]'));
     },
   },
+  {
+    name: 'P7.new-task-fade Esc closes New task over the queue and takes focus out of its prompt at once, so a key typed while the dialog fades out does not land in it',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('n');
+      await page.until('the prompt, focused', () => document.activeElement?.matches('#new-task textarea'));
+      await page.type('Fix');
+      await page.key('Escape');
+      await page.key('q');
+      await sleep(400);
+      assert.deepEqual(await page.eval(() => ({
+        open: document.querySelector<HTMLDialogElement>('#new-task')!.open,
+        prompt: document.querySelector<HTMLTextAreaElement>('#new-task textarea')!.value,
+        inside: !!document.activeElement?.closest('#new-task'),
+      })), { open: false, prompt: 'Fix', inside: false });
+    },
+  },
+  {
+    name: 'P7.picker-outside a click beside New task while its repository picker is open closes only the picker; the next click beside it closes the dialog',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('n');
+      await page.until('New task', () => !!document.querySelector('#new-task:modal'));
+      await page.until('the dialog to settle', settled);
+      await page.click('#new-task select');
+      await page.until('the picker', () => document.querySelector('#new-task select')!.matches(':open'));
+      await page.pointAt(24, 860, true);
+      await page.until('the picker to close', () => !document.querySelector('#new-task select')!.matches(':open'));
+      await sleep(300);
+      assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'the click closed the dialog with the picker');
+      await page.pointAt(24, 860, true);
+      await page.until('the dialog to close', () => !document.querySelector('#new-task[open]'));
+    },
+  },
 ];

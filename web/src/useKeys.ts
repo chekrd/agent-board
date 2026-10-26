@@ -3,6 +3,7 @@ import { stepFile } from './components/DiffView.tsx';
 import { toggleKeys } from './components/KeysDialog.tsx';
 import { openNewTask } from './components/NewTaskForm.tsx';
 import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action, type Card, type KeyContext, type Target } from './keys.ts';
+import { openPopovers } from './layers.ts';
 import { queue } from './queue.ts';
 import { go, showTab, viewPath, type Route } from './router.ts';
 import { undo } from './sends.ts';
@@ -11,11 +12,6 @@ const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="fals
 const CONTROL = 'button, a[href], input, select, summary';
 
 export const isEditable = (el: EventTarget | null) => el instanceof Element && el.matches(EDITABLE);
-
-const openPopovers = () => [...document.querySelectorAll<HTMLElement>(':popover-open')].map((p) => p.popover ?? 'auto');
-
-// The ⋯ menu is the one light-dismiss (auto) popover; toasts and hover cards are manual or hint popovers.
-export const menuOpen = () => openPopovers().includes('auto');
 
 function target(el: EventTarget | null): Target {
   const at = el instanceof Element ? el : null;
@@ -85,15 +81,23 @@ export function useKeys(context: () => Omit<KeyContext, 'target' | 'modal' | 'po
       press(e);
     };
     const onPointerDown = () => lock.end();
+    // A dialog fades out with focus still in it when there is nowhere to give it back to, and keys typed meanwhile
+    // would land in a field that is going away.
+    const onClose = (e: Event) => {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && e.target instanceof Element && e.target.contains(el)) el.blur();
+    };
     addEventListener('focusin', onFocusIn, true);
     addEventListener('focusout', onFocusOut, true);
     addEventListener('keydown', onKeyDown);
     addEventListener('pointerdown', onPointerDown, true);
+    addEventListener('close', onClose, true);
     return () => {
       removeEventListener('focusin', onFocusIn, true);
       removeEventListener('focusout', onFocusOut, true);
       removeEventListener('keydown', onKeyDown);
       removeEventListener('pointerdown', onPointerDown, true);
+      removeEventListener('close', onClose, true);
     };
   }, []);
 }

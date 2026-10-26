@@ -5,7 +5,8 @@ import { orderKey } from './order.ts';
 import { active } from './outbox.ts';
 import { sends } from './sends.ts';
 import type { RepoView, Session } from './types.ts';
-import { isEditable, menuOpen } from './useKeys.ts';
+import { menuOpen } from './layers.ts';
+import { isEditable } from './useKeys.ts';
 import { attentionChangesAt } from './util.ts';
 
 export type Link = 'connecting' | 'live' | 'reconnecting';

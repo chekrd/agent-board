@@ -1,5 +1,6 @@
 import { useActionState, useEffect, useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { api } from '../api.ts';
+import { useOuterClick } from '../layers.ts';
 import { openSheet } from '../router.ts';
 import type { RepoView } from '../types.ts';
 import { Icon } from './Icon.tsx';
@@ -232,8 +233,9 @@ export function NewTaskInline({ repos, accent }: { repos: RepoView[]; accent: bo
 
 export function NewTaskDialog({ repos }: { repos: RepoView[] }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const outerClick = useOuterClick();
   return (
-    <dialog id={DIALOG} ref={dialog} closedby="any" aria-label="New task" className={styles.dialog}>
+    <dialog id={DIALOG} ref={dialog} closedby="any" aria-label="New task" className={styles.dialog} {...outerClick}>
       {repos.length > 0 && <NewTaskForm repos={repos} accent={false} inline={false} done={() => dialog.current?.close()} />}
     </dialog>
   );
