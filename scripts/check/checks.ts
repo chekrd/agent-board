@@ -4181,6 +4181,8 @@ export const checks: Check[] = [
   },
   {
     name: 'shell-2 the page under a dealt card takes clicks: the toast\'s Undo, and the dock capsule\'s, clicked while the card is still flying takes the send back; and a click on Archive within the guard of the card that came up does nothing, as X does',
+    // With reduced motion a deal is over before a click can land in it.
+    motion: 'no-preference',
     async run({ page, mock }) {
       const middle = (selector: string, text: string) => {
         const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => (e.textContent ?? '').includes(text));
