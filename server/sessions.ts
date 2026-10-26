@@ -229,10 +229,7 @@ export function expectDecision(id: string, seen: string | null | undefined) {
   checkDecision(must(id), seen);
 }
 
-// An answered end-of-turn or menu decision has no question to clear, yet its second opinion has to stop and its rank go.
-function decided(id: string) {
-  const s = sessions.get(id);
-  if (s?.question) sessions.update(id, { question: null, dismissedAsk: s.question.toolUseId });
+function decided() {
   trackDecisions();
   adviseOpen();
   notify();

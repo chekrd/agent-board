@@ -9,6 +9,7 @@ export interface AnsweringDeps {
   send: (tty: string, text: string, files?: string[]) => Promise<void>;
   keys: (tty: string, strokes: Keystroke[]) => Promise<void>;
   notify: () => void;
+  // A decision closed on the board: its rank and second opinion go.
   decided: (id: string) => void;
   isCommand: (s: Session, text: string) => Promise<boolean>;
   checkUploads: (files: unknown) => Promise<string[]>;
@@ -39,6 +40,13 @@ function promptTty(s: Session) {
   return tty;
 }
 
+// The transcript keeps an ask_human question open until the next prompt, so one answered or dismissed on the board is
+// put aside for good. Closing any other decision, such as a menu Claude opened alongside, leaves the question to come up.
+export function closeQuestion(store: AnswerStore, id: string, key: string | null) {
+  const q = store.get(id)?.question;
+  if (q && key === `q:${q.toolUseId}`) store.update(id, { question: null, dismissedAsk: q.toolUseId });
+}
+
 export function answering({ store, send, keys, notify, decided, isCommand, checkUploads }: AnsweringDeps) {
   const turns = new Map<string, Promise<void>>();
 
@@ -53,20 +61,24 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
   // menu still open in the terminal makes its card need focus.
   async function deliver(id: string, t: Typing) {
     if (!t.claim) return t.type();
-    const { reopen } = claim(store, id, t.claim.seen, t.claim.typed, t.claim.text);
+    const { key, reopen } = claim(store, id, t.claim.seen, t.claim.typed, t.claim.text);
     notify();
+    const closed = () => {
+      closeQuestion(store, id, key);
+      decided(id);
+    };
     try {
       await t.type();
     } catch (err) {
       if (err instanceof PartlyTyped) {
-        decided(id);
+        closed();
         throw new Error("the keys stopped part way through Claude's menu; finish it in the terminal", { cause: err });
       }
       reopen();
       notify();
       throw err;
     }
-    decided(id);
+    closed();
   }
 
   // One send at a time per session, since a paste that lands in another's pause before Enter joins its prompt. A send
@@ -120,8 +132,9 @@ export function answering({ store, send, keys, notify, decided, isCommand, check
     else await answer(id, { key: a.key, choice: a.choice ?? undefined, text: a.answer }, false);
   }
 
-  function dismiss(id: string) {
+  function dismiss(id: string, key: string | null) {
     must(id);
+    closeQuestion(store, id, key);
     decided(id);
   }
 

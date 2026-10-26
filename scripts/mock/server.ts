@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { extname, join, resolve, sep } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { answering, liveTty, type Reply } from '../../server/answering.ts';
+import { answering, closeQuestion, liveTty, type Reply } from '../../server/answering.ts';
 import type { FullDiff } from '../../server/git.ts';
 import type { Session } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
@@ -210,11 +210,6 @@ function checkUploads(paths: unknown) {
 
 const isCommand = (text: string) => text.startsWith('!') || COMMANDS.some((c) => c.name === text.match(/^\/(\S+)/)?.[1]);
 
-function closeQuestion(id: string) {
-  const question = find(id)?.question;
-  if (question) update(id, { question: null, dismissedAsk: question.toolUseId });
-}
-
 // One per scenario: a send still waiting its turn when another scenario loads is refused, not run on the new one.
 function answeringFor(scenario: Scenario) {
   const get = (id: string) => {
@@ -226,10 +221,7 @@ function answeringFor(scenario: Scenario) {
     send: () => pause(TYPING_MS),
     keys: () => pause(TYPING_MS),
     notify: push,
-    decided: (id) => {
-      closeQuestion(id);
-      claudeWorks(id);
-    },
+    decided: claudeWorks,
     isCommand: async (_s, text) => isCommand(text),
     checkUploads: async (files) => checkUploads(files),
   });
@@ -245,7 +237,7 @@ function legacyAnswer(s: Session, reply: Reply, commands = true) {
   if (!reply.choice && !text && !files.length) throw new Error('empty answer');
   if (commands && !reply.choice && !files.length && isCommand(text)) return;
   checkDecision(s, reply.key, !reply.choice);
-  closeQuestion(s.id);
+  closeQuestion({ get: find, update }, s.id, reply.key ?? null);
   claudeWorks(s.id);
 }
 
@@ -318,7 +310,7 @@ const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-ad
 
 const actions: Record<string, (s: Session, body: any) => void | Promise<void>> = {
   answer: (s, body) => (args.legacy ? legacyAnswer(s, body) : answers.answer(s.id, body)),
-  dismiss: (s) => closeQuestion(s.id),
+  dismiss: (s, body) => closeQuestion({ get: find, update }, s.id, body.key),
   rename: (s, body) => rename(s, body.title),
   'answer-menu': (s, body) => (args.legacy ? legacyAnswerMenu(s, body) : answers.answerMenu(s.id, body)),
   'accept-advice': (s, body) =>

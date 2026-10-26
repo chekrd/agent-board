@@ -52,12 +52,12 @@ export function checkDecision(s: Session, seen: string | null | undefined, typed
 
 export interface AnswerStore {
   get(id: string): Session | undefined;
-  update(id: string, patch: { answered: Answered | null }): void;
+  update(id: string, patch: Partial<Pick<Session, 'answered' | 'question' | 'dismissedAsk'>>): void;
 }
 
 // Reads, checks and closes in one synchronous step, so a second request for the same decision finds it answered
-// even while the first is still typing; a plain message keeps the decision an earlier answer closed. reopen()
-// gives it back unless a later send has claimed since.
+// even while the first is still typing; a plain message keeps the decision an earlier answer closed, and `key` is
+// the decision closed. reopen() gives it back unless a later send has claimed since.
 export function claim(store: AnswerStore, id: string, seen: string | null | undefined, typed: boolean, text: string) {
   const s = store.get(id);
   if (!s) throw new Error(`unknown session ${id}`);
@@ -71,7 +71,7 @@ export function claim(store: AnswerStore, id: string, seen: string | null | unde
     const now = store.get(id)?.answered;
     if (now?.at === answered.at && now.key === answered.key && now.text === answered.text) store.update(id, { answered: before });
   };
-  return { s, reopen };
+  return { s, key: answered.key, reopen };
 }
 
 const menuText = (menu: Menu) =>

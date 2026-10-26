@@ -163,7 +163,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
   if (onDecision.has(action)) S.expectDecision(id, body.key);
   switch (action) {
     case 'answer': await S.answer(id, body); break;
-    case 'dismiss': S.dismiss(id); break;
+    case 'dismiss': S.dismiss(id, body.key); break;
     case 'rename': await S.rename(id, body.title); break;
     case 'answer-menu': await S.answerMenu(id, body); break;
     case 'accept-advice': await S.acceptAdvice(id, typeof body.adviceAt === 'number' ? body.adviceAt : undefined); break;

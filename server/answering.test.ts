@@ -273,7 +273,20 @@ test('typing that answers nothing is checked when its turn comes: a prompt Claud
 
 test('dismiss closes the decision through decided and types nothing', () => {
   const w = world(session({ question }));
-  w.answers.dismiss('s');
-  assert.deepEqual([w.decided, w.typed, w.row().answered], [['s'], [], null]);
-  assert.throws(() => w.answers.dismiss('gone'), /unknown session gone/);
+  w.answers.dismiss('s', 'q:q1');
+  assert.deepEqual([w.decided, w.typed, w.row().answered, w.row().question, w.row().dismissedAsk], [['s'], [], null, null, 'q1']);
+  assert.throws(() => w.answers.dismiss('gone', 'q:q1'), /unknown session gone/);
+});
+
+test('an answered question is put aside for good; a menu answered while it is open too leaves it, to come up once the menu closes', async () => {
+  const w = world(session({ question }));
+  await w.answers.answer('s', { key: 'q:q1', choice: 'A' });
+  assert.deepEqual([w.row().question, w.row().dismissedAsk], [null, 'q1']);
+  const both = world(session({ question, menu, status: 'waiting' }));
+  assert.equal(decisionKey(both.row()), 'm:m1');
+  await both.answers.answerMenu('s', { toolUseId: 'm1', answers: [{ labels: ['Blue'], other: '' }] });
+  both.answers.dismiss('s', 'm:m1');
+  assert.deepEqual([both.row().question?.toolUseId, both.row().dismissedAsk, both.decided], ['q1', null, ['s', 's']]);
+  both.store.update('s', { menu: null, status: 'idle' });
+  assert.equal(decisionKey(both.row()), 'q:q1');
 });
