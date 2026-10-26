@@ -191,6 +191,13 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
   const move = (front: string, deal: Deal) => transition(() => void arrangeAround(front), deal);
 
+  function deal(way: Deal, change: () => void) {
+    if (state.front && (way === 'down' || way === 'side')) own.add(state.front);
+    const guardUntil = guard();
+    commit({ ...state, guardUntil });
+    transition(change, way);
+  }
+
   return {
     state: () => state,
     subscribe(fn: () => void) {
@@ -234,14 +241,20 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
 
     // Applies a change that takes the front card away (a send, dismissal, archive) as one deal. The guard starts
     // at once, so a second press before the next card is up cannot answer it.
-    deal(deal: Deal, change: () => void) {
-      if (state.front && (deal === 'down' || deal === 'side')) own.add(state.front);
-      const guardUntil = guard();
-      commit({ ...state, guardUntil });
-      transition(change, deal);
-    },
+    deal,
     own(id: string) {
       own.add(id);
+    },
+    // Takes a session out of the deck from this page, as an archive, a quit or a deleted worktree does: its card
+    // leaves sideways when it is the one being read. Returns whether it was.
+    leave(id: string, change: () => void) {
+      own.add(id);
+      if (state.front !== id) {
+        change();
+        return false;
+      }
+      deal('side', change);
+      return true;
     },
     // Takes a deal back: when `change` puts the card in the deck again, it comes back to the front.
     restore(id: string, change: () => boolean) {

@@ -3,7 +3,7 @@ import { sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
-import { patchSession } from '../store.ts';
+import { patchSession, unpatch } from '../store.ts';
 import type { Session, WorktreeView } from '../types.ts';
 import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
 import { Icon } from './Icon.tsx';
@@ -19,29 +19,35 @@ export async function openTerminal(id: string) {
   return sessionAction(id, 'focus');
 }
 
+// The page shows the change before the server has it; when the request fails, the session shows as the server has it.
+const failed = (id: string) => (err: unknown) => {
+  unpatch(id);
+  reportError(err);
+};
+
 // The session leaves the queue at once, its card sideways when it is the one being read, and Undo brings it back.
 // Taking a card out of the queue from this page needs no word that it no longer waits.
 export function archive(session: Session, name: string) {
   const { id } = session;
-  const front = queue.state().front === id;
-  const shelve = (archived: boolean) => {
-    patchSession(id, { archived });
-    return true;
-  };
-  queue.own(id);
-  if (front) queue.deal('side', () => shelve(true));
-  else shelve(true);
+  const front = queue.leave(id, () => patchSession(id, { archived: true }));
   sessionAction(id, 'archive', { archived: true }).then(() => {
     const undo = () => {
-      if (front) queue.restore(id, () => shelve(false));
-      else shelve(false);
-      sessionAction(id, 'archive', { archived: false }).catch(reportError);
+      const back = () => {
+        patchSession(id, { archived: false });
+        return true;
+      };
+      if (front) queue.restore(id, back);
+      else back();
+      sessionAction(id, 'archive', { archived: false }).catch(failed(id));
     };
     toast('undo', `Archived ${name}`, { session: id, action: { label: 'Undo', run: undo } });
-  }, (err) => {
-    shelve(false);
-    reportError(err);
-  });
+  }, failed(id));
+}
+
+// Claude quits: the session leaves the queue as ended, its card sideways when it is the one being read.
+function quit(session: Session) {
+  queue.leave(session.id, () => patchSession(session.id, { status: 'exited' }));
+  sessionAction(session.id, 'quit').catch(failed(session.id));
 }
 
 export function SessionMenu({ session, worktree, name }: { session: Session; worktree: WorktreeView | undefined; name: string }) {
@@ -70,10 +76,7 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
           <Item
             label="Quit Claude"
             note="Stops the process; Continue picks it up later"
-            onClick={pick(() => {
-              queue.own(session.id);
-              sessionAction(session.id, 'quit').catch(reportError);
-            })}
+            onClick={pick(() => quit(session))}
           />
         )}
         {session.archived ? (

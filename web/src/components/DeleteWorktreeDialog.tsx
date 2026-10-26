@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
+import { patchSession, unpatch } from '../store.ts';
 import type { Session } from '../types.ts';
 import styles from './DeleteWorktreeDialog.module.css';
 
@@ -48,12 +49,16 @@ export function DeleteWorktreeDialog() {
     cancel.current?.focus();
   }, [asked]);
 
+  // Claude quits first, so the session leaves the queue as ended, its card sideways when it is the one being read.
   const confirm = () => {
     const { session } = target!;
     dialog.current!.close();
     closeSheetOf(session.id);
-    queue.own(session.id);
-    sessionAction(session.id, 'delete-worktree').catch(reportError);
+    queue.leave(session.id, () => patchSession(session.id, { status: 'exited' }));
+    sessionAction(session.id, 'delete-worktree').catch((err) => {
+      unpatch(session.id);
+      reportError(err);
+    });
   };
 
   const check = target?.check;

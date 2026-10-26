@@ -198,6 +198,20 @@ test('skip and previous go by the order as the last move left it, with no new de
   assert.deepEqual(deals, ['back', 'enter-back', 'back', 'back', 'enter-back', 'enter-back', 'enter-back']);
 });
 
+test('a session the page takes out of the deck leaves sideways from the front, and quietly from elsewhere; neither says it no longer waits', () => {
+  const { q, deals } = world();
+  q.sync([a, b, c]);
+  const changes: string[] = [];
+  assert.equal(q.leave('c', () => changes.push('c')), false);
+  assert.deepEqual(q.sync([a, b]), []);
+  assert.equal(q.leave('a', () => changes.push('a')), true);
+  assert.equal(q.guarded(), true);
+  assert.deepEqual(q.sync([b]), []);
+  assert.equal(q.state().front, 'b');
+  assert.deepEqual(changes, ['c', 'a']);
+  assert.deepEqual(deals, ['side']);
+});
+
 test('a send that failed waits right after the card being read until it has been at the front, which shows its message once', () => {
   const { q } = world();
   q.sync([a, b, c]);

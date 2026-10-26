@@ -46,9 +46,38 @@ function set(next: State) {
   else notify();
 }
 
-// This page's own change to a session, shown before the snapshot that carries it.
+const PATCH_MS = 15_000;
+
+// This page's own changes to sessions, shown before the snapshot that carries them. A snapshot the server sent before
+// it stored a change keeps the change on top, until a snapshot carries it, the session is gone or 15 s have passed.
+const patches = new Map<string, { patch: Partial<Session>; until: number }>();
+// The sessions as the newest snapshot has them, under the patches.
+let sent = new Map<string, Session>();
+
+const carries = (s: Session, patch: Partial<Session>) => Object.entries(patch).every(([k, v]) => s[k as keyof Session] === v);
+
+function patched(sessions: Session[]) {
+  const now = Date.now();
+  for (const [id, { patch, until }] of patches) {
+    const s = sessions.find((x) => x.id === id);
+    if (!s || now > until || carries(s, patch)) patches.delete(id);
+  }
+  return sessions.map((s) => {
+    const p = patches.get(s.id);
+    return p ? { ...s, ...p.patch } : s;
+  });
+}
+
 export function patchSession(id: string, patch: Partial<Session>) {
+  patches.set(id, { patch: { ...patches.get(id)?.patch, ...patch }, until: Date.now() + PATCH_MS });
   set({ ...state, sessions: state.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
+}
+
+// Takes back this page's changes to a session whose request failed: it shows as the newest snapshot has it.
+export function unpatch(id: string) {
+  if (!patches.delete(id)) return;
+  const s = sent.get(id);
+  if (s) set({ ...state, sessions: state.sessions.map((x) => (x.id === id ? s : x)) });
 }
 
 let wake: ReturnType<typeof setTimeout> | undefined;
@@ -147,7 +176,8 @@ async function connect() {
         sends.reconcile(next.sessions);
         sends.confirm(next.sessions);
         sends.reconnected();
-        set({ ...state, ...next, link: 'live' });
+        sent = new Map(next.sessions.map((s: Session) => [s.id, s]));
+        set({ ...state, ...next, sessions: patched(next.sessions), link: 'live' });
         wakeAtNextChange();
         announced(uiEntry);
       }

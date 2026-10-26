@@ -3250,4 +3250,63 @@ export const checks: Check[] = [
       await shot('hover-card-edge');
     },
   },
+  {
+    name: 'P7.leave-deals Quit Claude and Delete worktree from the card\'s ⋯ deal the card out sideways, as Archive does; the card after it comes up, with no word that anything stopped waiting',
+    async run({ page, mock }) {
+      const confirmable = () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#delete-worktree');
+        return !!d?.open && !d.innerText.includes('Checking');
+      };
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.eval(watchDeals);
+      await page.click('[data-card] button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await page.click(':popover-open button', 'Quit Claude');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      assert.deepEqual(await page.eval(dealt), ['side']);
+      const [quit] = await logged(mock, 'the quit', (e) => e.action === 'quit');
+      assert.deepEqual([quit.sessionId, quit.status], ['s-cart', 204]);
+
+      await ready(page, 's-hooks');
+      await page.click('[data-card] button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await page.click(':popover-open button', 'Delete worktree');
+      await page.until('the delete dialog', confirmable);
+      await page.click('dialog#delete-worktree button', 'Delete worktree');
+      await page.until('s-group at the front', frontIs, 's-group');
+      assert.deepEqual(await page.eval(dealt), ['side', 'side']);
+      const [deleted] = await logged(mock, 'the deletion', (e) => e.method === 'POST' && e.action === 'delete-worktree');
+      assert.deepEqual([deleted.sessionId, deleted.status], ['s-hooks', 204]);
+      await sleep(600);
+      assert.equal(await page.eval(() => !!document.querySelector('[data-session="s-cart"]:is([data-segment], [data-peek]), [data-session="s-hooks"]:is([data-segment], [data-peek])')), false);
+      assert.deepEqual([await page.eval(toastsOf, 'info'), await page.eval(toastsOf, 'error')], [null, null]);
+    },
+  },
+  {
+    name: 'P7.archive-stays an archive shows at once and stays: a snapshot pushed before the server has stored it does not bring the card back for a moment',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-reviews"]');
+      await ready(page, 's-reviews');
+      await mock.post('/mock/delay', { ms: 1500 });
+      await page.key('x');
+      const shownAnywhere = () => !!document.querySelector('[data-session="s-reviews"]:is([data-segment], [data-peek], [data-card])');
+      await page.until('s-reviews to leave', () => !document.querySelector('[data-session="s-reviews"]:is([data-segment], [data-peek], [data-card])'));
+      await page.eval(() => {
+        const w = window as unknown as { e2eBack: boolean };
+        w.e2eBack = false;
+        new MutationObserver(() => {
+          if (document.querySelector('[data-session="s-reviews"]:is([data-segment], [data-peek], [data-card])')) w.e2eBack = true;
+        }).observe(document.body, { subtree: true, childList: true, attributes: true });
+      });
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { activity: { step: 'Bash: pnpm test invoices --run --reporter=dot' } } });
+      await page.until('that snapshot', () => !!document.querySelector('[data-capsule][data-session="s-invoice"]')?.textContent?.includes('--reporter=dot'));
+      const [archived] = await logged(mock, 'the archive', (e) => e.action === 'archive', 4000);
+      assert.deepEqual([archived.sessionId, archived.status], ['s-reviews', 204]);
+      await sleep(300);
+      assert.deepEqual([await page.eval(() => (window as unknown as { e2eBack: boolean }).e2eBack), await page.eval(shownAnywhere)], [false, false]);
+      assert.equal((await stateOf(mock, 's-reviews')).archived, true);
+    },
+  },
 ];
