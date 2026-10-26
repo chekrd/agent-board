@@ -2132,15 +2132,15 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.12 with s-hooks at the front an urgent new decision arrives: the front stays, the Just-in chip names it and its segment is marked; the chip brings it to the front and goes',
-    async run({ page, mock }) {
+    name: 'P5.1.12 with s-hooks at the front an urgent new decision arrives: the front stays, the Just-in chip names it (short where the slot is narrow) and its segment is marked; the chip brings it to the front and goes',
+    async run({ page, mock, look }) {
       await openQueue(page, mock);
       await page.key('ArrowRight');
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       const label = (await page.eval(card))!.label;
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
       const chip = await page.until('the Just-in chip', () => document.querySelector<HTMLElement>('[data-justin]')?.innerText.trim());
-      assert.equal(chip, 'Just in: Retire the v1 orders API');
+      assert.equal(chip, look.width > 1100 ? 'Just in: Retire the v1 orders API' : 'Just in');
       assert.equal((await page.eval(card))!.label, label);
       assert.deepEqual((await page.eval(segmentsNow)).filter((s) => s.new).map((s) => s.session), ['s-new']);
       await page.click('[data-justin]');
