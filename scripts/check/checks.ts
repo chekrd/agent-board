@@ -179,7 +179,7 @@ async function openFromWall(page: Page, mock: Mock, id: string) {
   await page.until(`the sheet of ${id}`, sheetOpen);
 }
 
-// A task waiting in the queue, whose tile goes to its card instead.
+// A task's page loaded straight from its URL, over the queue.
 async function openSheetOf(page: Page, mock: Mock, id: string) {
   await page.goto(`${mock.url}/s/${id}/overview`);
   await page.until(`the sheet of ${id}`, sheetOpen);
@@ -2343,7 +2343,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.20 N opens New task over the queue with the prompt focused and Esc closes it; V goes to the Wall and back; on the Wall a waiting tile brings its card to the front and a working one opens its sheet over the Wall',
+    name: 'P5.1.20 N opens New task over the queue with the prompt focused and Esc closes it; V goes to the Wall and back; on the Wall a waiting tile opens its task page over the Wall, whose Answer it on its card brings the card to the front, and so does a working one',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.key('n');
@@ -2358,6 +2358,9 @@ export const checks: Check[] = [
       await page.key('v');
       await page.until('the Wall', () => location.pathname === '/wall' && document.querySelectorAll('[data-tile]').length > 0);
       await page.click('[data-tile][data-session="s-group"] p');
+      await page.until('the task page of s-group over the Wall', () => location.pathname === '/s/s-group/overview' && !!document.querySelector('#task-sheet [data-queued]') &&
+        (window.navigation.currentEntry?.getState() as { base?: string } | undefined)?.base === '/wall');
+      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
       await page.until('s-group at the front of the queue', () => location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-group');
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -3039,7 +3042,7 @@ export const checks: Check[] = [
       await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
       await page.until('the queue with s-cart at the front', () => !document.querySelector('#task-sheet') && location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-cart');
 
-      // A waiting task's tile goes to its card, so this sheet is over the Wall because its task asked while it was open.
+      // A task that starts asking while its page is open over the Wall.
       await openFromWall(page, mock, 's-invoice');
       await mock.post('/mock/patch', {
         id: 's-invoice',

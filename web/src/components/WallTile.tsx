@@ -1,8 +1,7 @@
 import type { MouseEvent } from 'react';
 import { openDecision } from '../../../server/decision.ts';
 import { promptOf } from '../deck.ts';
-import { queue } from '../queue.ts';
-import { go, openSheet, sessionPath } from '../router.ts';
+import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, type Attention } from '../util.ts';
 import { Clock } from './Clock.tsx';
@@ -23,9 +22,9 @@ function adviceTag(s: Session) {
   return a?.state === 'thinking' ? 'Second opinion running' : null;
 }
 
-// The whole tile opens the task, or the card of one waiting in the queue, but through a click on the article rather
-// than a link stretched over it, which would sit above every label and hide its tooltip.
-export function WallTile({ session, repos, queued }: { session: Session; repos: RepoView[]; queued: boolean }) {
+// The whole tile opens the task's page, also for one waiting in the queue, whose page leads to its card; through a
+// click on the article rather than a link stretched over it, which would sit above every label and hide its tooltip.
+export function WallTile({ session, repos }: { session: Session; repos: RepoView[] }) {
   const { repo, worktree, branch } = locate(repos, session);
   const name = sessionLabel(session, branch);
   const attention = attentionOf(session);
@@ -35,11 +34,7 @@ export function WallTile({ session, repos, queued }: { session: Session; repos: 
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = attention === 'decide' && !archived ? adviceTag(session) : null;
 
-  const show = () => {
-    if (!queued) return openSheet(session.id);
-    queue.jump(session.id);
-    go('/');
-  };
+  const show = () => openSheet(session.id);
   const open = (e: MouseEvent<HTMLElement>) => {
     if ((e.target as HTMLElement).closest('a, button, [popover]') || getSelection()?.toString()) return;
     show();
@@ -70,7 +65,7 @@ export function WallTile({ session, repos, queued }: { session: Session; repos: 
           <SessionMenu session={session} worktree={worktree} name={name} />
         </span>
       </header>
-      <a className={styles.name} href={queued ? '/' : sessionPath(session.id)} onClick={follow}>{name}</a>
+      <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
       {working && (
         <div className={styles.work}>
