@@ -13,6 +13,7 @@ interface Loss {
   commits: number;
   // The task runs in the repository's main checkout, which clearing it keeps.
   checkout?: boolean;
+  subtasks?: number;
 }
 
 type Check = { state: 'checking' } | { state: 'done'; loss: Loss } | { state: 'failed'; error: string };
@@ -95,6 +96,7 @@ export function DeleteWorktreeDialog() {
           ))}
           <p className={styles.muted}>
             {keeps ? "This task's Claude quits, its terminal closes and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
+            {!!loss?.subtasks && ` ${loss.subtasks === 1 ? 'Its subtask goes' : `Its ${loss.subtasks} subtasks go`} with it, ${loss.subtasks === 1 ? 'its Claude' : 'their Claudes'} too.`}
           </p>
           <footer>
             <button type="button" ref={cancel} commandfor="delete-worktree" command="close">Cancel</button>

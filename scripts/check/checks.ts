@@ -5005,6 +5005,10 @@ export const checks: Check[] = [
       await page.click('#task-sheet [data-subtask="s-review-1"]');
       await page.until('the subtask page', () => location.pathname === '/s/s-review-1/overview' && !!document.querySelector('#task-sheet [aria-label="Subtask of"]'));
       await shot('subtask');
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive']);
+      await page.key('Escape');
+      await page.until('the menu to close', () => !document.querySelector(':popover-open'));
       const text = (sel: string) => page.eval((q) => document.querySelector<HTMLElement>(q)!.innerText.replace(/\s+/g, ' ').trim(), sel);
       assert.equal(await text('#task-sheet header [data-parent]'), 'Subtask of Review the lazy reviews branch');
       const origin = await text('#task-sheet [aria-label="Subtask of"]');
@@ -5034,7 +5038,18 @@ export const checks: Check[] = [
       const listed = await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] [data-subtask]')].map((b) => `${b.dataset.subtask}:${b.dataset.attention}`));
       assert.equal(listed.length, 3);
       assert.deepEqual(listed.slice(0, 2), ['s-review-2:decide', 's-review-1:working']);
+      assert.ok(await page.eval(() => !!document.querySelector('#task-sheet aside [data-subtask-list]')), 'the subtasks are listed beside the facts');
       await shot('subtask-list');
+
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Clear task');
+      const cleared = await page.until('the clear dialog', () => {
+        const d = document.querySelector<HTMLElement>('dialog#delete-worktree[open]');
+        return d && !d.textContent!.includes('Checking') && d.innerText;
+      });
+      assert.match(cleared, /Its 3 subtasks go with it, their Claudes too\./);
+      await page.click('dialog#delete-worktree button', 'Clear task');
+      await until('the task and its subtasks gone', async () => !(await mock.get('/api/state')).sessions.some((s: { id: string }) => s.id.startsWith('s-review')));
     },
   },
 ];

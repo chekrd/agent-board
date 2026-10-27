@@ -356,7 +356,8 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
   'delete-worktree': (s) => {
     if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
     if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
-    state.sessions = state.sessions.filter((o) => o !== s);
+    const gone = new Set([s, ...subtasksOf(s.id)]);
+    state.sessions = state.sessions.filter((o) => !gone.has(o));
     push();
   },
 };
@@ -378,15 +379,18 @@ async function sessionAction(id: string, action: string, body: any) {
 const longLived = (repo: RepoView, branch: string) =>
   ['master', 'main', 'develop', 'trunk', repo.base, repo.base.replace(/^[^/]+\//, '')].includes(branch) || branch.startsWith('release/');
 
+const subtasksOf = (id: string): Session[] => state.sessions.filter((o) => o.parent?.id === id).flatMap((o) => [o, ...subtasksOf(o.id)]);
+
 function deleteLoss(s: Session) {
   if (flagged(s.id, 'lossFails')) throw new Error('git status failed: fatal: unable to read the index');
   const repo = repoOf(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
   if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
-  if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
+  const subtasks = subtasksOf(s.id).length;
+  if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-  return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0 };
+  return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0, subtasks };
 }
 
 // Enough that New task's branch list has to scroll.

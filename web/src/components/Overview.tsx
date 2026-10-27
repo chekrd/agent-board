@@ -162,7 +162,6 @@ export function Overview({ session, name, branch }: { session: Session; name: st
       <div className={styles.grid}>
         <div className={styles.main}>
           <SubtaskOf session={session} />
-          <Subtasks session={session} />
           {working && (
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />
@@ -246,6 +245,7 @@ export function Overview({ session, name, branch }: { session: Session; name: st
               <dd><Copy value={session.id} what="Session id" title="Claude Code's session id; claude --resume takes it" /></dd>
             </dl>
           </section>
+          <Subtasks session={session} />
           {artifacts.length > 0 && (
             <section>
               <h3 className={styles.label} title="Visual explanations Claude made in this session">Artifacts</h3>

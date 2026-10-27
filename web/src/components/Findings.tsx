@@ -253,12 +253,10 @@ export function Subtasks({ session }: { session: Session }) {
         {subtasks.map(({ o, state }) => (
           <li key={o.id}>
             <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
-              <StateMark state={state} size={9} />
-              <span className={styles.listMain}>
-                <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
-                <span>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
-              </span>
+              <StateMark state={state} size={8} />
+              <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
               <span className={styles.listState}>{state === 'archived' ? 'Archived' : STATE_LABELS[state]}</span>
+              <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
             </button>
           </li>
         ))}

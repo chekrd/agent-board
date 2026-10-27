@@ -230,11 +230,12 @@
 
   .list button {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 12px;
+    column-gap: 9px;
+    row-gap: 3px;
     width: 100%;
-    padding: 10px 14px;
+    padding: 9px 12px;
     border: 1.5px solid var(--line);
     border-radius: 12px;
     background: var(--card-2);
@@ -243,18 +244,23 @@
     &[data-attention="focus"] { border-color: var(--prompt-line); background: var(--tint-focus); }
     &[data-attention="idle"] { border-color: var(--idle-line); }
     &[data-attention="archived"], &[data-attention="exited"] { border-style: dashed; background: none; }
+    white-space: normal;
+    strong { min-width: 0; font-size: 14px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
   }
 
-  .listMain {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    strong { font-size: 14.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    span { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .listText {
+    grid-column: 2;
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
   }
 
   .listState {
+    grid-column: 2;
     font-size: 11px;
     font-weight: 750;
     letter-spacing: 0.08em;
