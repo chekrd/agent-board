@@ -39,7 +39,7 @@ interface DecisionBodyProps {
 }
 
 // An ask_human question or an end-of-turn choice: the problem and Claude's details on the left, the second opinion,
-// the options and the reply box on the right.
+// the options and the reply box on the right. An end-of-turn choice shows Claude's whole last message as its context.
 export function DecisionBody(p: DecisionBodyProps) {
   const { session, decision } = p;
   const done = p.advice?.state === 'done' ? p.advice : null;
@@ -48,7 +48,9 @@ export function DecisionBody(p: DecisionBodyProps) {
     <div className={styles.cols}>
       <Column side="left">
         <Headline text={decision.problem} />
-        {decision.brief && <p className={styles.lead}>{decision.brief}</p>}
+        {decision.brief && (p.kind === 'ask'
+          ? <p className={styles.lead}>{decision.brief}</p>
+          : <p className={`${styles.lead} ${styles.oneLine}`} title={decision.brief}>{decision.brief}</p>)}
         {decision.context && (
           <section className={styles.details} aria-label={title}>
             <div className={styles.detailsHead}>

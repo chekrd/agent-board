@@ -136,6 +136,32 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
     ...s, answered: { key: `m:${s.menu.toolUseId}`, text: menuAnswerText(s.menu, s.advice!.answers!), at: now - MIN },
   }))),
 
+  'turn-long': (now) => base(now, [...queue(now), session({
+    id: 's-push', repoId: 1, worktree: '~/code/worktrees/asset-uploads/storefront', tty: '/dev/ttys017', pid: 81311,
+    title: 'Keep the upload warning across folders', firstPrompt: 'Leaving the page mid-upload sometimes gives no warning. Find out why.',
+    status: 'idle', createdAt: now - 90 * MIN, updatedAt: now - MIN, rank: 5, rankReason: 'Only a push waits on it',
+    summary: {
+      text: 'The branch is 6 commits on master; Claude asks whether to force-push it.', progress: ['Fixed the navigation guard'], learnings: [],
+      decision: {
+        problem: 'Should Claude force-push the rebased branch?',
+        brief: 'The branch was rebased onto master, so the push needs --force-with-lease. Typecheck and lint are clean. Claude waits for your go-ahead before publishing anything.',
+        context: '- Top commit: `7bb08719db4`\n- Not pushed yet',
+        options: [{ label: 'Push', description: 'Force-push with --force-with-lease' }, { label: "Don't push yet", description: 'Keep the branch local' }],
+      },
+      question: null, basis: 't-push-6', at: now - MIN,
+    },
+    lastMessage: [
+      '**#2:** I dropped that commit locally, so the selection still passes whole asset objects.',
+      '**#3:** What changed is which uploads count as still running when the warning decides whether to show.',
+      '- **Before:** it only counted running uploads that were also in `listingUploads`.',
+      '- **Why that missed some:** `listingUploads` is cleared when you open a folder or change the search.',
+      '- **Now:** it counts every entry in `uploads` that has `_uploading` set.',
+      'Searching or opening a folder still clears the upload tiles, so this commit only keeps the warning working.',
+      'The local branch is now 6 review commits on the latest master. It still needs `--force-with-lease`. Should I push it?',
+    ].join('\n\n'),
+    lastTurn: 't-push-6',
+  })]),
+
   'ended-question': (now) => base(now, [...queue(now), session({
     id: 's-gone', repoId: 4, worktree: '~/code/worktrees/fix-anchors/docs-site',
     title: 'Rotate the docs signing key', firstPrompt: 'Rotate the key that signs the docs deploys.',

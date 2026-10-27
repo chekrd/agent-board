@@ -162,6 +162,7 @@
   }
 
   .lead { flex: none; margin: -4px 0 2px; font-size: 18px; line-height: 1.45; color: var(--text-2); text-wrap: pretty; }
+  .oneLine { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
   .details { flex: none; }
 

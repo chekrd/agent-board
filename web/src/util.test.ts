@@ -9,6 +9,8 @@ test('a decision is the open question or end-of-turn choice, and one the board a
   assert.equal(decisionOf({ ...asked, answered: { key: 'q:q1', text: 'Keep', at: 5 } }), null);
   const ended = session('s', { summary: turn('t1') });
   assert.equal(decisionOf(ended)?.key, 's:t1');
+  assert.equal(decisionOf(ended)?.context, '', 'no last message, no context');
+  assert.equal(decisionOf({ ...ended, lastMessage: 'All green. Ship it?' })?.context, 'All green. Ship it?', "Claude's whole last message, not the summarizer's");
   assert.equal(decisionOf({ ...ended, answered: { key: 's:t1', text: 'Ship', at: 5 } }), null);
   assert.equal(decisionOf({ ...ended, lastTurn: 't2' }), null, 'read from an older turn');
   assert.equal(decisionOf(session('s', { status: 'waiting', menu: menu('m1') })), null, 'a menu has its own view');

@@ -36,7 +36,7 @@ export function decisionOf(s: Session): DecisionView | null {
   }
   if (!key?.startsWith('s:')) return null;
   const d = turnDecision(s)!;
-  return { key, problem: d.problem, brief: d.brief, context: d.context ?? '', options: d.options };
+  return { key, problem: d.problem, brief: d.brief, context: s.lastMessage || d.context || '', options: d.options };
 }
 
 // The advice shown with the decision or menu the session waits on now, never one left from an earlier one.

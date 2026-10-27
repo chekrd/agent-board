@@ -2689,6 +2689,47 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P5.1.d5 an end-of-turn choice read from a long last message shows that whole message as its Context next to the options, Space hides and shows it, and the brief stays one line',
+    scenario: 'turn-long',
+    async run({ page, mock, shot }) {
+      const { lastMessage, summary } = await stateOf(mock, 's-push');
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-push"]');
+      await page.until('s-push at the front', frontIs, 's-push');
+      const shown = () => {
+        const section = document.querySelector<HTMLElement>('[data-card] section[aria-label="Context"]');
+        const lead = document.querySelector<HTMLElement>('[data-card] p[title]');
+        return {
+          text: section?.querySelector<HTMLElement>(':scope > div:last-child:not(:first-child)')?.innerText ?? null,
+          toggle: section?.querySelector('button')?.textContent, expanded: section?.querySelector('button')?.getAttribute('aria-expanded'),
+          options: [...document.querySelectorAll<HTMLElement>('[data-card] [data-option]')].map((o) => o.innerText.split('\n').filter(Boolean)[1]),
+          sideBySide: !!section && section.closest('[data-card]')!.querySelector('[data-option]')!.getBoundingClientRect().left > section.getBoundingClientRect().right,
+          lead: lead && { text: lead.textContent, lines: Math.round(lead.getBoundingClientRect().height / parseFloat(getComputedStyle(lead).lineHeight)) },
+        };
+      };
+      const before = await page.eval(shown);
+      for (const line of ['I dropped that commit locally', 'listingUploads', 'only keeps the warning working', 'Should I push it?']) {
+        assert.ok(before.text?.includes(line), `the Context lacks “${line}”`);
+      }
+      assert.ok(!before.text?.includes('7bb08719db4'), "the summarizer's context shows instead of the last message");
+      assert.equal(before.text?.split(/\n+/).filter(Boolean).length, lastMessage.split(/\n+/).filter(Boolean).length);
+      assert.deepEqual({ ...before, text: undefined }, {
+        text: undefined, toggle: 'Hide Space', expanded: 'true', options: ['Push', "Don't push yet"], sideBySide: true,
+        lead: { text: summary.decision.brief, lines: 1 },
+      });
+      await page.until('the card to settle', still);
+      await shot('queue-turn-long');
+      await page.eval(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.key(' ');
+      assert.deepEqual(await page.until('the context hidden', () => {
+        const section = document.querySelector<HTMLElement>('[data-card] section[aria-label="Context"]');
+        return section && !section.innerText.includes('listingUploads') && section.querySelector('button')?.getAttribute('aria-expanded');
+      }), 'false');
+      await page.key(' ');
+      await page.until('the context shown again', () => !!document.querySelector<HTMLElement>('[data-card] section[aria-label="Context"]')?.innerText.includes('listingUploads'));
+    },
+  },
+  {
     name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Z; the meter and the tab title count 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
     async run({ page, mock, shot }) {
       const { advice } = await stateOf(mock, 's-cart');
