@@ -1262,7 +1262,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, Worth knowing, the composer, Status · updated, the latest reply, Facts whose Worktree and Session copy on a click and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
+    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, Worth knowing, the composer, Status · updated, the latest reply, Facts whose Worktree, Branch and Session copy on a click and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
     clock: 'fast',
     async run({ wait, page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -1290,7 +1290,7 @@ export const checks: Check[] = [
       assert.equal(first.size, '30px');
       assert.deepEqual({ ...overview, status: undefined }, {
         working: true, know: true, composer: true, status: undefined, reply: true,
-        facts: ['Task', 'Worktree', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
+        facts: ['Task', 'Worktree', 'Branch', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
       assert.match(overview.status ?? '', /^Status · updated \d+m ago$/);
       await wait(1100);
@@ -1303,12 +1303,12 @@ export const checks: Check[] = [
         w.copied = [];
         navigator.clipboard.writeText = async (t: string) => void w.copied.push(t);
       });
-      for (const fact of ['Worktree', 'Session']) {
+      for (const fact of ['Worktree', 'Branch', 'Session']) {
         await page.eval((f) => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === f)!.nextElementSibling!.querySelector('button')!.click(), fact);
       }
-      await page.until('both marked Copied', () => [...document.querySelectorAll('#task-sheet dd button[data-copied]')].map((b) => b.textContent?.endsWith('Copied')).join() === 'true,true');
+      await page.until('all three marked Copied', () => [...document.querySelectorAll('#task-sheet dd button[data-copied]')].map((b) => b.textContent?.endsWith('Copied')).join() === 'true,true,true');
       const copied = await page.eval(() => (window as unknown as { copied: string[] }).copied);
-      assert.deepEqual(copied, ['~/code/worktrees/invoice-rounding/billing-api', 's-invoice']);
+      assert.deepEqual(copied, ['~/code/worktrees/invoice-rounding/billing-api', 'invoice-rounding', 's-invoice']);
       await shot('sheet-facts-copied');
 
       await page.click('#task-sheet textarea');

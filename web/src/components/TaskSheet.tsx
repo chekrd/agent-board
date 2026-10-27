@@ -104,7 +104,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
         <SessionMenu session={session} worktree={worktree} name={name} />
       </header>
       <div className={styles.panel} role="tabpanel">
-        {current === 'overview' && <Overview session={session} name={name} />}
+        {current === 'overview' && <Overview session={session} name={name} branch={worktree?.branch ?? undefined} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
         {current === 'artifacts' && <Artifacts session={session} item={item} />}
       </div>

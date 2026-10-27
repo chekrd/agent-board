@@ -149,7 +149,7 @@ function Queued({ session, name }: { session: Session; name: string }) {
   );
 }
 
-export function Overview({ session, name }: { session: Session; name: string }) {
+export function Overview({ session, name, branch }: { session: Session; name: string; branch?: string }) {
   const busy = useBusy();
   const { summary, activity } = session;
   const attention = attentionOf(session);
@@ -218,6 +218,12 @@ export function Overview({ session, name }: { session: Session; name: string }) 
               <dd>{session.firstPrompt ?? '—'}</dd>
               <dt>Worktree</dt>
               <dd><Copy value={session.worktree} what="Worktree path" /></dd>
+              {branch && (
+                <>
+                  <dt>Branch</dt>
+                  <dd><Copy value={branch} what="Branch" /></dd>
+                </>
+              )}
               {session.pr?.result && (
                 <>
                   <dt>Pull request</dt>
