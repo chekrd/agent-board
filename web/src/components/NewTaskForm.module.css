@@ -145,22 +145,37 @@
     &:disabled { opacity: 0.45; }
   }
 
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+  [data-branch-field] { anchor-name: --branch-field; }
+
+  .branches {
+    position-anchor: --branch-field;
+    position-area: bottom span-right;
+    position-try-fallbacks: flip-block;
+    width: max(anchor-size(width), 320px);
+    max-width: 86vw;
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    flex-direction: column;
+    gap: 2px;
+    &:popover-open { display: flex; }
     button {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      height: 30px;
-      padding: 0 10px;
-      border-radius: 8px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      padding: 7px 10px;
+      border: 0;
+      border-radius: 9px;
       background: none;
       font-weight: 400;
+      text-align: left;
+      &[aria-selected="true"] { background: var(--raised-2); }
+      &[data-active] { background: var(--hover); }
     }
-    code { font-size: 12.5px; }
-    span { font-size: 12px; color: var(--muted); }
+    code { font-size: 13px; overflow-wrap: anywhere; }
+    span { flex: none; font-size: 12px; color: var(--muted); }
   }
 
   .options {

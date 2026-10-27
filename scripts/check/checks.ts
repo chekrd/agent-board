@@ -1469,7 +1469,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task opened on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches as chips with the hint',
+    name: 'P4.10 New task opened on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches by name in a list under the field, with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
@@ -1504,14 +1504,18 @@ export const checks: Check[] = [
       await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
       await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
-      const chips = await page.until('the branch chips', () => {
-        const list = [...document.querySelectorAll('dialog#new-task [aria-label="Branches"] button')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
+      await page.click('#new-task [data-branch-field] input');
+      const rows = await page.until('the branch list', () => {
+        const list = [...document.querySelectorAll('#new-task [data-branch-picker]:popover-open [role="option"]')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
         return list.length && list;
       });
-      for (const chip of [['main', 'main checkout'], ['guest-cart-merge', 'own worktree'], ['release/2026.10', '']]) assert.deepEqual(chips.find((c) => c[0] === chip[0]), chip);
+      for (const row of [['main', 'main checkout'], ['guest-cart-merge', 'own worktree'], ['release/2026.10', '']]) assert.deepEqual(rows.find((c) => c[0] === row[0]), row);
+      const names = rows.map((r) => r[0]);
+      assert.deepEqual(names, names.toSorted((a, b) => a!.localeCompare(b!, undefined, { numeric: true, sensitivity: 'base' })), 'by name');
       const hint = () => document.querySelector('dialog#new-task form > p:not([role])')?.textContent;
       assert.equal(await page.eval(hint), 'Switches ~/code/storefront to the branch and starts Claude there.');
-      await page.click('dialog#new-task [aria-label="Branches"] button', 'guest-cart-merge');
+      await page.click('#new-task [data-branch-picker] [role="option"]', 'guest-cart-merge');
+      await page.until('the list to close', () => !document.querySelector('#new-task [data-branch-picker]:popover-open'));
       await page.until('the hint for a branch with its own worktree', () =>
         document.querySelector('dialog#new-task form > p:not([role])')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
       await shot('new-task-existing-branch');
@@ -1810,25 +1814,25 @@ export const checks: Check[] = [
     name: 'P4.branches-once New task reads a repository\'s branch list once: Existing branch and a change of repository each ask the server once',
     async run({ page, mock }) {
       const reads = async (repo: number) => (await mock.log()).filter((e) => e.method === 'GET' && e.path === `/api/repos/${repo}/branches`).length;
-      const chips = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
+      const rows = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await pickRepo(page, 'storefront');
       await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
-      await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), 'dialog#new-task');
+      await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), '#new-task');
       await sleep(300);
       assert.equal(await reads(1), 1);
       await pickRepo(page, 'billing');
-      await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), 'dialog#new-task');
+      await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), '#new-task');
       await sleep(300);
       assert.deepEqual([await reads(1), await reads(2)], [1, 1]);
-      assert.ok((await page.eval(chips, 'dialog#new-task')).includes('webhook-retries'));
+      assert.ok((await page.eval(rows, '#new-task')).includes('webhook-retries'));
     },
   },
   {
-    name: 'P4.repo-filter New task\'s repository picker filters by typing: by name or path, arrows and Enter pick, a letter on the closed button opens it already filtered, and no match says so',
+    name: 'P4.repo-filter New task\'s repository picker lists by name and filters by typing: by name or path, arrows and Enter pick, a letter on the closed button opens it already filtered, and no match says so',
     async run({ page, mock, shot }) {
       const picker = '#new-task [data-repo-picker]';
       const shown = (picker: string) => [...document.querySelectorAll(`${picker} [role="option"]`)].map((o) => o.querySelector('strong')?.textContent);
@@ -1838,10 +1842,9 @@ export const checks: Check[] = [
       await openNewTask(page);
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the filter focused', (picker: string) => document.activeElement === document.querySelector(`${picker} input`), picker);
-      assert.deepEqual(await page.eval(shown, picker), ['storefront', 'billing-api', 'agent-board', 'docs-site']);
+      assert.deepEqual(await page.eval(shown, picker), ['agent-board', 'billing-api', 'docs-site', 'storefront']);
       await page.type('code/');
       await page.until('the repositories under ~/code', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 3, picker);
-      await page.key('ArrowDown');
       await page.key('ArrowDown');
       await shot('new-task-repo-filter');
       await page.key('Enter');
@@ -1871,6 +1874,57 @@ export const checks: Check[] = [
       await page.until('the picker', (picker: string) => !!document.querySelector(`${picker}:popover-open`), picker);
       await page.click(`${picker} [role="option"]`, 'billing-api');
       await page.until('billing-api picked by a click', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'billing-api');
+    },
+  },
+  {
+    name: 'P4.branch-filter New task\'s branch list stays closed until a click, ↓ or typing; 43+ branches scroll inside it and leave the dialog its size; typing filters, arrows and Enter pick, Esc closes only the list, and no match says so',
+    async run({ page, mock, shot }) {
+      const list = '#new-task [data-branch-picker]';
+      const field = '#new-task [data-branch-field] input';
+      const open = (list: string) => !!document.querySelector(`${list}:popover-open`);
+      const shown = (list: string) => [...document.querySelectorAll(`${list} [role="option"] code`)].map((c) => c.textContent);
+      const dialogHeight = () => Math.round(document.querySelector('dialog#new-task')!.getBoundingClientRect().height);
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
+      await pickRepo(page, 'storefront');
+      await page.click('dialog#new-task button', 'More options');
+      await page.click('dialog#new-task label', 'Existing branch');
+      await page.until('the branches', (list: string) => document.querySelectorAll(`${list} [role="option"]`).length > 40, list);
+      const before = await page.eval(dialogHeight);
+      assert.equal(await page.eval(open, list), false, 'closed until asked');
+      await page.eval((field: string) => document.querySelector<HTMLInputElement>(field)!.focus(), field);
+      await sleep(200);
+      assert.equal(await page.eval(open, list), false, 'focus alone does not open it');
+
+      await page.key('ArrowDown');
+      await page.until('the list', open, list);
+      const box = await page.eval((list: string) => {
+        const el = document.querySelector(list)!;
+        const r = el.getBoundingClientRect();
+        return { scrolls: el.scrollHeight > el.clientHeight, inView: r.top >= 0 && r.bottom <= innerHeight, page: document.scrollingElement!.scrollHeight <= innerHeight };
+      }, list);
+      assert.deepEqual(box, { scrolls: true, inView: true, page: true });
+      assert.equal(await page.eval(dialogHeight), before, 'the dialog kept its size');
+      await shot('new-task-branch-list');
+
+      await page.type('kcl-1561');
+      await page.until('ten matches', (list: string) => document.querySelectorAll(`${list} [role="option"]`).length === 10, list);
+      assert.deepEqual((await page.eval(shown, list)).slice(0, 2), ['feature/kcl-15610', 'feature/kcl-15611']);
+      await page.key('ArrowDown');
+      await page.key('Enter');
+      await page.until('the list to close', (list: string) => !document.querySelector(`${list}:popover-open`), list);
+      assert.equal(await page.eval((field: string) => document.querySelector<HTMLInputElement>(field)!.value, field), 'feature/kcl-15611');
+      assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'Enter kept the dialog');
+      assert.equal((await mock.log()).some((e) => e.method === 'POST' && e.path === '/api/worktrees'), false, 'Enter created nothing');
+
+      await page.type('x');
+      await page.until('the empty note', (list: string) => document.querySelector(`${list}:popover-open p`)?.textContent === 'No branch matches “feature/kcl-15611x”', list);
+      await page.key('Escape');
+      await page.until('the list to close', (list: string) => !document.querySelector(`${list}:popover-open`), list);
+      assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'Esc kept the dialog');
+      await page.key('Escape');
+      await page.until('the dialog to close', () => !document.querySelector('#new-task:modal'));
     },
   },
   {
@@ -3255,6 +3309,29 @@ export const checks: Check[] = [
       await page.click('#task-sheet button[aria-label^="Back to"]');
       await page.until('the card of s-cart', frontIs, 's-cart');
       await sleep(HELD_MS - 1000);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.esc-undo Esc takes back a held send: an option sent from the card brings s-cart back, and a message sent from the sheet goes back into its empty reply box; nothing goes out',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('Escape');
+      await page.until('s-cart back at the front', frontIs, 's-cart');
+
+      await page.goto(`${mock.url}/s/s-invoice/overview`);
+      await page.until('the sheet', () => !!document.querySelector('#task-sheet'));
+      await page.click('#task-sheet textarea');
+      await page.type('Also round the tax lines');
+      await page.key('Enter');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await page.key('Escape');
+      await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
+      assert.equal(await page.eval(() => !!document.querySelector('#task-sheet')), true, 'the sheet stayed');
+      await sleep(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },

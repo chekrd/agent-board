@@ -47,6 +47,8 @@ export interface KeyContext {
   card: Card | null;
   deck: number;
   guarded: boolean;
+  // A send waits out its hold, which Undo can still take back.
+  held: boolean;
   repos: boolean;
   target: Target;
   // A modal dialog other than the sheet: only ? passes, to close Keys.
@@ -128,8 +130,8 @@ export const KEYS: readonly Row[] = [
   },
   { keys: 'J / K', help: 'In the diff: next or previous file', scopes: ['sheet'], repeats: true, matches: named('j', 'k'), act: (ctx, e) => (ctx.sheet?.tab === 'diff' ? { type: 'file', step: e.key.toLowerCase() === 'j' ? 1 : -1 } : null) },
   {
-    keys: 'Esc', help: 'Close what is open; from a task, back to where it was opened; then back to the queue', scopes: ['queue', 'wall', 'sheet'], matches: named('Escape'),
-    act: (ctx) => (ctx.sheet ? { type: 'back' } : ctx.view === 'wall' ? (ctx.deck ? { type: 'view', to: 'queue' } : null)
+    keys: 'Esc', help: 'Take back a send that waits to go out; else close what is open; from a task, back to where it was opened; then back to the queue', scopes: ['queue', 'wall', 'sheet'], matches: named('Escape'),
+    act: (ctx) => (ctx.held ? { type: 'undo' } : ctx.sheet ? { type: 'back' } : ctx.view === 'wall' ? (ctx.deck ? { type: 'view', to: 'queue' } : null)
       : ctx.card?.why ? { type: 'close', what: 'why' } : ctx.card?.composing ? { type: 'close', what: 'composer' } : null),
   },
   { keys: '?', help: 'These keys', scopes: ['queue', 'wall', 'sheet'], matches: named('?'), act: () => ({ type: 'keys' }) },
@@ -158,7 +160,8 @@ export const LOCK_MS = 1000;
 
 // Focus lost to a field that unmounted lands on the page, and the rest of a sentence would run as shortcuts: a
 // digit sends an option, X archives. So the keys stay off while typing goes on: each key pressed while locked keeps
-// the lock for another second and does nothing else. A click or Esc ends it.
+// the lock for another second and does nothing else. A click ends it, and so does Esc, which goes through: a reply
+// sent with Enter starts the lock, and Esc right after it takes the send back.
 export function typingLock(now: () => number = Date.now) {
   let until = 0;
   return {
@@ -171,7 +174,11 @@ export function typingLock(now: () => number = Date.now) {
     locked: () => now() < until,
     takes(e: Key) {
       if (now() >= until) return false;
-      until = e.key === 'Escape' ? 0 : now() + LOCK_MS;
+      if (e.key === 'Escape') {
+        until = 0;
+        return false;
+      }
+      until = now() + LOCK_MS;
       return true;
     },
   };

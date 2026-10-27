@@ -7,7 +7,7 @@ const page: Target = { editable: false, control: false, option: false, resizer: 
 const card = (kind: Kind, patch: Partial<Card> = {}): Card =>
   ({ kind, options: 3, questions: [], lone: false, suggestion: false, primary: true, why: false, composing: false, ...patch });
 const ctx = (patch: Partial<KeyContext> = {}): KeyContext =>
-  ({ view: 'queue', sheet: null, card: card('ask'), deck: 3, guarded: false, repos: true, target: page, modal: null, popovers: [], ...patch });
+  ({ view: 'queue', sheet: null, card: card('ask'), deck: 3, guarded: false, held: false, repos: true, target: page, modal: null, popovers: [], ...patch });
 
 const CODES: Record<string, string> = { Enter: 'Enter', Escape: 'Escape', ' ': 'Space', '?': 'Slash', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
 const key = (k: string, patch: Partial<Key> = {}): Key => ({ key: k, code: CODES[k] ?? (/^\d$/.test(k) ? `Digit${k}` : `Key${k.toUpperCase()}`), ...patch });
@@ -102,6 +102,9 @@ test('V switches views (to the queue only when something waits), N needs a repos
   assert.deepEqual(keyAction(ctx({ card: card('ask', { composing: true }) }), key('Escape')), { type: 'close', what: 'composer' });
   assert.equal(keyAction(ctx(), key('Escape')), null);
   assert.deepEqual(keyAction(ctx({ view: 'wall' }), key('Escape')), { type: 'view', to: 'queue' });
+  for (const at of [ctx({ held: true }), ctx({ held: true, view: 'wall' }), ctx({ held: true, sheet: { tab: 'diff', artifacts: false } }), ctx({ held: true, card: card('ask', { composing: true }) })]) {
+    assert.deepEqual(keyAction(at, key('Escape')), { type: 'undo' }, 'a held send goes back first');
+  }
   assert.equal(keyAction(ctx({ view: 'wall', deck: 0, card: null }), key('Escape')), null);
 });
 
@@ -166,6 +169,6 @@ test('the typing lock: after a field unmounts under typing, each key only keeps 
   lock.end();
   assert.equal(lock.takes(key('z')), false, 'a click ends it');
   lock.start();
-  assert.equal(lock.takes(key('Escape')), true, 'Esc only ends it');
+  assert.equal(lock.takes(key('Escape')), false, 'Esc ends it and goes through');
   assert.equal(lock.takes(key('z')), false);
 });

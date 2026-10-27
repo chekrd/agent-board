@@ -6,7 +6,7 @@ import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action,
 import { openPopovers } from './layers.ts';
 import { queue } from './queue.ts';
 import { closeSheet, go, showTab, viewPath, type Route } from './router.ts';
-import { undo } from './sends.ts';
+import { holding, undo } from './sends.ts';
 
 // The reply box's paperclip counts as part of its field: focus on it is still writing a reply.
 const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"])';
@@ -131,6 +131,7 @@ export function useBoardKeys({ route, deck, repos, artifacts }: { route: Route; 
       card: front?.card ?? null,
       deck,
       guarded: queue.guarded(),
+      held: holding(),
       repos,
     }),
     (action, e) => {

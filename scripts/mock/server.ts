@@ -365,7 +365,8 @@ function deleteLoss(s: Session) {
   return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0 };
 }
 
-const OTHER_BRANCHES = ['release/2026.10', 'spike/edge-cache', 'renovate/vite-8'];
+// Enough that New task's branch list has to scroll.
+const OTHER_BRANCHES = ['release/2026.10', 'spike/edge-cache', 'renovate/vite-8', ...Array.from({ length: 40 }, (_, i) => `feature/kcl-${15600 + i}`)];
 
 function branches(repo: RepoView) {
   const checkedOut = new Map(repo.worktrees.flatMap((w) => (w.branch ? [[w.branch, w.path]] : [])));

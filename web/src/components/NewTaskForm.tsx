@@ -26,6 +26,7 @@ const DIALOG = 'new-task';
 const STORED = 'agent-board:new-task';
 const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, start: true, more: false };
 const NAME = /^[A-Za-z0-9._/-]+$/;
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 
 function stored(): Fields {
   try {
@@ -63,7 +64,7 @@ function readBranches(repoId: number) {
   api<Branch[]>('GET', `/api/repos/${repoId}/branches`).catch(() => []).then((list) => {
     if (reading !== repoId) return;
     reading = null;
-    branches = { repoId, list };
+    branches = { repoId, list: list.toSorted((a, b) => byName(a.name, b.name)) };
     notify();
   });
 }
@@ -179,9 +180,109 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
   );
 }
 
+// The list opens on a click, a typed letter or ↓, and scrolls inside itself, so many branches never push the form away.
+function BranchPicker({ branches, value, pick, where }: { branches: Branch[] | null; value: string; pick: (name: string) => void; where: (b: Branch) => string }) {
+  const id = useId();
+  const list = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const q = value.trim().toLowerCase();
+  const all = branches ?? [];
+  const exact = all.some((b) => b.name.toLowerCase() === q);
+  const shown = q && !exact ? all.filter((b) => b.name.toLowerCase().includes(q)) : all;
+  const at = Math.min(active, shown.length - 1);
+  const activeId = open && shown[at] ? `${id}-${at}` : undefined;
+
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    if (open && !el.matches(':popover-open')) el.showPopover();
+    if (!open && el.matches(':popover-open')) el.hidePopover();
+  }, [open]);
+
+  useEffect(() => {
+    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+  }, [activeId]);
+
+  const show = () => {
+    if (open) return;
+    setActive(Math.max(0, shown.findIndex((b) => b.name.toLowerCase() === q)));
+    setOpen(true);
+  };
+
+  const choose = (b: Branch) => {
+    pick(b.name);
+    setOpen(false);
+  };
+
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return show();
+      if (shown.length) setActive((at + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length);
+    } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && open) {
+      e.preventDefault();
+      if (shown[at]) choose(shown[at]);
+    } else if (e.key === 'Escape' && open) {
+      // Closes only the list, not the dialog around it.
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <>
+      <label className={styles.field} data-branch-field>
+        <span className={styles.caption}>Branch</span>
+        <input
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={`${id}-list`}
+          aria-activedescendant={activeId}
+          value={value}
+          onChange={(e) => {
+            pick(e.currentTarget.value);
+            setActive(0);
+            setOpen(true);
+          }}
+          onClick={show}
+          onKeyDown={onKey}
+          onBlur={() => setOpen(false)}
+          placeholder="Pick or type to filter"
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </label>
+        <div id={`${id}-list`} ref={list} popover="manual" role="listbox" aria-label="Branches" className={styles.branches} data-branch-picker>
+          {shown.map((b, i) => (
+            <button
+              key={b.name}
+              id={`${id}-${i}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={b.name.toLowerCase() === q}
+              data-active={i === at || undefined}
+              onMouseDown={(e) => e.preventDefault()}
+              onPointerMove={() => setActive(i)}
+              onClick={() => choose(b)}
+            >
+              <code>{b.name}</code>
+              {where(b) && <span>{where(b)}</span>}
+            </button>
+          ))}
+          {shown.length === 0 && (
+            <p className={styles.none}>{!branches ? 'Reading branches…' : all.length ? <>No branch matches “{value.trim()}”</> : 'No branches'}</p>
+          )}
+        </div>
+    </>
+  );
+}
+
 function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
+  const sorted = repos.toSorted((a, b) => byName(a.name, b.name));
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
   useEffect(() => {
     if (f.existing) readBranches(repo.id);
@@ -191,9 +292,8 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
   const branch = f.branch.trim();
   const valid = f.existing ? !!branch : NAME.test(name);
   const main = repo.worktrees.find((w) => w.isMain);
-  const list = read?.repoId === repo.id ? read.list : [];
-  const picked = list.find((b) => b.name === branch);
-  const chips = f.existing ? list.filter((b) => b.name !== branch && b.name.includes(branch)) : [];
+  const list = read?.repoId === repo.id ? read.list : null;
+  const picked = list?.find((b) => b.name === branch);
 
   const [error, create, pending] = useActionState(async () => {
     const now = fields;
@@ -238,12 +338,9 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         onKeyDown={onPromptKey}
       />
       <div className={styles.row}>
-        <RepoPicker repos={repos} repo={repo} pick={(id) => edit({ repoId: id, branch: '' })} />
+        <RepoPicker repos={sorted} repo={repo} pick={(id) => edit({ repoId: id, branch: '' })} />
         {f.existing ? (
-          <label className={styles.field}>
-            <span className={styles.caption}>Branch</span>
-            <input value={f.branch} onChange={(e) => edit({ branch: e.currentTarget.value })} placeholder="Pick or type to filter" spellCheck={false} autoComplete="off" />
-          </label>
+          <BranchPicker branches={list} value={f.branch} pick={(b) => edit({ branch: b })} where={where} />
         ) : (
           <label className={styles.field} title="Names the worktree folder, and the branch unless you set one">
             <span className={styles.caption}>Name</span>
@@ -257,16 +354,6 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
         </button>
       </div>
-      {chips.length > 0 && (
-        <div className={styles.chips} role="listbox" aria-label="Branches">
-          {chips.map((b) => (
-            <button key={b.name} type="button" role="option" aria-selected={false} onClick={() => edit({ branch: b.name })}>
-              <code>{b.name}</code>
-              {where(b) && <span>{where(b)}</span>}
-            </button>
-          ))}
-        </div>
-      )}
       {f.more && (
         <div className={styles.options}>
           <fieldset>

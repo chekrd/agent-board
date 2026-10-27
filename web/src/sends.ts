@@ -137,6 +137,8 @@ export function hold(s: Session, request: Request, name: string, { dealt = false
   return sends.hold(s, request, { name, draft, dealt });
 }
 
+export const holding = () => sends.items().some((i) => i.state === 'held');
+
 // Takes back a held send, the newest without an id, at once, so its timer cannot post it while the card comes back.
 // A card dealt out with it comes back to the front, and the reply box gets back what the send took from it. Z waits
 // for a deal under way, whose send is the newest.

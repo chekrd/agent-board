@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent,
 import { api, upload } from '../api.ts';
 import { typed } from '../deck.ts';
 import type { Request } from '../outbox.ts';
+import { holding, undo } from '../sends.ts';
 import type { Command, Session } from '../types.ts';
 import styles from './Composer.module.css';
 import { Icon } from './Icon.tsx';
@@ -164,7 +165,8 @@ export interface ComposerProps {
 }
 
 // The reply box: Enter sends, Shift+Enter adds a line, "/" lists the session's commands, and files come by paste,
-// drop or the paperclip. Esc closes the command list first, then leaves the box.
+// drop or the paperclip. Esc closes the command list first; in an empty box it takes back a send that waits to go out,
+// else it leaves the box.
 export function Composer({ session, decision, label, placeholder, focus, note, onSend, onEscape }: ComposerProps) {
   const id = session.id;
   const draft = useDraft(id);
@@ -215,7 +217,8 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
       if ((draft.text.trim() || ready.length) && !uploading(draft)) onSend(typed(decision, draft.text, ready, commands));
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      onEscape();
+      if (!draft.text && !draft.files.length && holding()) undo();
+      else onEscape();
     }
   };
 
