@@ -4967,7 +4967,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all; Mark solved and Drop settle a subtask, and the task counts the ones still open',
+    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all; Mark solved and Drop settle a subtask and open its task in its place, and the task counts the ones still open',
     scenario: 'findings',
     async run({ themes, page, mock, shot }) {
       const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
@@ -5050,10 +5050,11 @@ export const checks: Check[] = [
       assert.match(await text('#task-sheet [aria-label="Subtask of"]'), /^Subtask of #1 Fix · Reviews load twice on a fast scroll In progress Back to the task 1 The guard is not reset on unmount/i);
       await shot('subtask-nested');
       await page.click('#task-sheet [data-resolve] button', 'Mark solved');
-      await page.until('marked solved', () => document.querySelector('#task-sheet header [data-resolution]')?.textContent === 'Solved');
+      await page.until('its task, the fix, in its place', () => location.pathname === '/s/s-review-1/overview');
       const [solved] = await page.until('the undo toast', toastsOf, 'undo');
       assert.match(solved.text, /Solved #1 Explain/);
       assert.deepEqual((await stateOf(mock, 's-review-1-1')).resolution?.state, 'solved');
+      await page.until('listed solved', () => !!document.querySelector('#task-sheet [data-subtask-list] li[data-resolution="solved"]'));
       await page.click('#task-sheet header [data-parent] button');
       await page.until('the review from the chain', () => location.pathname === '/s/s-review/overview');
       await page.until('3 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '3 of 4 subtasks open');
@@ -5061,8 +5062,7 @@ export const checks: Check[] = [
       await page.until('the second look', () => location.pathname === '/s/s-review-2/overview');
       await page.click('#task-sheet header button[aria-label="Session actions"]');
       await page.click(':popover-open button', 'Drop');
-      await page.until('dropped', () => document.querySelector('#task-sheet header [data-resolution]')?.textContent === 'Dropped');
-      await page.click('#task-sheet header [data-parent] button');
+      await page.until('the review in its place', () => location.pathname === '/s/s-review/overview');
       await page.until('2 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '2 of 4 subtasks open');
       assert.equal(await text('#task-sheet [data-open-count]:not(header *)'), '· 2 of 4 open');
       assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] li[data-resolution]')].map((l) => l.dataset.resolution)), ['solved', 'dropped']);

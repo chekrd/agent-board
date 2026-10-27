@@ -94,6 +94,11 @@ export function closeSheetOf(id: string) {
   if (current().sheet?.id === id) closeSheet();
 }
 
+// The open task's page gives way to another task's, in the same history entry.
+export function moveSheetOf(id: string, to: string) {
+  if (current().sheet?.id === id) openSheet(to);
+}
+
 // Closes the sheet onto the queue, also when it was opened over the Wall; Back then goes to the Wall.
 export function closeSheetToQueue() {
   if (current().view === 'queue') closeSheet();

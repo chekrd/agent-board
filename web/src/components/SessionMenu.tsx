@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
-import { closeSheetOf } from '../router.ts';
+import { closeSheetOf, moveSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
 import { patchSession, unpatch, useStore } from '../store.ts';
 import type { Resolution, Session, WorktreeView } from '../types.ts';
@@ -45,9 +45,11 @@ export function archive(session: Session, name: string) {
   }, failed(id));
 }
 
-// Solved and Dropped take the subtask out of the queue like Archive, and Undo opens it again.
+// Solved and Dropped take the subtask out of the queue like Archive, and its page gives way to its task's; Undo opens it
+// again.
 export function resolveSubtask(session: Session, state: Resolution['state'] | null, name: string) {
   const { id } = session;
+  if (state && session.parent) moveSheetOf(id, session.parent.id);
   const change = () => patchSession(id, { resolution: state ? { state, at: Date.now() } : null, archived: !!state });
   if (state) queue.leave(id, change);
   else change();
