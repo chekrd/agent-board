@@ -633,7 +633,7 @@ export const checks: Check[] = [
         open: document.querySelector('details')?.open,
         title: document.title,
       }));
-      assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: '(3) Agent Board' });
+      assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: 'Agent Board' });
       await shot('board');
 
       await openQueue(page, mock);
@@ -648,7 +648,7 @@ export const checks: Check[] = [
       await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'working');
       assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
-      assert.equal(await page.eval(() => document.title), '(2) Agent Board');
+      assert.equal(await page.eval(() => document.title), 'Agent Board');
       await shot('board-answered');
     },
   },
@@ -947,7 +947,7 @@ export const checks: Check[] = [
     async run({ page, mock }) {
       const { legacy } = await mock.get('/mock');
       await page.goto(`${mock.url}/`);
-      await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+      await page.until('the first snapshot', () => document.querySelector('[data-link]')?.getAttribute('data-link') === 'live');
       const entry = await page.eval(listen);
       assert.match(entry ?? '', /^\/assets\/index-[\w-]+\.js$/);
       assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: entry });
@@ -965,13 +965,13 @@ export const checks: Check[] = [
       await withOwnBuild(async (own, build) => {
         const url = `${own.url}/`;
         await page.goto(url);
-        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        await page.until('the first snapshot', () => document.querySelector('[data-link]')?.getAttribute('data-link') === 'live');
         await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
         const next = build();
         // Read twice 2 s apart before it counts, so the reload comes 2 to 4 s after the build.
         const reloaded = await until('the page to reload into the new build', () => page.eval(navigation).then((n) => n.entry === next && n, () => null), 15_000);
         assert.deepEqual(reloaded, { marker: null, type: 'reload', entry: next });
-        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        await page.until('the first snapshot', () => document.querySelector('[data-link]')?.getAttribute('data-link') === 'live');
         await page.eval(() => void ((window as unknown as Probe).e2eMarker = true));
         await own.post('/mock/patch', { id: 's-reviews', patch: { title: 'Lazy-load product reviews, patched' } });
         await sleep(3000);
@@ -989,7 +989,7 @@ export const checks: Check[] = [
         // Time for the reload a snapshot on open naming the older entry would cause.
         await sleep(500);
         assert.equal(loads(page, url), 1, 'the page reloaded');
-        await page.until('the first snapshot', () => /^\(\d+\) Agent Board$/.test(document.title));
+        await page.until('the first snapshot', () => document.querySelector('[data-link]')?.getAttribute('data-link') === 'live');
         assert.equal(await page.eval(listen), next);
         assert.deepEqual(await page.until('the snapshot on open', received, null), { carries: true, uiEntry: null });
         const title = 'Lazy-load product reviews, patched';
@@ -1166,13 +1166,13 @@ export const checks: Check[] = [
       const hooks = () => [document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention'), document.title];
       await mock.post('/mock/patch', { id: 's-hooks', patch: { answered: { key: 'm:toolu_01Hooks', text: 'Backoff: Exponential, 5 tries', at: Date.now() - 8000 } } });
       await page.until('the answered menu to count as working', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'working');
-      assert.deepEqual(await page.eval(hooks), ['working', '(2) Agent Board']);
+      assert.deepEqual(await page.eval(hooks), ['working', 'Agent Board']);
       await page.until('the menu still open to need focus', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'focus');
-      assert.deepEqual(await page.eval(hooks), ['focus', '(2) Agent Board']);
+      assert.deepEqual(await page.eval(hooks), ['focus', 'Agent Board']);
     },
   },
   {
-    name: 'P4.2 the top bar: Live and (3) in the tab title; six meter segments whose counts are only in the aria-label, then the usage limits, Repos, the view toggle and New task; before the first snapshot the pill reads Connecting… and every view says so',
+    name: 'P4.2 the top bar: Live, and a tab title without a count; six meter segments whose counts are only in the aria-label, then the usage limits, Repos, the view toggle and New task; before the first snapshot the pill reads Connecting… and every view says so',
     expectedErrors: [/WebSocket/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
@@ -1197,7 +1197,7 @@ export const checks: Check[] = [
         };
       });
       assert.deepEqual({ ...bar, shown: undefined }, {
-        link: ['live', 'Live'], title: '(3) Agent Board', segments: 6, label: '3 decisions · 1 terminal prompt · 2 finished turns', shown: undefined, order: true,
+        link: ['live', 'Live'], title: 'Agent Board', segments: 6, label: '3 decisions · 1 terminal prompt · 2 finished turns', shown: undefined, order: true,
       });
       assert.doesNotMatch(bar.shown ?? '', /\d/, 'the top bar shows a count');
       await shot('top-bar');
@@ -1532,6 +1532,27 @@ export const checks: Check[] = [
       const after = await mock.get('/api/state');
       assert.equal(after.sessions.some((x: { id: string }) => x.id === 's-edge'), false);
       assert.ok(after.repos.find((r: { id: number }) => r.id === 1).worktrees.some((w: { path: string; isMain: boolean }) => w.isMain && w.path === '~/code/storefront'), 'the checkout went');
+    },
+  },
+  {
+    name: 'P4.9.gone a task whose worktree was removed outside the board can still be cleared: the dialog says the worktree is already gone, and the task leaves',
+    async run({ page, mock }) {
+      await mock.post('/mock/patch', { id: 's-edge', patch: { worktree: '~/code/worktrees/removed/storefront' } });
+      await page.goto(`${mock.url}/s/s-edge/overview`);
+      await page.until('the task page', sheetOpen);
+      await page.click('#task-sheet button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await page.click(':popover-open button', 'Clear task');
+      const shown = await page.until('the dialog', () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#delete-worktree');
+        return d?.open && !d.innerText.includes('Checking') ? { title: d.querySelector('h2')?.textContent?.trim(), text: d.innerText } : null;
+      });
+      assert.equal(shown.title, 'Clear the task?');
+      assert.match(shown.text, /Its worktree is already gone\./);
+      await page.click('dialog#delete-worktree button', 'Clear task');
+      const [cleared] = await logged(mock, 'the clearing', (e) => e.method === 'POST' && e.action === 'delete-worktree');
+      assert.deepEqual([cleared.sessionId, cleared.status], ['s-edge', 204]);
+      assert.equal((await mock.get('/api/state')).sessions.some((x: { id: string }) => x.id === 's-edge'), false);
     },
   },
   {
@@ -2093,7 +2114,7 @@ export const checks: Check[] = [
     name: 'P5.1.1 the first card is s-cart, an ask, with Retry failed webhooks and Group board tiles by repo peeking out behind it and the sliver; its meter segment is the current one, 40 px wide',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
-      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLElement>('[data-card]')?.dataset.kind, document.title]), ['ask', '(3) Agent Board']);
+      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLElement>('[data-card]')?.dataset.kind, document.title]), ['ask', 'Agent Board']);
       assert.deepEqual((await page.eval(peeks)).map((p) => [p.peek, p.session, p.text.split('\n')[0]]), [
         ['1', 's-hooks', 'Retry failed webhooks'], ['2', 's-group', 'Group board tiles by repo'],
       ]);
@@ -2423,12 +2444,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.17 an ended session with an open question stays out of the deck, the meter and the tab title, and is on the Wall as Ended',
+    name: 'P5.1.17 an ended session with an open question stays out of the deck and the meter, and is on the Wall as Ended',
     scenario: 'ended-question',
     async run({ page, mock }) {
       await openQueue(page, mock);
       assert.deepEqual((await page.eval(segmentsNow)).map((s) => s.session), ['s-cart', 's-hooks', 's-group', 's-astro', 's-reviews', 's-anchors']);
-      assert.equal(await page.eval(() => document.title), '(3) Agent Board');
       for (let i = 0; i < 6; i++) {
         assert.notEqual((await page.eval(card))!.session, 's-gone');
         await page.key('ArrowRight');
@@ -2780,7 +2800,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Esc; the meter and the tab title count 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
+    name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Esc; the meter counts 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
     async run({ page, mock, shot }) {
       const { advice } = await stateOf(mock, 's-cart');
       await openQueue(page, mock);
@@ -2797,7 +2817,7 @@ export const checks: Check[] = [
       await sleep(1100);
       assert.ok((await page.eval(count)) < first, 'the countdown did not count down');
       assert.deepEqual(await page.eval(() => [document.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label'), document.title]), [
-        '2 decisions · 1 terminal prompt · 2 finished turns', '(2) Agent Board',
+        '2 decisions · 1 terminal prompt · 2 finished turns', 'Agent Board',
       ]);
       await shot('queue-held');
       await sleep(HELD_MS - (Date.now() - pressed));

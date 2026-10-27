@@ -27,6 +27,10 @@ export async function start(name: string, cwd: string, command: string) {
   await tmux(['new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50', ...localeArgs, command]);
 }
 
+export async function kill(name: string) {
+  await tmux(['kill-session', '-t', `=${name}`]).catch(() => {});
+}
+
 // tty → tmux session name, for every pane on Agent Board's socket.
 export async function panes() {
   const byTty = new Map<string, string>();

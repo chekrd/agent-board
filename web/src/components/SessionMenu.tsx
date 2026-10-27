@@ -117,10 +117,10 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
             })}
           />
         )}
-        {worktree && !session.parent && (
+        {!session.parent && (
           <Item
             label="Clear task…"
-            note={worktree.isMain ? 'Quits Claude and removes the task; the checkout stays' : 'Quits Claude, deletes the worktree and its branch, removes the task'}
+            note={!worktree ? 'Quits Claude and removes the task; its worktree is already gone' : worktree.isMain ? 'Quits Claude and removes the task; the checkout stays' : 'Quits Claude, deletes the worktree and its branch, removes the task'}
             danger
             onClick={pick(() => askDeleteWorktree(session))}
           />

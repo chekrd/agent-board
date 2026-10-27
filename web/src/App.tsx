@@ -13,18 +13,12 @@ import { useRoute } from './router.ts';
 import { useBusy } from './sends.ts';
 import { useStore } from './store.ts';
 import { useBoardKeys } from './useKeys.ts';
-import { attentionOf } from './util.ts';
 
 export function App() {
   const store = useStore();
   const route = useRoute();
   const deck = deckOf(store.sessions, useBusy());
-  const deciding = deck.filter((s) => attentionOf(s) === 'decide').length;
   const sheetSession = route.sheet && store.sessions.find((s) => s.id === route.sheet!.id);
-
-  useEffect(() => {
-    document.title = deciding ? `(${deciding}) Agent Board` : 'Agent Board';
-  }, [deciding]);
 
   useEffect(() => {
     document.documentElement.dataset.view = route.view;

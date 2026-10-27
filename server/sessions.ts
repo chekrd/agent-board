@@ -421,9 +421,9 @@ const subtasksOf = (id: string): Session[] => sessions.all().filter((o) => o.par
 export async function deleteWorktreeLoss(id: string) {
   const s = must(id);
   const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
-  if (!worktree) throw new Error('worktree not found');
   if (s.parent) throw new Error(NOT_A_SUBTASK);
   const subtasks = subtasksOf(id).length;
+  if (!worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
@@ -434,15 +434,16 @@ export async function deleteWorktreeLoss(id: string) {
 const NOT_A_SUBTASK = "a subtask works in its task's worktree; Quit Claude or Archive it instead";
 
 // Clear task: in a worktree of its own, everything in it goes, the worktree and its branch too, subtasks with it. In
-// the main checkout, which other Claudes may share, only the Claudes and tabs of the task and its subtasks go, with
-// them. A subtask is not cleared on its own: it shares its task's worktree.
+// the main checkout, which other Claudes may share, or in a worktree already removed, only the Claudes and terminals
+// of the task and its subtasks go, with them. A hidden terminal goes by its name: the Claude in it may have moved on
+// to another conversation, which leaves the task without its pid. A subtask is not cleared on its own: it shares its
+// task's worktree.
 export async function deleteWorktree(id: string) {
   const s = must(id);
   const repo = repoView(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
-  if (!repo || !worktree) throw new Error('worktree not found');
   if (s.parent) throw new Error(NOT_A_SUBTASK);
-  if (!worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
+  if (repo && worktree && !worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
   const gone = [s, ...subtasksOf(id)];
   for (const o of gone) stopAdvice(o.id);
   const pids = gone.flatMap((o) => (o.pid && alive(o.pid) ? [o.pid] : []));
@@ -450,6 +451,7 @@ export async function deleteWorktree(id: string) {
   for (const pid of pids) process.kill(pid, 'SIGTERM');
   await waitForExit(pids, 10_000);
   if (ttys.length) await ghostty.closeTerminalsIn(null, ttys);
+  await Promise.all(gone.map((o) => terminal.stop(o.id)));
   for (const o of gone) sessions.remove(o.id);
   await Promise.all(gone.map((o) => rm(join(SESSIONS_DIR, o.id), { recursive: true, force: true })));
   scheduleRerank();

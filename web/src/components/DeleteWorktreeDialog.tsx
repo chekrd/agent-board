@@ -14,6 +14,8 @@ interface Loss {
   commits: number;
   // The task runs in the repository's main checkout, which clearing it keeps.
   checkout?: boolean;
+  // Its worktree was removed already, outside the board.
+  gone?: boolean;
   subtasks?: number;
 }
 
@@ -86,7 +88,9 @@ export function DeleteWorktreeDialog() {
           <code className={styles.path}>{tilde(target.session.worktree, home)}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
-          {loss?.checkout ? (
+          {loss?.gone ? (
+            <p>Its worktree is already gone.</p>
+          ) : loss?.checkout ? (
             <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
           ) : loss && (lost.length ? (
             <>

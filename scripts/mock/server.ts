@@ -361,7 +361,8 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
   },
   'delete-worktree': (s) => {
     if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
-    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
+    const worktree = mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree);
+    if (worktree && !worktree.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
     const gone = new Set([s, ...subtasksOf(s.id)]);
     state.sessions = state.sessions.filter((o) => !gone.has(o));
     push();
@@ -391,9 +392,9 @@ function deleteLoss(s: Session) {
   if (flagged(s.id, 'lossFails')) throw new Error('git status failed: fatal: unable to read the index');
   const repo = repoOf(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
-  if (!repo || !worktree) throw new Error('worktree not found');
   if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
   const subtasks = subtasksOf(s.id).length;
+  if (!repo || !worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0, subtasks };

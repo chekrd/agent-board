@@ -10,6 +10,10 @@ export async function start(name: string, cwd: string, command: string) {
   else await ghostty.newTab(cwd, command);
 }
 
+export async function stop(name: string) {
+  if (tmux.TMUX) await tmux.kill(name);
+}
+
 export async function tmuxSessions() {
   return new Set((await tmux.panes()).values());
 }
