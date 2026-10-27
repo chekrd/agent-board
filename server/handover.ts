@@ -11,11 +11,12 @@ export const leftBy = <T extends Task>(tasks: readonly T[], pid: number, live: R
   tasks.find((t) => t.pid === pid && t.status !== 'exited' && !live.has(t.conversation));
 
 // The task runs `conversation` from now on. The one it ran goes into its history, and with it what was read from that
-// transcript alone: its turns, its open question or menu. The task's name, findings, artifacts and subtasks stay.
+// transcript alone: its turns, its open question or menu, its briefing. The task's name, findings, artifacts and subtasks
+// stay.
 export function handOver(s: Pick<Session, 'conversation' | 'history' | 'lastMessage'>, conversation: string, now: number) {
   return {
     conversation,
     history: [...s.history.filter((h) => h.id !== conversation), { id: s.conversation, lastMessage: s.lastMessage, until: now }],
-    lastMessage: null, lastTurn: null, question: null, menu: null, dismissedAsk: null, activity: null,
+    lastMessage: null, lastTurn: null, question: null, menu: null, dismissedAsk: null, activity: null, summary: null,
   } satisfies Partial<Session>;
 }
