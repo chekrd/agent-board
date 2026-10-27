@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { decisionKey } from '../../../server/decision.ts';
 import { acceptance, choose, dismissal, freeze, kindOf, menuAnswer, primary as primaryOf, type Composer as Note } from '../deck.ts';
 import type { Request } from '../outbox.ts';
@@ -9,12 +9,38 @@ import type { MenuAnswer, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
+import { Icon } from './Icon.tsx';
 import { LatestReply } from './LatestReply.tsx';
 import { MenuBody } from './MenuBody.tsx';
 import { Options } from './Options.tsx';
 import styles from './Overview.module.css';
 import { SecondOpinion } from './SecondOpinion.tsx';
 import { FocusButton } from './SessionMenu.tsx';
+import { toast } from './Toasts.tsx';
+
+const COPIED_MS = 1500;
+
+function Copy({ value, what, title }: { value: string; what: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), COPIED_MS);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const copy = () => navigator.clipboard.writeText(value).then(
+    () => setCopied(true),
+    () => toast('error', `Could not copy the ${what.toLowerCase()}`),
+  );
+  return (
+    <button type="button" className={styles.copy} data-copied={copied || undefined} title={title} aria-label={`Copy ${what.toLowerCase()} ${value}`} onClick={copy}>
+      <code>{value}</code>
+      <span className={styles.copyMark} aria-live="polite">
+        <Icon name={copied ? 'check' : 'copy'} size={13} />
+        {copied && 'Copied'}
+      </span>
+    </button>
+  );
+}
 
 // A decision answered on its task page: the same options, second opinion and reply box as on its card. A send is held
 // with its Undo as from the card, and the box goes with it.
@@ -183,7 +209,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
               <dt>Task</dt>
               <dd>{session.firstPrompt ?? '—'}</dd>
               <dt>Worktree</dt>
-              <dd><code>{session.worktree}</code></dd>
+              <dd><Copy value={session.worktree} what="Worktree path" /></dd>
               {session.pr?.result && (
                 <>
                   <dt>Pull request</dt>
@@ -193,7 +219,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
               <dt title="The terminal device Claude runs on">Terminal</dt>
               <dd title="The terminal device Claude runs on">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
               <dt title="Claude Code's session id; claude --resume takes it">Session</dt>
-              <dd title="Claude Code's session id; claude --resume takes it"><code>{session.id}</code></dd>
+              <dd><Copy value={session.id} what="Session id" title="Claude Code's session id; claude --resume takes it" /></dd>
             </dl>
           </section>
           {artifacts.length > 0 && (
