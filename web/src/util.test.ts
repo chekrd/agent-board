@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, openSubtasks, tilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, openSubtasks, settledAs, tilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -78,4 +78,14 @@ test('a task counts its subtasks still open: a solved or dropped one and everyth
   const { open, total } = openSubtasks(all, 'review');
   assert.deepEqual([open.map((s) => s.id), total], [['b', 'b2'], 5]);
   assert.deepEqual(openSubtasks(all, 'b').open.map((s) => s.id), ['b2']);
+});
+
+test('a finding settles once rejected or once all its subtasks are solved or dropped, solved if any one was', () => {
+  const sub = (resolution: 'solved' | 'dropped' | null) => session('x', { resolution: resolution && { state: resolution, at: 1 } });
+  const finding = { title: 'f', detail: '', location: '' };
+  assert.equal(settledAs(finding, []), null, 'nothing started on it');
+  assert.equal(settledAs(finding, [sub('solved'), sub(null)]), null, 'one still open');
+  assert.equal(settledAs(finding, [sub('dropped'), sub('solved')]), 'solved');
+  assert.equal(settledAs(finding, [sub('dropped')]), 'dropped');
+  assert.equal(settledAs({ ...finding, rejected: { reason: '', at: 1 } }, [sub(null)]), 'rejected');
 });

@@ -4,7 +4,7 @@ import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { ancestorsOf, decisionOf, locate, openSubtasks, sessionLabel, shownOf, type Shown } from '../util.ts';
+import { ancestorsOf, decisionOf, locate, openSubtasks, sessionLabel, settledAs, shownOf, type Shown } from '../util.ts';
 import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -28,31 +28,34 @@ const ACTIONS: { kind: SubtaskKind; label: string; title: string }[] = [
 ];
 
 // The task's findings, each answered on its own: Reject only marks it, every other answer starts a subtask, a new
-// Claude in this worktree that gets the finding and the answer and nothing of this conversation.
+// Claude in this worktree that gets the finding and the answer and nothing of this conversation. The ones done with
+// fold away under Settled.
 export function Findings({ session, compact = false }: { session: Session; compact?: boolean }) {
   const findings = session.findings;
   const { sessions } = useStore();
   if (!findings?.items.length) return null;
   const subtasks = sessions.filter((o) => o.parent?.id === session.id && o.parent.basis === findings.basis);
-  const open = findings.items.filter((f) => !f.rejected).length;
+  const items = findings.items.map((finding, index) => {
+    const own = subtasks.filter((o) => o.parent!.finding === index);
+    return { finding, index, subtasks: own, settled: settledAs(finding, own) };
+  });
+  const open = items.filter((x) => !x.settled);
+  const settled = items.filter((x) => x.settled);
+  const item = (x: (typeof items)[number]) => (
+    <Item key={`${findings.basis}:${x.index}`} session={session} basis={findings.basis} {...x} compact={compact || !!x.settled} />
+  );
   return (
     <section className={styles.findings} data-findings aria-label="Findings">
       <h3 className={styles.label}>
-        Findings <span>· {findings.items.length}{open < findings.items.length ? `, ${findings.items.length - open} rejected` : ''}</span>
+        Findings <span data-settled-count>· {settled.length ? (open.length ? `${open.length} of ${items.length} open` : `all ${items.length} settled`) : items.length}</span>
       </h3>
-      <ol>
-        {findings.items.map((f, i) => (
-          <Item
-            key={`${findings.basis}:${i}`}
-            session={session}
-            basis={findings.basis}
-            index={i}
-            finding={f}
-            subtasks={subtasks.filter((o) => o.parent!.finding === i)}
-            compact={compact}
-          />
-        ))}
-      </ol>
+      {open.length > 0 && <ol>{open.map(item)}</ol>}
+      {settled.length > 0 && (
+        <details className={styles.settled} data-settled-findings>
+          <summary>Settled · {settled.length}</summary>
+          <ol>{settled.map(item)}</ol>
+        </details>
+      )}
     </section>
   );
 }
@@ -63,10 +66,13 @@ interface ItemProps {
   index: number;
   finding: Finding;
   subtasks: Session[];
+  settled: Settled;
   compact: boolean;
 }
 
-function Item({ session, basis, index, finding, subtasks, compact }: ItemProps) {
+type Settled = ReturnType<typeof settledAs>;
+
+function Item({ session, basis, index, finding, subtasks, settled, compact }: ItemProps) {
   const [expanded, setExpanded] = useState(!compact && index === 0);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
@@ -95,7 +101,7 @@ function Item({ session, basis, index, finding, subtasks, compact }: ItemProps) 
   };
 
   return (
-    <li className={styles.item} data-finding={n} data-rejected={rejected || undefined}>
+    <li className={styles.item} data-finding={n} data-rejected={rejected || undefined} data-settled={settled ?? undefined}>
       <button type="button" className={styles.head} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         <span className={styles.n}>{n}</span>
         <strong>{finding.title}</strong>
@@ -106,6 +112,10 @@ function Item({ session, basis, index, finding, subtasks, compact }: ItemProps) 
         <div className={styles.rejected}>
           <span>Rejected{finding.rejected!.reason ? `: ${finding.rejected!.reason}` : ''}</span>
           <button type="button" disabled={sending} onClick={() => void respond('reopen')}>Reopen</button>
+        </div>
+      ) : settled ? (
+        <div className={styles.rejected}>
+          <span>{settled === 'solved' ? 'Solved' : 'Dropped'} in {subtasks.length === 1 ? 'its subtask' : `its ${subtasks.length} subtasks`}</span>
         </div>
       ) : (
         <div className={styles.answer}>

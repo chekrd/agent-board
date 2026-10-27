@@ -11,7 +11,7 @@
     span { font-weight: 500; text-transform: none; letter-spacing: 0; }
   }
 
-  .findings > ol {
+  .findings > ol, .settled > ol {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -28,8 +28,8 @@
     border: 1px solid var(--line);
     border-radius: 14px;
     background: var(--card-2);
-    &[data-rejected] { background: none; border-style: dashed; }
-    &[data-rejected] .head strong { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-2); }
+    &[data-settled] { background: none; border-style: dashed; padding-block: 8px; }
+    &[data-settled] .head strong { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-2); }
   }
 
   .head {
@@ -82,6 +82,21 @@
     flex-wrap: wrap;
     gap: 6px;
     button { height: 30px; padding: 0 11px; border-radius: 9px; font-size: 13.5px; }
+  }
+
+  .settled {
+    margin-top: 8px;
+    summary {
+      width: fit-content;
+      padding: 4px 2px;
+      border-radius: 6px;
+      font-size: 13.5px;
+      color: var(--muted);
+      cursor: pointer;
+      &:hover { color: var(--text); }
+      &:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+    }
+    > ol { margin-top: 6px; }
   }
 
   .reject { margin-left: auto; color: var(--danger); }

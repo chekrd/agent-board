@@ -4972,16 +4972,18 @@ export const checks: Check[] = [
     scenario: 'findings',
     async run({ themes, page, mock, shot }) {
       const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
-        n: f.dataset.finding, rejected: f.hasAttribute('data-rejected'),
+        n: f.dataset.finding, rejected: f.hasAttribute('data-rejected'), settled: !!f.closest('[data-settled-findings]'),
         subtasks: [...f.querySelectorAll('[data-subtask]')].map((b) => (b as HTMLElement).innerText.replace(/\s+/g, ' ').trim()),
       }));
       await openSheetOf(page, mock, 's-review');
       await page.until('the findings', () => document.querySelectorAll('#task-sheet [data-finding]').length === 3);
       assert.deepEqual(await page.eval(items), [
-        { n: '1', rejected: false, subtasks: ['Fix In progress', 'Second look Decide'] },
-        { n: '2', rejected: true, subtasks: [] },
-        { n: '3', rejected: false, subtasks: [] },
+        { n: '1', rejected: false, settled: false, subtasks: ['Fix In progress', 'Second look Decide'] },
+        { n: '3', rejected: false, settled: false, subtasks: [] },
+        { n: '2', rejected: true, settled: true, subtasks: [] },
       ]);
+      assert.equal(await page.eval(() => document.querySelector('#task-sheet [data-settled-count]')!.textContent), '· 2 of 3 open');
+      assert.equal(await page.eval(() => document.querySelector<HTMLDetailsElement>('#task-sheet [data-settled-findings]')!.open), false, 'settled ones start folded');
       await shot('findings');
 
       await page.click('#task-sheet [data-finding="3"] button[aria-expanded]');
@@ -5001,6 +5003,7 @@ export const checks: Check[] = [
 
       await page.click('#task-sheet [data-finding="1"] [data-response="reject"]');
       await page.until('#1 rejected', () => document.querySelector('#task-sheet [data-finding="1"]')!.hasAttribute('data-rejected'));
+      await page.click('#task-sheet [data-settled-findings] summary');
       await page.click('#task-sheet [data-finding="2"] button', 'Reopen');
       await page.until('#2 open again', () => !document.querySelector('#task-sheet [data-finding="2"]')!.hasAttribute('data-rejected'));
       assert.deepEqual((await stateOf(mock, 's-review')).findings.items.map((f: { rejected?: unknown }) => !!f.rejected), [true, false, false]);
@@ -5056,6 +5059,8 @@ export const checks: Check[] = [
       assert.match(solved.text, /Solved #1 Explain/);
       assert.deepEqual((await stateOf(mock, 's-review-1-1')).resolution?.state, 'solved');
       await page.until('listed solved', () => !!document.querySelector('#task-sheet [data-subtask-list] li[data-resolution="solved"]'));
+      await page.until('the fix\'s finding settled by it', () => document.querySelector('#task-sheet [data-findings] [data-settled-count]')?.textContent === '· all 1 settled');
+      assert.equal(await page.eval(() => document.querySelector('#task-sheet [data-finding="1"][data-settled="solved"] [class*="rejected"]')!.textContent), 'Solved in its subtask');
       await page.click('#task-sheet header [data-parent] button');
       await page.until('the review from the chain', () => location.pathname === '/s/s-review/overview');
       await page.until('3 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '3 of 4 subtasks open');
@@ -5072,6 +5077,11 @@ export const checks: Check[] = [
       assert.equal(rest.length, 2);
       for (const s of rest) await mock.post(`/api/sessions/${s.id}/resolve`, { state: 'solved' });
       await page.until('all settled', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === 'All 4 subtasks solved or dropped');
+      await page.until('#3 settled with its subtask', () => document.querySelector<HTMLElement>('#task-sheet [data-finding="3"]')?.dataset.settled === 'solved');
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-settled-findings] [data-finding]')].map((f) => `${f.dataset.finding}:${f.dataset.settled}`)), ['1:rejected', '3:solved']);
+      assert.equal(await page.eval(() => document.querySelector('#task-sheet [data-findings] [data-settled-count]')!.textContent), '· 1 of 3 open');
+      await page.click('#task-sheet [data-settled-findings] summary');
+      await shot('findings-settled');
 
       await page.click('#task-sheet header button[aria-label="Session actions"]');
       await page.click(':popover-open button', 'Clear task');
