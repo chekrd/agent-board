@@ -287,4 +287,29 @@
     [data-attention="idle"] > & { color: var(--idle); }
     [data-attention="working"] > & { color: var(--work); }
   }
+
+  .resolve {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    > .state { margin-right: auto; }
+    button { height: 30px; padding: 0 12px; border-radius: 9px; font-size: 13.5px; }
+  }
+
+  .resolved {
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 650;
+    &[data-resolution="solved"] { color: var(--ok); }
+    &[data-resolution="dropped"] { color: var(--muted); }
+  }
+
+  .list li[data-resolution] strong { color: var(--muted); }
+  .list li[data-resolution="dropped"] strong { text-decoration: line-through; text-decoration-color: var(--line-2); }
 }

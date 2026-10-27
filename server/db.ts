@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -161,6 +161,13 @@ export interface Findings {
 export type SubtaskKind = 'accept' | 'elaborate' | 'second-look' | 'reply';
 
 // A subtask's task and the finding it was started from.
+// What became of a subtask: solved, or dropped (ignored, rejected, not worth going on with). A resolved subtask leaves
+// the queue and stops counting as open on its task.
+export interface Resolution {
+  state: 'solved' | 'dropped';
+  at: number;
+}
+
 export interface Parent {
   id: string;
   basis: string;
@@ -198,6 +205,7 @@ export interface Session {
   artifacts: Artifact[];
   findings: Findings | null;
   parent: Parent | null;
+  resolution: Resolution | null;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -244,6 +252,7 @@ const toSession = (r: Row): Session => ({
   artifacts: r.artifacts ? JSON.parse(r.artifacts) : [],
   findings: r.findings ? JSON.parse(r.findings) : null,
   parent: r.parent ? JSON.parse(r.parent) : null,
+  resolution: r.resolution ? JSON.parse(r.resolution) : null,
   archived: !!r.archived,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -300,6 +309,7 @@ const columns: Record<string, string> = {
   artifacts: 'artifacts',
   findings: 'findings',
   parent: 'parent',
+  resolution: 'resolution',
   archived: 'archived',
   pid: 'pid',
   tty: 'tty',
@@ -318,7 +328,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'resolution' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

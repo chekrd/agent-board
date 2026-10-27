@@ -352,7 +352,12 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
     state.sessions = state.sessions.filter((o) => o !== s);
     push();
   },
-  archive: (s, body) => update(s.id, { archived: body.archived ?? true }),
+  archive: (s, body) => update(s.id, { archived: body.archived ?? true, ...(!(body.archived ?? true) && s.resolution && { resolution: null }) }),
+  resolve: (s, body) => {
+    if (!s.parent) throw new Error('only a subtask is marked solved or dropped');
+    const state = body.state ?? null;
+    update(s.id, { resolution: state ? { state, at: Date.now() } : null, archived: !!state });
+  },
   'delete-worktree': (s) => {
     if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
     if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
@@ -409,7 +414,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
     id, repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
-    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, archived: false, createdAt: now, updatedAt: now,
+    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;

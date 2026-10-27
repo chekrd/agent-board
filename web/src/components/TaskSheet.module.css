@@ -76,6 +76,22 @@
     &[data-attention="focus"] { color: var(--prompt); }
     &[data-attention="idle"] { color: var(--idle); }
     &[data-attention="working"] { color: var(--work); }
+    &[data-resolution="solved"] { color: var(--ok); }
+  }
+
+  .open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 13px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text-2);
+    &[data-settled] { border-color: var(--ok-ring); color: var(--ok); }
   }
 
   .tabs {

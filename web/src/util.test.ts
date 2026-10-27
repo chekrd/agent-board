@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, tilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, openSubtasks, tilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -68,4 +68,13 @@ test('subtasks nest: the chain up to the root task, the tree under a task, and t
   assert.deepEqual(descendantsOf(all, 'review').map((d) => `${d.session.id}:${d.depth}`), ['a:1', 'a2:2', 'b:1']);
   assert.equal(findingPath(all, all[2]), '1.2');
   assert.equal(findingPath(all, all[3]), '3');
+});
+
+test('a task counts its subtasks still open: a solved or dropped one and everything under it are settled', () => {
+  const sub = (id: string, of: string, resolution: 'solved' | 'dropped' | null = null) =>
+    session(id, { parent: { id: of, basis: 't1', finding: 0, title: 'f', kind: 'accept', text: '' }, resolution: resolution && { state: resolution, at: 1 } });
+  const all = [session('review'), sub('a', 'review', 'solved'), sub('a1', 'a'), sub('b', 'review'), sub('b1', 'b', 'dropped'), sub('b2', 'b')];
+  const { open, total } = openSubtasks(all, 'review');
+  assert.deepEqual([open.map((s) => s.id), total], [['b', 'b2'], 5]);
+  assert.deepEqual(openSubtasks(all, 'b').open.map((s) => s.id), ['b2']);
 });

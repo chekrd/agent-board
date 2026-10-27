@@ -4,7 +4,7 @@ import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
 import { patchSession, unpatch, useStore } from '../store.ts';
-import type { Session, WorktreeView } from '../types.ts';
+import type { Resolution, Session, WorktreeView } from '../types.ts';
 import { tilde } from '../util.ts';
 import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
 import { Icon } from './Icon.tsx';
@@ -45,6 +45,17 @@ export function archive(session: Session, name: string) {
   }, failed(id));
 }
 
+// Solved and Dropped take the subtask out of the queue like Archive, and Undo opens it again.
+export function resolveSubtask(session: Session, state: Resolution['state'] | null, name: string) {
+  const { id } = session;
+  const change = () => patchSession(id, { resolution: state ? { state, at: Date.now() } : null, archived: !!state });
+  if (state) queue.leave(id, change);
+  else change();
+  sessionAction(id, 'resolve', { state }).then(() => {
+    if (state) toast('undo', `${state === 'solved' ? 'Solved' : 'Dropped'} ${name}`, { session: id, action: { label: 'Undo', run: () => resolveSubtask(session, null, name) } });
+  }, failed(id));
+}
+
 // Claude quits: the session leaves the queue as ended, its card sideways when it is the one being read.
 function quit(session: Session) {
   queue.leave(session.id, () => patchSession(session.id, { status: 'exited' }));
@@ -81,7 +92,14 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
             onClick={pick(() => quit(session))}
           />
         )}
-        {session.archived ? (
+        {session.parent ? (session.resolution ? (
+          <Item label="Reopen" note={`Marked ${session.resolution.state}; back into the queue and its task's open count`} onClick={pick(() => resolveSubtask(session, null, name))} />
+        ) : (
+          <>
+            <Item label="Mark solved" note="Done; it stops counting as open on its task" onClick={pick(() => resolveSubtask(session, 'solved', name))} />
+            <Item label="Drop" note="Not going on with it; it stops counting as open on its task" onClick={pick(() => resolveSubtask(session, 'dropped', name))} />
+          </>
+        )) : session.archived ? (
           <Item label="Unarchive" note="Back into the queue and the strip" onClick={act('archive', { archived: false })} />
         ) : (
           <Item label="Archive" note="Hide it; ranking, advice and summaries stop" onClick={pick(() => archive(session, name))} />

@@ -181,6 +181,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'quit': S.quit(id); break;
     case 'forget': await S.forget(id); break;
     case 'archive': S.archive(id, body.archived ?? true); break;
+    case 'resolve': S.resolve(id, body.state ?? null); break;
     case 'delete-worktree': await S.deleteWorktree(id); break;
     case 'finding': return c.json({ id: await respond(id, body) });
     default: return c.text('unknown action', 404);

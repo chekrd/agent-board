@@ -4,16 +4,16 @@ import { closeSheet, openerOfTask, showTab, type Route, type Tab } from '../rout
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
-import { locate, sessionLabel, shownOf } from '../util.ts';
+import { locate, openSubtasks, sessionLabel, shownOf } from '../util.ts';
 import { Artifacts } from './Artifacts.tsx';
 import { DiffView } from './DiffView.tsx';
-import { ParentCrumb } from './Findings.tsx';
+import { ParentCrumb, stateLabel } from './Findings.tsx';
 import { Icon } from './Icon.tsx';
 import { Overview } from './Overview.tsx';
 import { BranchMark } from './Parts.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChip, STATE_HINTS, STATE_LABELS } from './Status.tsx';
+import { PrChip, STATE_HINTS } from './Status.tsx';
 import { TaskName } from './TaskName.tsx';
 import styles from './TaskSheet.module.css';
 import { toast } from './Toasts.tsx';
@@ -71,6 +71,7 @@ interface BodyProps {
 function Body({ session, name, repos, tab, item, back }: BodyProps) {
   const { repo, worktree, branch } = locate(repos, session);
   const attention = shownOf(session, useBusy());
+  const { open, total } = openSubtasks(useStore().sessions, session.id);
   const tabs: { key: Tab; label: string; kbd: string }[] = [
     { key: 'overview', label: 'Overview', kbd: '1' },
     { key: 'diff', label: 'Diff', kbd: '2' },
@@ -90,10 +91,15 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
           {session.parent && <div className={styles.crumb}><ParentCrumb session={session} /></div>}
           <BranchMark session={session} branch={branch} />
           <TaskName session={session} name={name} />
-          <span className={styles.state} data-attention={session.archived ? 'archived' : attention} title={session.archived ? undefined : STATE_HINTS[attention]}>
+          <span className={styles.state} data-attention={session.archived ? 'archived' : attention} data-resolution={session.resolution?.state} title={session.archived ? undefined : STATE_HINTS[attention]}>
             <StateMark state={session.archived ? 'archived' : attention} size={8} />
-            {session.archived ? 'Archived' : STATE_LABELS[attention]}
+            {stateLabel(session, attention)}
           </span>
+          {total > 0 && (
+            <span className={styles.open} data-open-count data-settled={!open.length || undefined} title="Subtasks under this task that are neither solved nor dropped">
+              {open.length ? `${open.length} of ${total} ${total === 1 ? 'subtask' : 'subtasks'} open` : <><Icon name="check" size={13} />{total === 1 ? 'Subtask' : `All ${total} subtasks`} solved or dropped</>}
+            </span>
+          )}
           <PrChip pr={session.pr} status={session.status} />
         </div>
         <nav className={styles.tabs} role="tablist" aria-label="Task">

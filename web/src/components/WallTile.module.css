@@ -163,5 +163,12 @@
     [data-attention="idle"] > & { color: var(--idle); }
   }
 
-  .subtaskRest { font-size: 12.5px; color: var(--muted); }
+  .subtaskRest {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12.5px;
+    color: var(--muted);
+    &[data-settled] { color: var(--ok); font-weight: 650; }
+  }
 }

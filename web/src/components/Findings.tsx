@@ -4,15 +4,20 @@ import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { ancestorsOf, decisionOf, locate, sessionLabel, shownOf } from '../util.ts';
+import { ancestorsOf, decisionOf, locate, openSubtasks, sessionLabel, shownOf, type Shown } from '../util.ts';
 import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
 import { StateMark } from './StateMark.tsx';
 import { STATE_LABELS } from './Status.tsx';
+import { resolveSubtask } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
 
 type Response = SubtaskKind | 'reject' | 'reopen';
+
+const RESOLVED = { solved: 'Solved', dropped: 'Dropped' } as const;
+
+export const stateLabel = (o: Session, shown: Shown) => (o.resolution ? RESOLVED[o.resolution.state] : o.archived ? 'Archived' : STATE_LABELS[shown]);
 
 export const SUBTASK_LABELS: Record<SubtaskKind, string> = { accept: 'Fix', elaborate: 'Explain', 'second-look': 'Second look', reply: 'Reply' };
 
@@ -134,7 +139,7 @@ function Item({ session, basis, index, finding, subtasks, compact }: ItemProps) 
                 <button type="button" data-subtask={o.id} title={o.parent!.text || undefined} onClick={() => openSheet(o.id)}>
                   <StateMark state={o.archived ? 'archived' : shown} size={8} />
                   <span>{SUBTASK_LABELS[o.parent!.kind]}</span>
-                  <span className={styles.state}>{o.archived ? 'Archived' : STATE_LABELS[shown]}</span>
+                  <span className={styles.state}>{stateLabel(o, shown)}</span>
                 </button>
               </li>
             );
@@ -227,13 +232,30 @@ export function SubtaskOf({ session }: { session: Session }) {
                 <button type="button" data-subtask={o.id} title={o.parent!.text || undefined} onClick={() => openSheet(o.id)}>
                   <StateMark state={o.archived ? 'archived' : shown} size={8} />
                   <span>{SUBTASK_LABELS[o.parent!.kind]}</span>
-                  <span className={styles.state}>{o.archived ? 'Archived' : STATE_LABELS[shown]}</span>
+                  <span className={styles.state}>{stateLabel(o, shown)}</span>
                 </button>
               </li>
             );
           })}
         </ul>
       )}
+      <div className={styles.resolve} data-resolve>
+        {session.resolution ? (
+          <>
+            <span className={styles.resolved} data-resolution={session.resolution.state}>
+              <Icon name={session.resolution.state === 'solved' ? 'check' : 'close'} size={14} />
+              {RESOLVED[session.resolution.state]}
+            </span>
+            <button type="button" onClick={() => resolveSubtask(session, null, session.title ?? 'the subtask')}>Reopen</button>
+          </>
+        ) : (
+          <>
+            <span className={styles.state}>Done with it?</span>
+            <button type="button" data-variant="primary" onClick={() => resolveSubtask(session, 'solved', session.title ?? 'the subtask')}>Mark solved</button>
+            <button type="button" onClick={() => resolveSubtask(session, 'dropped', session.title ?? 'the subtask')}>Drop</button>
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -252,19 +274,20 @@ export function Subtasks({ session }: { session: Session }) {
     .flatMap((o) => [{ o, depth }, ...tree(o.id, depth + 1)]);
   const subtasks = tree(session.id, 0);
   if (!subtasks.length) return null;
+  const { open } = openSubtasks(sessions, session.id);
   return (
     <section className={styles.list} aria-label="Subtasks" data-subtask-list>
-      <h3 className={styles.label}>Subtasks <span>· {subtasks.length}</span></h3>
+      <h3 className={styles.label}>Subtasks <span data-open-count>· {open.length ? `${open.length} of ${subtasks.length} open` : `all ${subtasks.length} solved or dropped`}</span></h3>
       <ul>
         {subtasks.map(({ o, depth }) => {
           const state = stateOf(o);
           return (
-            <li key={o.id} data-depth={depth} style={{ '--depth': depth } as CSSProperties}>
+            <li key={o.id} data-depth={depth} data-resolution={o.resolution?.state} style={{ '--depth': depth } as CSSProperties}>
               {depth > 0 && <Icon name="subtask" size={14} />}
               <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
                 <StateMark state={state} size={8} />
                 <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
-                <span className={styles.listState}>{state === 'archived' ? 'Archived' : STATE_LABELS[state]}</span>
+                <span className={styles.listState}>{stateLabel(o, shownOf(o, busy))}</span>
                 <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
               </button>
             </li>

@@ -12,7 +12,7 @@ const IN_DECK: readonly Attention[] = ['decide', 'focus', 'idle'];
 
 // `busy` are the sessions whose send is held or not yet confirmed: they have been answered on this page.
 export function deckOf(sessions: readonly Session[], busy: ReadonlySet<string>, now = Date.now()) {
-  return sessions.filter((s) => !s.archived && s.status !== 'exited' && !busy.has(s.id) && IN_DECK.includes(attentionOf(s, now))).sort(compare);
+  return sessions.filter((s) => !s.archived && !s.resolution && s.status !== 'exited' && !busy.has(s.id) && IN_DECK.includes(attentionOf(s, now))).sort(compare);
 }
 
 export function kindOf(s: Session, now = Date.now()): Kind | null {

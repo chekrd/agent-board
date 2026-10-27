@@ -35,6 +35,20 @@ export function descendantsOf(sessions: readonly Session[], id: string, depth = 
   return sessions.filter((o) => o.parent?.id === id).flatMap((o) => [{ session: o, depth }, ...descendantsOf(sessions, o.id, depth + 1)]);
 }
 
+// The subtasks still to settle under a task: neither solved nor dropped, nor under one that is.
+export function openSubtasks(sessions: readonly Session[], id: string) {
+  const open: Session[] = [];
+  const walk = (of: string) => {
+    for (const o of sessions) {
+      if (o.parent?.id !== of || o.resolution) continue;
+      open.push(o);
+      walk(o.id);
+    }
+  };
+  walk(id);
+  return { open, total: descendantsOf(sessions, id).length };
+}
+
 // The finding numbers from the root task down, e.g. 1.2 for finding 2 of the subtask on finding 1.
 export const findingPath = (sessions: readonly Session[], s: Session) =>
   [...ancestorsOf(sessions, s).slice(1), s].map((o) => (o.parent ? o.parent.finding + 1 : '?')).join('.');

@@ -298,8 +298,17 @@ export async function forget(id: string) {
 }
 
 export function archive(id: string, archived: boolean) {
-  must(id);
-  sessions.update(id, { archived });
+  const s = must(id);
+  sessions.update(id, { archived, ...(!archived && s.resolution && { resolution: null }) });
+  notify();
+}
+
+// Solved and Dropped also archive the subtask, so it leaves the queue; Reopen brings it back.
+export function resolve(id: string, state: unknown) {
+  const s = must(id);
+  if (!s.parent) throw new Error('only a subtask is marked solved or dropped');
+  if (state !== null && state !== 'solved' && state !== 'dropped') throw new Error('unknown resolution');
+  sessions.update(id, { resolution: state ? { state, at: Date.now() } : null, archived: !!state });
   notify();
 }
 

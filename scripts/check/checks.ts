@@ -4967,7 +4967,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all',
+    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all; Mark solved and Drop settle a subtask, and the task counts the ones still open',
     scenario: 'findings',
     async run({ themes, page, mock, shot }) {
       const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
@@ -5008,13 +5008,13 @@ export const checks: Check[] = [
       await page.until('the subtask page', () => location.pathname === '/s/s-review-1/overview' && !!document.querySelector('#task-sheet [aria-label="Subtask of"]'));
       await shot('subtask');
       await page.click('#task-sheet header button[aria-label="Session actions"]');
-      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive']);
+      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Mark solved', 'Drop']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
       const text = (sel: string) => page.eval((q) => document.querySelector<HTMLElement>(q)!.innerText.replace(/\s+/g, ' ').trim(), sel);
       assert.equal(await text('#task-sheet header [data-parent]'), 'Subtask of Review the lazy reviews branch');
       const origin = await text('#task-sheet [aria-label="Subtask of"]');
-      assert.match(origin, /^Subtask of Review the lazy reviews branch Your turn Back to the task 1 Reviews load twice on a fast scroll src\/reviews\/LazyReviews\.tsx:41 The IntersectionObserver .* Fix “?Guard it with a ref”? Second look Decide$/i);
+      assert.match(origin, /^Subtask of Review the lazy reviews branch Your turn Back to the task 1 Reviews load twice on a fast scroll src\/reviews\/LazyReviews\.tsx:41 The IntersectionObserver .* Fix “?Guard it with a ref”? Second look Decide Done with it\? Mark solved Drop$/i);
       await page.click('#task-sheet [aria-label="Subtask of"] [data-subtask="s-review-2"]');
       await page.until('the sibling', () => location.pathname === '/s/s-review-2/overview');
       await page.click('#task-sheet header [data-parent] button');
@@ -5030,7 +5030,7 @@ export const checks: Check[] = [
       await page.click('a[href="/wall"]');
       await page.until('the Wall', () => !!document.querySelector('[data-tile][data-session="s-review"]'));
       assert.equal(await page.eval(() => document.querySelectorAll('[data-tile] [data-parent], [data-tile][data-session^="s-review-"]').length), 0, 'no subtask has a tile');
-      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE Explain #1.1 YOUR TURN +2 more');
+      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE Explain #1.1 YOUR TURN 4 of 4 subtasks open');
       assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-tile][data-session="s-review"]')!.dataset.wants), 'decide');
       await shot('findings-wall');
       await page.click('[data-tile][data-session="s-review"] [data-subtask="s-review-2"]');
@@ -5049,8 +5049,28 @@ export const checks: Check[] = [
       assert.equal(await text('#task-sheet header [data-parent]'), 'Subtask of Review the lazy reviews branch › #1 Fix · Reviews load twice on a fast scroll');
       assert.match(await text('#task-sheet [aria-label="Subtask of"]'), /^Subtask of #1 Fix · Reviews load twice on a fast scroll In progress Back to the task 1 The guard is not reset on unmount/i);
       await shot('subtask-nested');
+      await page.click('#task-sheet [data-resolve] button', 'Mark solved');
+      await page.until('marked solved', () => document.querySelector('#task-sheet header [data-resolution]')?.textContent === 'Solved');
+      const [solved] = await page.until('the undo toast', toastsOf, 'undo');
+      assert.match(solved.text, /Solved #1 Explain/);
+      assert.deepEqual((await stateOf(mock, 's-review-1-1')).resolution?.state, 'solved');
       await page.click('#task-sheet header [data-parent] button');
       await page.until('the review from the chain', () => location.pathname === '/s/s-review/overview');
+      await page.until('3 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '3 of 4 subtasks open');
+      await page.click('#task-sheet [data-subtask-list] [data-subtask="s-review-2"]');
+      await page.until('the second look', () => location.pathname === '/s/s-review-2/overview');
+      await page.click('#task-sheet header button[aria-label="Session actions"]');
+      await page.click(':popover-open button', 'Drop');
+      await page.until('dropped', () => document.querySelector('#task-sheet header [data-resolution]')?.textContent === 'Dropped');
+      await page.click('#task-sheet header [data-parent] button');
+      await page.until('2 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '2 of 4 subtasks open');
+      assert.equal(await text('#task-sheet [data-open-count]:not(header *)'), '· 2 of 4 open');
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] li[data-resolution]')].map((l) => l.dataset.resolution)), ['solved', 'dropped']);
+      await shot('subtasks-settled');
+      const rest = (await mock.get('/api/state')).sessions.filter((s: { parent: unknown; resolution: unknown }) => s.parent && !s.resolution);
+      assert.equal(rest.length, 2);
+      for (const s of rest) await mock.post(`/api/sessions/${s.id}/resolve`, { state: 'solved' });
+      await page.until('all settled', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === 'All 4 subtasks solved or dropped');
 
       await page.click('#task-sheet header button[aria-label="Session actions"]');
       await page.click(':popover-open button', 'Clear task');
