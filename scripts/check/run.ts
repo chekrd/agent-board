@@ -37,6 +37,11 @@ if (!existsSync(join(resolve(args.dist), 'index.html'))) {
   process.exit(2);
 }
 process.env.AGENT_BOARD_E2E_DIST = resolve(args.dist);
+// The mock's times are set from now, such as a limit that resets in 133 min, and a time on another day shows its
+// weekday too, which widens the top bar. A zone where the run starts at 10:00 keeps them all on one day; the mock
+// and the browser take it from this process.
+const offset = ((10 - new Date().getUTCHours() + 36) % 24) - 12;
+process.env.TZ = offset ? `Etc/GMT${offset > 0 ? '-' : '+'}${Math.abs(offset)}` : 'Etc/GMT';
 
 const schemes = ['dark', 'light'] as const;
 const motions = args.matrix ? (['no-preference', 'reduce'] as const) : (['no-preference'] as const);

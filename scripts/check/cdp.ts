@@ -198,19 +198,27 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
       async click(selector: string, text = '') {
         const what = `${selector}${text ? ` with "${text}"` : ''}`;
         for (let attempt = 0; attempt < 10; attempt++) {
-          const at = await until(`${what} to take a click`, () => run((selector: string, text: string) => {
-            const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => e.checkVisibility() && (e.textContent ?? '').includes(text));
-            if (!el) return null;
-            el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-            const r = el.getBoundingClientRect();
-            const at = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-            const hit = document.elementFromPoint(at.x, at.y);
-            if (!hit || !el.contains(hit)) return null;
-            const marks = window as unknown as { e2eClicked?: boolean };
-            marks.e2eClicked = false;
-            el.addEventListener('click', () => (marks.e2eClicked = true), { capture: true, once: true });
-            return at;
-          }, selector, text));
+          // Only where the element stays put: one sliding in would move and leave the click to whatever came under it.
+          let last = '';
+          const at = await until(`${what} to take a click`, async () => {
+            const at = await run((selector: string, text: string) => {
+              const el = [...document.querySelectorAll<HTMLElement>(selector)].find((e) => e.checkVisibility() && (e.textContent ?? '').includes(text));
+              if (!el) return null;
+              el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              const r = el.getBoundingClientRect();
+              const at = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+              const hit = document.elementFromPoint(at.x, at.y);
+              if (!hit || !el.contains(hit)) return null;
+              const marks = window as unknown as { e2eClicked?: boolean };
+              marks.e2eClicked = false;
+              el.addEventListener('click', () => (marks.e2eClicked = true), { capture: true, once: true });
+              return at;
+              }, selector, text);
+            const now = JSON.stringify(at);
+            const still = !!at && now === last;
+            last = now;
+            return still && at;
+          });
           await mouse('mouseMoved', at.x, at.y);
           await mouse('mousePressed', at.x, at.y);
           await mouse('mouseReleased', at.x, at.y);

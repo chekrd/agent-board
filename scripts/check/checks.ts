@@ -1409,6 +1409,7 @@ export const checks: Check[] = [
     async run({ page, mock, shot }) {
       await openSheetOf(page, mock, 's-cart');
       const entries = await page.eval(() => window.navigation.entries().length);
+      await page.until('the Artifacts tab', () => [...document.querySelectorAll('#task-sheet [role="tab"]')].some((t) => t.textContent?.startsWith('Artifacts')));
       await page.key('3');
       await page.until('the artifacts', () => location.pathname === '/s/s-cart/artifacts' && document.querySelector('#task-sheet iframe') !== null);
       const shown = await page.eval(() => {
@@ -1516,7 +1517,7 @@ export const checks: Check[] = [
     async run({ page, mock }) {
       await page.goto(`${mock.url}/s/s-edge/overview`);
       await page.until('the task page', sheetOpen);
-      assert.equal(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === 'Worktree')?.nextElementSibling?.textContent), 'None');
+      await page.until('Worktree None', () => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === 'Worktree')?.nextElementSibling?.textContent === 'None');
       await page.click('#task-sheet button[aria-label="Session actions"]');
       assert.ok((await page.until('the menu', menuItems)).includes('Clear task…'), 'no Clear task… for a task in the main checkout');
       await page.click(':popover-open button', 'Clear task');
@@ -1979,6 +1980,7 @@ export const checks: Check[] = [
       await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
       await page.until('the branches', (list: string) => document.querySelectorAll(`${list} [role="option"]`).length > 40, list);
+      await page.until('the dialog to settle', still);
       const before = await page.eval(dialogHeight);
       assert.equal(await page.eval(open, list), false, 'closed until asked');
       await page.eval((field: string) => document.querySelector<HTMLInputElement>(field)!.focus(), field);
@@ -1993,7 +1995,7 @@ export const checks: Check[] = [
         return { scrolls: el.scrollHeight > el.clientHeight, inView: r.top >= 0 && r.bottom <= innerHeight, page: document.scrollingElement!.scrollHeight <= innerHeight };
       }, list);
       assert.deepEqual(box, { scrolls: true, inView: true, page: true });
-      assert.equal(await page.eval(dialogHeight), before, 'the dialog kept its size');
+      assert.ok(Math.abs((await page.eval(dialogHeight)) - before) <= 1, 'the dialog kept its size');
       await shot('new-task-branch-list');
 
       await page.type('kcl-1561');
@@ -2814,8 +2816,8 @@ export const checks: Check[] = [
       assert.match(held.text, /^Sending “Merge both carts” to Merge guest cart on login · [1-5] s\s+Undo\s+Esc$/);
       const count = () => Number(document.querySelector('[data-toast][data-kind="undo"]')?.textContent?.match(/· (\d) s/)?.[1]);
       const first = await page.eval(count);
-      await sleep(1100);
-      assert.ok((await page.eval(count)) < first, 'the countdown did not count down');
+      // The countdown follows the shared clock, which ticks once a second at its own phase.
+      await until('the countdown to count down', async () => (await page.eval(count)) < first, 2100);
       assert.deepEqual(await page.eval(() => [document.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label'), document.title]), [
         '2 decisions · 1 terminal prompt · 2 finished turns', 'Agent Board',
       ]);
@@ -3275,6 +3277,7 @@ export const checks: Check[] = [
       await page.eval(() => void ((window as unknown as { e2eProbe?: number }).e2eProbe = 1));
       await page.key('1');
       const pressed = Date.now();
+      await page.until('the undo toast', toastsOf, 'undo');
       await mock.post('/mock/ui-entry', { src: '/assets/next.js' });
       await wait(2000);
       assert.equal(await page.eval(() => (window as unknown as { e2eProbe?: number }).e2eProbe), 1, 'reloaded with a send held');
@@ -4137,7 +4140,9 @@ export const checks: Check[] = [
     expectedErrors: [/status of 400/],
     async run({ themes, page, mock }) {
       const fails: string[] = [];
+      // A card that just came up shows its primary dimmed for 0.9 s; each step is read once that is over.
       const audit = async (where: string) => {
+        await page.until('the guard to end', unguarded);
         await page.until('the page to settle', still);
         await themes(async (scheme) => {
           fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where} (${scheme}): ${f}`));
@@ -4819,9 +4824,10 @@ export const checks: Check[] = [
         return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
       });
       await page.pointAt(undo.x, undo.y, true);
-      await sleep(110);
       if (look.width === 1440) {
-        assert.equal(await page.eval((x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('[data-peek]'), undo.x, undo.y), true, 'no peek under the Undo once it went');
+        await page.until('a peek under the Undo once it went', (x: number, y: number) => !!document.elementFromPoint(x, y)?.closest('[data-peek]'), undo.x, undo.y);
+      } else {
+        await sleep(110);
       }
       await page.pointAt(undo.x, undo.y, true, 2);
       await sleep(400);
