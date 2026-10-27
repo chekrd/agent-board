@@ -18,7 +18,7 @@ import styles from './WallTile.module.css';
 function textOf(s: Session, attention: Attention) {
   if (attention === 'decide') return decisionOf(s)?.problem ?? s.menu!.questions.map((q) => q.question).join(' · ');
   if (attention === 'focus') return promptOf(s).headline;
-  return s.summary?.text ?? s.firstPrompt ?? 'Starting…';
+  return s.summary?.text || s.firstPrompt || 'Starting…';
 }
 
 // A subtask in one of these states wants you, and its task's tile says so.

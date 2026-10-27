@@ -208,7 +208,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
             <h3 className={styles.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">
               Status {summary && <span>· updated {ago(summary.at)}</span>}
             </h3>
-            <p>{summary?.text ?? 'No summary yet; it is written once Claude replies.'}</p>
+            <p>{summary?.text || 'No summary yet; it is written once Claude replies.'}</p>
             {!!summary?.progress?.length && <ul>{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
           </section>
           {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}

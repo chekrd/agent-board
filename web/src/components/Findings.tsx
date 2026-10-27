@@ -305,7 +305,7 @@ export function Subtasks({ session }: { session: Session }) {
           <StateMark state={state} size={8} />
           <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
           <span className={styles.listState}>{stateLabel(o, shownOf(o, busy))}</span>
-          <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
+          <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) || o.parent!.text}</span>
         </button>
       </li>
     );

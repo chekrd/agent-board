@@ -110,7 +110,7 @@ ${clip(q.details, 6000)}`
 Repository: ${repoView(s.repoId)?.name ?? s.worktree}
 Task as first given: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 
-Previous headline: ${s.summary?.text ?? '(none yet)'}
+Previous headline: ${s.summary?.text || '(none yet)'}
 Progress so far:
 ${list(s.summary?.progress)}
 Worth knowing so far:
