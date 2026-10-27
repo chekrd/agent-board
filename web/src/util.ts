@@ -12,8 +12,7 @@ export const tilde = (path: string, home: string) => (home && (path === home || 
 
 // A worktree is named by its folder under the worktree root, which git-wt makes <name>/<repo>.
 export function worktreeName(path: string, repo: RepoView | undefined) {
-  if (repo && path === repo.path) return 'None, the main checkout';
-  if (repo && !repo.worktrees.some((w) => w.path === path)) return 'None, it was removed';
+  if (repo && (path === repo.path || !repo.worktrees.some((w) => w.path === path))) return 'None';
   const parts = path.split('/');
   if (repo && parts.length > 1 && parts.at(-1) === repo.name) parts.pop();
   return parts.at(-1) || path;

@@ -1516,7 +1516,7 @@ export const checks: Check[] = [
     async run({ page, mock }) {
       await page.goto(`${mock.url}/s/s-edge/overview`);
       await page.until('the task page', sheetOpen);
-      assert.equal(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === 'Worktree')?.nextElementSibling?.textContent), 'None, the main checkout');
+      assert.equal(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === 'Worktree')?.nextElementSibling?.textContent), 'None');
       await page.click('#task-sheet button[aria-label="Session actions"]');
       assert.ok((await page.until('the menu', menuItems)).includes('Clear task…'), 'no Clear task… for a task in the main checkout');
       await page.click(':popover-open button', 'Clear task');

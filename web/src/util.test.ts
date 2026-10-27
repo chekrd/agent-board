@@ -56,8 +56,8 @@ test('a worktree is named by its folder, without the repository folder git-wt pu
   const repo = { path: '/g/board', name: 'board', worktrees: [{ path: '/g/board' }, { path: '/g/worktrees/review/board' }, { path: '/g/worktrees/spike' }] } as RepoView;
   assert.equal(worktreeName('/g/worktrees/review/board', repo), 'review');
   assert.equal(worktreeName('/g/worktrees/spike', repo), 'spike');
-  assert.equal(worktreeName('/g/board', repo), 'None, the main checkout');
-  assert.equal(worktreeName('/g/worktrees/gone/board', repo), 'None, it was removed');
+  assert.equal(worktreeName('/g/board', repo), 'None');
+  assert.equal(worktreeName('/g/worktrees/gone/board', repo), 'None');
   assert.equal(worktreeName('/g/worktrees/x/board', undefined), 'board');
 });
 
