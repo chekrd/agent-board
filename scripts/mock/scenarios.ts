@@ -211,6 +211,19 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
       status: 'working', createdAt: now - 3 * MIN, updatedAt: now - MIN,
       activity: { step: 'Read src/reviews/LazyReviews.tsx', since: now - 3 * MIN },
       parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'accept', text: 'Guard it with a ref' },
+      findings: {
+        basis: 't-fix-2',
+        items: [{ title: 'The guard is not reset on unmount', location: 'src/reviews/LazyReviews.tsx:52', detail: 'A remount while a load runs keeps `loading.current` true, so the section never loads again.' }],
+      },
+    }), session({
+      id: 's-review-1-1', repoId: 1, worktree, tty: '/dev/ttys033', pid: 80530,
+      title: '#1 Explain · The guard is not reset on unmount', firstPrompt: 'Explain finding 1.',
+      status: 'idle', createdAt: now - 90_000, updatedAt: now - 30_000, lastTurn: 't-explain-1',
+      summary: {
+        text: 'A remount happens when the product tabs switch; the stale guard then blocks every later load.', progress: [], learnings: [],
+        decision: null, findings: 0, question: null, basis: 't-explain-1', at: now - 30_000,
+      },
+      parent: { id: 's-review-1', basis: 't-fix-2', finding: 0, title: 'The guard is not reset on unmount', kind: 'elaborate', text: '' },
     }), session({
       id: 's-review-2', repoId: 1, worktree, tty: '/dev/ttys032', pid: 80520,
       title: '#1 Second look · Reviews load twice on a fast scroll', firstPrompt: 'Take a second look at finding 1.',

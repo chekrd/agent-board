@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { attentionChangesAt, attentionOf, clock, decisionOf, menuStuck, tilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, tilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -58,4 +58,14 @@ test('a worktree is named by its folder, without the repository folder git-wt pu
   assert.equal(worktreeName('/g/worktrees/spike', repo), 'spike');
   assert.equal(worktreeName('/g/board', repo), 'main checkout');
   assert.equal(worktreeName('/g/worktrees/x/board', undefined), 'board');
+});
+
+test('subtasks nest: the chain up to the root task, the tree under a task, and the finding numbers down to a subtask', () => {
+  const sub = (id: string, of: string, finding: number) => session(id, { parent: { id: of, basis: 't1', finding, title: 'f', kind: 'accept', text: '' } });
+  const all = [session('review'), sub('a', 'review', 0), sub('a2', 'a', 1), sub('b', 'review', 2), sub('lost', 'gone', 0)];
+  assert.deepEqual(ancestorsOf(all, all[2]).map((s) => s.id), ['review', 'a']);
+  assert.deepEqual(ancestorsOf(all, all[4]), []);
+  assert.deepEqual(descendantsOf(all, 'review').map((d) => `${d.session.id}:${d.depth}`), ['a:1', 'a2:2', 'b:1']);
+  assert.equal(findingPath(all, all[2]), '1.2');
+  assert.equal(findingPath(all, all[3]), '3');
 });

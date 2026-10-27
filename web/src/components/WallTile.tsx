@@ -5,7 +5,7 @@ import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
-import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, shownOf, type Attention, type Shown } from '../util.ts';
+import { adviceFor, ago, attentionOf, decisionOf, descendantsOf, findingPath, locate, sessionLabel, shownOf, type Attention, type Shown } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { ParentCrumb, SUBTASK_LABELS } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
@@ -42,7 +42,8 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
-  const subtasks = useStore().sessions.filter((o) => o.parent?.id === session.id && !o.archived);
+  const { sessions } = useStore();
+  const subtasks = descendantsOf(sessions, session.id).map((d) => d.session).filter((o) => !o.archived);
   const busy = useBusy();
   const wanting = subtasks.filter((o) => WANTS.includes(shownOf(o, busy))).sort((a, b) => WANTS.indexOf(shownOf(a, busy)) - WANTS.indexOf(shownOf(b, busy)));
   const rest = subtasks.length - wanting.length;
@@ -91,7 +92,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
             return (
               <button key={o.id} type="button" data-subtask={o.id} data-attention={state} title={`${sessionLabel(o, branch)}; opens the subtask`} onClick={() => openSheet(o.id)}>
                 <StateMark state={state} size={8} />
-                <span>{SUBTASK_LABELS[o.parent!.kind]} #{o.parent!.finding + 1}</span>
+                <span>{SUBTASK_LABELS[o.parent!.kind]} #{findingPath(sessions, o)}</span>
                 <span className={styles.subtaskState}>{STATE_LABELS[state]}</span>
               </button>
             );

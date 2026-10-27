@@ -69,6 +69,7 @@ test('subtasks leave the Wall to their task, which stands where its most urgent 
     session('old', { parent: parent('review'), archived: true }),
     session('shelved', { archived: true }),
     session('left', { status: 'working', parent: parent('shelved') }),
+    session('deep', { status: 'waiting', parent: parent('fix') }),
   ]);
   assert.deepEqual(ids(active), ['review', 'other', 'orphan', 'left']);
   assert.deepEqual(ids(archived), ['shelved']);

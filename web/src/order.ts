@@ -11,13 +11,21 @@ export function compare(a: Session, b: Session) {
   return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.createdAt - b.createdAt;
 }
 
-// The Wall shows tasks, not subtasks: a subtask shows on its task's tile and page, and the task stands where its most
-// urgent subtask would. A subtask whose task is gone or archived shows on its own.
+// The Wall shows tasks, not subtasks, however deep: a subtask shows on its root task's tile and on its task's page, and
+// the task stands where its most urgent subtask would. A subtask whose task is gone or archived shows on its own.
 export function orderTiles(sessions: Session[]) {
   const active = sessions.filter((s) => !s.archived);
   const byId = new Map(active.map((s) => [s.id, s]));
   const ids = new Set(sessions.map((s) => s.id));
-  const tasks = new Set(active.sort(compare).map((s) => (s.parent && byId.has(s.parent.id) ? byId.get(s.parent.id)! : s)));
+  const rootOf = (s: Session): Session => {
+    const seen = new Set<Session>();
+    while (s.parent && byId.has(s.parent.id) && !seen.has(s)) {
+      seen.add(s);
+      s = byId.get(s.parent.id)!;
+    }
+    return s;
+  };
+  const tasks = new Set(active.sort(compare).map(rootOf));
   return {
     active: [...tasks],
     archived: sessions.filter((s) => s.archived && !(s.parent && ids.has(s.parent.id))).sort((a, b) => b.updatedAt - a.updatedAt),

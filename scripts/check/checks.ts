@@ -5030,7 +5030,7 @@ export const checks: Check[] = [
       await page.click('a[href="/wall"]');
       await page.until('the Wall', () => !!document.querySelector('[data-tile][data-session="s-review"]'));
       assert.equal(await page.eval(() => document.querySelectorAll('[data-tile] [data-parent], [data-tile][data-session^="s-review-"]').length), 0, 'no subtask has a tile');
-      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE +2 more');
+      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE Explain #1.1 YOUR TURN +2 more');
       assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-tile][data-session="s-review"]')!.dataset.wants), 'decide');
       await shot('findings-wall');
       await page.click('[data-tile][data-session="s-review"] [data-subtask="s-review-2"]');
@@ -5038,10 +5038,19 @@ export const checks: Check[] = [
       await page.click('#task-sheet header [data-parent] button');
       await page.until('the review', () => location.pathname === '/s/s-review/overview');
       const listed = await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] [data-subtask]')].map((b) => `${b.dataset.subtask}:${b.dataset.attention}`));
-      assert.equal(listed.length, 3);
-      assert.deepEqual(listed.slice(0, 2), ['s-review-2:decide', 's-review-1:working']);
+      assert.equal(listed.length, 4);
+      assert.deepEqual(listed.slice(0, 3), ['s-review-2:decide', 's-review-1:working', 's-review-1-1:idle']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] li')].map((l) => l.dataset.depth)), ['0', '0', '1', '0']);
       assert.ok(await page.eval(() => !!document.querySelector('#task-sheet aside [data-subtask-list]')), 'the subtasks are listed beside the facts');
       await shot('subtask-list');
+
+      await page.click('#task-sheet [data-subtask-list] [data-subtask="s-review-1-1"]');
+      await page.until('the subtask of a subtask', () => location.pathname === '/s/s-review-1-1/overview');
+      assert.equal(await text('#task-sheet header [data-parent]'), 'Subtask of Review the lazy reviews branch › #1 Fix · Reviews load twice on a fast scroll');
+      assert.match(await text('#task-sheet [aria-label="Subtask of"]'), /^Subtask of #1 Fix · Reviews load twice on a fast scroll In progress Back to the task 1 The guard is not reset on unmount/i);
+      await shot('subtask-nested');
+      await page.click('#task-sheet header [data-parent] button');
+      await page.until('the review from the chain', () => location.pathname === '/s/s-review/overview');
 
       await page.click('#task-sheet header button[aria-label="Session actions"]');
       await page.click(':popover-open button', 'Clear task');
@@ -5049,7 +5058,7 @@ export const checks: Check[] = [
         const d = document.querySelector<HTMLElement>('dialog#delete-worktree[open]');
         return d && !d.textContent!.includes('Checking') && d.innerText;
       });
-      assert.match(cleared, /Its 3 subtasks go with it, their Claudes too\./);
+      assert.match(cleared, /Its 4 subtasks go with it, their Claudes too\./);
       await page.click('dialog#delete-worktree button', 'Clear task');
       await until('the task and its subtasks gone', async () => !(await mock.get('/api/state')).sessions.some((s: { id: string }) => s.id.startsWith('s-review')));
     },

@@ -1,10 +1,10 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { api, type ApiError } from '../api.ts';
 import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { decisionOf, locate, sessionLabel, shownOf } from '../util.ts';
+import { ancestorsOf, decisionOf, locate, sessionLabel, shownOf } from '../util.ts';
 import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -152,22 +152,26 @@ function useParent(session: Session) {
   return { p, task, name: task ? sessionLabel(task, locate(repos, task).branch) : 'its task', sessions };
 }
 
-// A subtask names the task it belongs to wherever it shows: above its title on its page, on its tile and its card.
+// A subtask names the tasks it belongs to wherever it shows, from the root task down: above its title on its page and
+// on its card. Each opens its page.
 export function ParentCrumb({ session }: { session: Session }) {
-  const { p, task, name } = useParent(session);
+  const { sessions, repos } = useStore();
   const busy = useBusy();
-  if (!p) return null;
-  const state = task ? (task.archived ? 'archived' : shownOf(task, busy)) : null;
+  if (!session.parent) return null;
+  const chain = ancestorsOf(sessions, session);
   return (
     <span className={styles.crumb} data-parent>
       <Icon name="subtask" size={14} />
       <span className={styles.crumbOf}>Subtask of</span>
-      {task ? (
-        <button type="button" title="Open the task this subtask belongs to" onClick={() => openSheet(task.id)}>
-          {state && <StateMark state={state} size={7} />}
-          {name}
-        </button>
-      ) : <span>{name}</span>}
+      {chain.length ? chain.map((task, i) => (
+        <span key={task.id} className={styles.crumbStep}>
+          {i > 0 && <span className={styles.crumbSep} aria-hidden>›</span>}
+          <button type="button" title="Open this task" onClick={() => openSheet(task.id)}>
+            <StateMark state={task.archived ? 'archived' : shownOf(task, busy)} size={7} />
+            {sessionLabel(task, locate(repos, task).branch)}
+          </button>
+        </span>
+      )) : <span>its task</span>}
     </span>
   );
 }
@@ -236,30 +240,36 @@ export function SubtaskOf({ session }: { session: Session }) {
 
 const URGENCY: Record<string, number> = { decide: 0, focus: 1, idle: 2, sending: 3, working: 4, exited: 5 };
 
-// On a task's page: every subtask started from its findings, the ones that want you first. The Wall leaves them to
-// their task's tile, so this is where they are listed.
+// On a task's page: every subtask under it, a subtask's own subtasks indented under it, and among siblings the ones
+// that want you first. The Wall leaves them to their root task's tile, so this is where they are listed.
 export function Subtasks({ session }: { session: Session }) {
   const { sessions, repos } = useStore();
   const busy = useBusy();
-  const subtasks = sessions
-    .filter((o) => o.parent?.id === session.id)
-    .map((o) => ({ o, state: o.archived ? ('archived' as const) : shownOf(o, busy) }))
-    .sort((a, b) => (URGENCY[a.state] ?? 9) - (URGENCY[b.state] ?? 9) || a.o.createdAt - b.o.createdAt);
+  const stateOf = (o: Session) => (o.archived ? ('archived' as const) : shownOf(o, busy));
+  const tree = (id: string, depth: number): { o: Session; depth: number }[] => sessions
+    .filter((o) => o.parent?.id === id)
+    .sort((a, b) => (URGENCY[stateOf(a)] ?? 9) - (URGENCY[stateOf(b)] ?? 9) || a.createdAt - b.createdAt)
+    .flatMap((o) => [{ o, depth }, ...tree(o.id, depth + 1)]);
+  const subtasks = tree(session.id, 0);
   if (!subtasks.length) return null;
   return (
     <section className={styles.list} aria-label="Subtasks" data-subtask-list>
       <h3 className={styles.label}>Subtasks <span>· {subtasks.length}</span></h3>
       <ul>
-        {subtasks.map(({ o, state }) => (
-          <li key={o.id}>
-            <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
-              <StateMark state={state} size={8} />
-              <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
-              <span className={styles.listState}>{state === 'archived' ? 'Archived' : STATE_LABELS[state]}</span>
-              <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
-            </button>
-          </li>
-        ))}
+        {subtasks.map(({ o, depth }) => {
+          const state = stateOf(o);
+          return (
+            <li key={o.id} data-depth={depth} style={{ '--depth': depth } as CSSProperties}>
+              {depth > 0 && <Icon name="subtask" size={14} />}
+              <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
+                <StateMark state={state} size={8} />
+                <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
+                <span className={styles.listState}>{state === 'archived' ? 'Archived' : STATE_LABELS[state]}</span>
+                <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -18,6 +18,27 @@ export function worktreeName(path: string, repo: RepoView | undefined) {
   return parts.at(-1) || path;
 }
 
+// A subtask's tasks, its root task first; a link to a task that is gone ends the chain.
+export function ancestorsOf(sessions: readonly Session[], s: Session) {
+  const chain: Session[] = [];
+  for (let p = s.parent; p; ) {
+    const task = sessions.find((o) => o.id === p!.id);
+    if (!task || chain.includes(task)) break;
+    chain.unshift(task);
+    p = task.parent;
+  }
+  return chain;
+}
+
+// Every subtask under a task, depth first, each with how deep it sits (1 for the task's own).
+export function descendantsOf(sessions: readonly Session[], id: string, depth = 1): { session: Session; depth: number }[] {
+  return sessions.filter((o) => o.parent?.id === id).flatMap((o) => [{ session: o, depth }, ...descendantsOf(sessions, o.id, depth + 1)]);
+}
+
+// The finding numbers from the root task down, e.g. 1.2 for finding 2 of the subtask on finding 1.
+export const findingPath = (sessions: readonly Session[], s: Session) =>
+  [...ancestorsOf(sessions, s).slice(1), s].map((o) => (o.parent ? o.parent.finding + 1 : '?')).join('.');
+
 export const sessionLabel = (session: Session, branch: string) => session.title || branch;
 
 export function ago(ms: number, now = Date.now()) {
