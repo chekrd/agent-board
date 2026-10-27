@@ -35,6 +35,8 @@ interface Meta {
   interactive: boolean;
   lastMessage: string | null;
   activity: Activity | null;
+  // Id and description of each background task still running.
+  background: [string, string][];
   toolResults: string[];
   ask: ToolCall | null;
   artifacts: ToolCall[];
@@ -58,6 +60,8 @@ export interface Menu {
 export interface Activity {
   step: string | null;
   since: number;
+  // What Claude left running in the background when its turn ended; it resumes as each one finishes.
+  background?: string[];
 }
 
 export interface Turn {
@@ -191,6 +195,30 @@ function activity(entries: Record<string, any>[]): Activity | null {
   return { step: step && step.split('\n')[0].slice(0, 140), since: Date.parse(entries[start].timestamp) || Date.now() };
 }
 
+// Background commands and agents Claude started and has not been told have ended, by what each was started to do. A
+// long wait can push the start out of the tail, so the tasks still open at the last read carry over.
+function background(entries: Record<string, any>[], carried: readonly [string, string][] = []): [string, string][] {
+  const calls = new Map<string, string>();
+  const open = new Map(carried);
+  for (const entry of entries) {
+    for (const b of blocks(entry)) if (b.type === 'tool_use') calls.set(b.id, describeTool(b));
+    const r = entry.type === 'user' && !entry.isSidechain ? entry.toolUseResult : null;
+    if (r && typeof r === 'object') {
+      const id = r.backgroundTaskId ?? (r.status === 'async_launched' ? r.agentId : null);
+      const use = Array.isArray(entry.message?.content) ? entry.message.content.find((b: any) => b.type === 'tool_result')?.tool_use_id : null;
+      if (id) open.set(String(id), calls.get(use) ?? 'a task');
+      if (r.task_id) open.delete(String(r.task_id));
+    }
+    if (entry.type !== 'user' && entry.type !== 'queue-operation') continue;
+    const content = entry.message?.content ?? entry.content;
+    const texts = typeof content === 'string' ? [content] : Array.isArray(content) ? content.filter((c) => c.type === 'text').map((c) => String(c.text)) : [];
+    for (const t of texts) {
+      if (t.startsWith('<task-notification>')) open.delete(t.match(/<task-id>([^<]+)<\/task-id>/)?.[1] ?? '');
+    }
+  }
+  return [...open];
+}
+
 const ENV_PREFIX = String.raw`^\s*(?:\w+=\S*\s+)*`;
 const WATCH_PR = new RegExp(`${ENV_PREFIX}\\S*pr-to-green/watch-pr\\.sh\\s+(\\d+)(?:\\s+"([^"]*)")?`);
 const CREATE_PR = new RegExp(`${ENV_PREFIX}az repos pr create\\b`);
@@ -263,6 +291,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     lastMessage: lastMessage(tail),
     activity: activity(tail),
+    background: background(tail, cached?.background),
     toolResults: toolResults(tail),
     ask: latestAsk(tail),
     artifacts: artifactCalls(tail),

@@ -9,10 +9,10 @@ import { AgentsDock } from './AgentsDock.tsx';
 import { Card } from './Card.tsx';
 import { Icon } from './Icon.tsx';
 import styles from './Queue.module.css';
+import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
 import { STATE_LABELS } from './Status.tsx';
 import { toast } from './Toasts.tsx';
-import { Wall } from './Wall.tsx';
 
 function peekText(s: Session) {
   const kind = kindOf(s);
@@ -25,9 +25,8 @@ function peekText(s: Session) {
 // Another card, or another decision on it: what must not replace a field the reader is typing in.
 const differs = (a: Session | null, b: Session | null) => a?.id !== b?.id || (!!a && !!b && signature(a, Date.now()) !== signature(b, Date.now()));
 
-// The front card of the deck with the next two peeking out behind it, or the Wall when nothing waits. While the reader
-// types in a field that a change would take away (the card's reply box, or New task on the resting Wall), the
-// change waits until focus leaves it.
+// The front card of the deck with the next two peeking out behind it, or an empty table when nothing waits. While the
+// reader types in a field that a change would take away (the card's reply box), the change waits until focus leaves it.
 export function Queue({ deck }: { deck: readonly Session[] }) {
   const { repos } = useStore();
   const q = useQueue();
@@ -121,10 +120,32 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
           <Side direction="next" disabled={arranged.length < 2} />
         </main>
       ) : (
-        <Wall deck={deck} />
+        <Empty />
       )}
-      <AgentsDock card={!!shown} />
+      <AgentsDock />
     </div>
+  );
+}
+
+function Empty() {
+  const { sessions, link } = useStore();
+  const working = sessions.filter((s) => !s.archived && attentionOf(s) === 'working').length;
+  return (
+    <main className={styles.stage} data-empty>
+      <div className={styles.empty}>
+        <svg className={styles.emptyArt} viewBox="0 0 160 120" aria-hidden>
+          <rect x="40" y="4" width="80" height="60" rx="11" />
+          <rect x="24" y="28" width="112" height="82" rx="14" />
+          <circle cx="80" cy="69" r="17" />
+          <path d="M72 69l6 6 11-12" />
+        </svg>
+        <h1>{link === 'connecting' ? 'Connecting…' : 'Nothing needs you.'}</h1>
+        {link !== 'connecting' && (
+          <p>{working ? `${working} ${working === 1 ? 'agent is' : 'agents are'} at work; what they ask for comes here.` : 'No agent is working right now.'}</p>
+        )}
+        {link !== 'connecting' && <a href="/wall">See every agent on the Wall <kbd>V</kbd></a>}
+      </div>
+    </main>
   );
 }
 
@@ -162,6 +183,7 @@ function Peek({ session, slot, repos, mark, enter }: { session: Session; slot: n
     >
       <span className={styles.row}>
         <StateMark state={attention} size={8} />
+        <BranchMark session={session} branch={locate(repos, session).branch} />
         <span className={styles.peekName}>{sessionLabel(session, locate(repos, session).branch)}</span>
         <span className={styles.peekText}>{peekText(session)}</span>
         <span className={styles.kind} data-attention={mark ?? attention}>{mark ? MARKS[mark] : STATE_LABELS[attention]}</span>

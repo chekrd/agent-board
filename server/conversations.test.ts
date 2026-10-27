@@ -92,6 +92,44 @@ test('right after a new prompt there is no step yet, and the clock starts at tha
   assert.deepEqual(fresh.activity, { step: null, since: Date.parse(at(2)) });
 });
 
+test('background work stays open until its task notification or a TaskStop; an agent launched async counts too', async () => {
+  const started = (use: string, result: object) => ({ ...toolResult(use, 'Command running in background'), toolUseResult: result });
+  const notified = (id: string) => ({ type: 'user', uuid: `n${n++}`, timestamp: at(9), message: { content: `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>` } });
+  const entries = [
+    prompt('run the suite', 0),
+    assistant([toolUse('b1', 'Bash', { command: 'pnpm e2e', description: 'Run full e2e suite', run_in_background: true })], 1),
+    started('b1', { stdout: '', backgroundTaskId: 'bg1' }),
+    assistant([toolUse('b2', 'Bash', { command: 'pnpm check', description: 'Run checks' })], 2),
+    started('b2', { stdout: '', backgroundTaskId: 'bg2', timedOutAfterMs: 120000 }),
+    assistant([toolUse('a1', 'Agent', { description: 'Review the diff', prompt: 'p' })], 3),
+    started('a1', { status: 'async_launched', agentId: 'ag1' }),
+    assistant([text('Waiting for the suite.')], 4),
+  ];
+  assert.deepEqual((await meta(entries)).background, [['bg1', 'Bash · Run full e2e suite'], ['bg2', 'Bash · Run checks'], ['ag1', 'Agent · Review the diff']]);
+  const ended = [...entries, notified('bg1'), assistant([toolUse('s1', 'TaskStop', { task_id: 'bg2' })], 10), started('s1', { message: 'stopped', task_id: 'bg2' })];
+  assert.deepEqual((await meta(ended)).background, [['ag1', 'Agent · Review the diff']]);
+  assert.deepEqual((await meta([...ended, notified('ag1')])).background, []);
+});
+
+test('a background task whose start has left the tail stays open until its notification comes', async () => {
+  const file = join(dir, `${n++}.jsonl`);
+  const write = (entries: object[]) => writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  const start = [
+    prompt('run it', 0),
+    assistant([toolUse('b1', 'Bash', { description: 'Run full e2e suite', run_in_background: true })], 1),
+    { ...toolResult('b1', 'Command running in background'), toolUseResult: { backgroundTaskId: 'bg1' } },
+  ];
+  write(start);
+  assert.deepEqual((await fileMeta(file))?.background, [['bg1', 'Bash · Run full e2e suite']]);
+  // A later prompt after more than the tail's worth of output.
+  const filler = Array.from({ length: 12 }, (_, i) => assistant([text('x'.repeat(60_000))], 2 + i));
+  write([...start, ...filler, prompt('meanwhile', 20), assistant([text('ok')], 21)]);
+  assert.deepEqual((await fileMeta(file))?.background, [['bg1', 'Bash · Run full e2e suite']]);
+  write([...start, ...filler, prompt('meanwhile', 20), assistant([text('ok')], 21),
+    { type: 'user', uuid: `n${n++}`, timestamp: at(30), message: { content: '<task-notification>\n<task-id>bg1</task-id>\n</task-notification>' } }]);
+  assert.deepEqual((await fileMeta(file))?.background, []);
+});
+
 test('tool results are collected, so an answered AskUserQuestion menu can be cleared', async () => {
   const m = await meta([prompt('x'), assistant([toolUse('menu1', 'AskUserQuestion')]), toolResult('menu1', 'User answered')]);
   assert.deepEqual(m.toolResults, ['menu1']);

@@ -122,7 +122,7 @@ export const KEYS: readonly Row[] = [
   { keys: 'O / D', help: 'Open the task on Overview or Diff', scopes: ['queue'], matches: named('o', 'd'), act: (ctx, e) => (ctx.card ? { type: 'open', tab: e.key.toLowerCase() === 'o' ? 'overview' : 'diff' } : null) },
   { keys: 'X', help: 'Archive a finished task', scopes: ['queue'], guarded: true, matches: named('x'), act: (ctx) => (ctx.card?.kind === 'idle' ? { type: 'archive' } : null) },
   { keys: 'Z', help: 'Take back the last send while it waits to go out', scopes: ['queue', 'wall', 'sheet'], matches: named('z'), act: () => ({ type: 'undo' }) },
-  { keys: 'V', help: 'Switch between Queue and Wall', scopes: ['queue', 'wall'], matches: named('v'), act: (ctx) => (ctx.view === 'queue' ? { type: 'view', to: 'wall' } : ctx.deck ? { type: 'view', to: 'queue' } : null) },
+  { keys: 'V', help: 'Switch between Queue and Wall', scopes: ['queue', 'wall'], matches: named('v'), act: (ctx) => ({ type: 'view', to: ctx.view === 'queue' ? 'wall' : 'queue' }) },
   { keys: 'N', help: 'New task', scopes: ['queue', 'wall'], matches: named('n'), act: (ctx) => (ctx.repos ? { type: 'new-task' } : null) },
   {
     keys: '1 / 2 / 3', help: 'In an open task: Overview, Diff, Artifacts', scopes: ['sheet'], matches: (e) => digit(e) > 0 && digit(e) <= 3,

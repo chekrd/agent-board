@@ -1,45 +1,123 @@
-import { queue } from '../queue.ts';
+import { useState } from 'react';
+import { decisionKey } from '../../../server/decision.ts';
+import { acceptance, choose, dismissal, freeze, kindOf, menuAnswer, primary as primaryOf, type Composer as Note } from '../deck.ts';
+import type { Request } from '../outbox.ts';
+import { queue, useQueue } from '../queue.ts';
 import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
 import { hold, useBusy } from '../sends.ts';
-import type { Advice, Session } from '../types.ts';
+import type { MenuAnswer, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
-import { Composer } from './Composer.tsx';
+import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { LatestReply } from './LatestReply.tsx';
+import { MenuBody } from './MenuBody.tsx';
+import { Options } from './Options.tsx';
 import styles from './Overview.module.css';
-import parts from './Parts.module.css';
-import { level, SecondOpinion } from './SecondOpinion.tsx';
+import { SecondOpinion } from './SecondOpinion.tsx';
 import { FocusButton } from './SessionMenu.tsx';
 
-function picked(s: Session, a: Advice) {
-  return a.choice ?? (s.menu ? (a.answers ?? []).map((x) => x.other || x.labels.join(', ')).join(' · ') : a.answer);
-}
-
-// A decision is answered on its card, never in the sheet: the box says what waits, with the whole second opinion, and
-// takes the reader there.
-function Queued({ session }: { session: Session }) {
-  const problem = session.menu ? session.menu.questions.map((q) => q.question).join(' · ') : decisionOf(session)?.problem;
+// A decision answered on its task page: the same options, second opinion and reply box as on its card. A send is held
+// with its Undo as from the card, and the box goes with it.
+function Queued({ session, name }: { session: Session; name: string }) {
+  const q = useQueue();
+  const key = decisionKey(session);
+  const menu = session.menu;
+  const decision = menu ? null : decisionOf(session);
   const advice = adviceFor(session);
   const done = advice?.state === 'done' ? advice : null;
-  const answer = () => {
+  const frozen = key ? (q.frozen.get(key) ?? freeze(session)) : null;
+  const draft = useDraft(session.id);
+  const [focus, setFocus] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
+  const [picks, showPicks] = useState<MenuAnswer[]>(() =>
+    (key && queue.picksOf(key)) || (frozen?.via === 'menu' ? frozen.picks.map((p) => ({ ...p, labels: [...p.labels] })) : []));
+  const setPicks = (value: MenuAnswer[]) => {
+    showPicks(value);
+    if (key) queue.pick(key, value);
+  };
+  const box: Note = { open: true, text: draft.text, files: readyPaths(draft), uploading: uploading(draft) };
+  const send = (r: Request | null) => {
+    if (!r) return setNote('An attachment is still uploading; nothing was sent.');
+    setNote(r.command ? `${r.label.split(/\s/)[0]} goes to the terminal as typed; the question stays open.` : null);
+    hold(session, r, name);
+  };
+  const questions = menu?.questions ?? [];
+  const lone = questions.length === 1 && !questions[0].multiSelect;
+  const pickInMenu = (question: number, label: string) => {
+    if (lone) return send(menuAnswer(session, [{ labels: [label], other: '' }]));
+    const multi = questions[question]?.multiSelect;
+    setPicks(picks.map((p, i) => {
+      if (i !== question) return p;
+      if (multi) return { ...p, labels: p.labels.includes(label) ? p.labels.filter((l) => l !== label) : [...p.labels, label] };
+      return { labels: p.labels[0] === label ? [] : [label], other: '' };
+    }));
+  };
+  const menuPress = menu ? primaryOf(session, frozen, { picks }) : null;
+  const submitMenu = () => {
+    if (menuPress?.press && !('intent' in menuPress.press)) send(menuPress.press);
+  };
+  const edit = () => {
+    if (!done) return;
+    const text = done.choice && !done.answer.startsWith(done.choice) ? `${done.choice}. ${done.answer}` : done.answer;
+    editDraft(session.id, (d) => ({ ...d, text }));
+    setFocus((n) => n + 1);
+  };
+  const toCard = () => {
     queue.jump(session.id);
     closeSheetToQueue();
   };
   return (
     <section className={styles.queued} data-queued>
-      <span className={styles.kicker}>In your queue · {session.menu ? 'Asked in the terminal' : 'Decision'}</span>
-      <h3>{problem}</h3>
-      <SecondOpinion session={session} advice={advice} />
-      {done && (
-        <div className={styles.opinion} data-advice="done">
-          <span className={parts.tag} title="Another model's suggestion of what you would likely answer">
-            Second opinion · {done.confidence}% · {level(done.confidence)}
-          </span>
-          <strong>{picked(session, done)}</strong>
-          {done.reasoning && <p>{done.reasoning}</p>}
-        </div>
+      <span className={styles.kicker}>In your queue · {menu ? 'Asked in the terminal' : 'Decision'}</span>
+      {decision && (
+        <>
+          <h3>{decision.problem}</h3>
+          <SecondOpinion session={session} advice={advice} />
+          <Options
+            options={decision.options}
+            advice={done}
+            frozen={frozen}
+            composing={!!draft.text}
+            accepting={false}
+            onPick={(label) => send(choose(session, label, box))}
+            onAccept={() => send(acceptance(session))}
+            onEdit={edit}
+          />
+          <Composer
+            session={session}
+            decision={decision.key}
+            label="Your own answer"
+            placeholder={decision.options.length ? 'Or write your own answer, / for commands, paste or drop files…' : 'Reply, / for commands, paste or drop files…'}
+            focus={focus}
+            note={note}
+            onSend={send}
+            onEscape={closeSheet}
+          />
+        </>
       )}
-      <button type="button" data-variant="primary" onClick={answer}>Answer it on its card</button>
+      {menu && (
+        <>
+          <MenuBody
+            session={session}
+            menu={menu}
+            picks={picks}
+            advice={advice}
+            onPick={pickInMenu}
+            onOther={(question, other) => setPicks(picks.map((p, i) => (i === question ? { labels: other ? [] : p.labels, other } : p)))}
+            onPicks={setPicks}
+            onSubmit={submitMenu}
+          />
+          {!lone && (
+            <button type="button" data-variant="primary" disabled={menuPress?.disabled} onClick={submitMenu}>{menuPress?.label}</button>
+          )}
+        </>
+      )}
+      <div className={styles.queuedActions}>
+        {kindOf(session) === 'ask' && (
+          <button type="button" title="Clear the question without answering it" onClick={() => send(dismissal(session))}>Dismiss</button>
+        )}
+        <button type="button" title="Its card in the queue, with Elaborate" onClick={toCard}>Open its card</button>
+      </div>
     </section>
   );
 }
@@ -72,7 +150,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
               {learnings.map((k) => <p key={k}>{k}</p>)}
             </section>
           )}
-          {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} />}
+          {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} name={name} />}
           {!archived && attention === 'focus' && (
             <section className={styles.blocked}>
               <p>Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>

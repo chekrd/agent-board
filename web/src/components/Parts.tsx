@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNow } from '../now.ts';
+import type { Session } from '../types.ts';
 import { ago } from '../util.ts';
 import { Markdown } from './Markdown.tsx';
 import parts from './Parts.module.css';
@@ -8,6 +9,13 @@ import parts from './Parts.module.css';
 export function Headline({ text }: { text: string }) {
   const length = text.length <= 64 ? 'short' : text.length <= 96 ? 'medium' : 'long';
   return <h1 className={parts.headline} data-length={length}>{text}</h1>;
+}
+
+// The branch before a task's name, so a generated title still says which work it is. A task named after its branch
+// has it already.
+export function BranchMark({ session, branch }: { session: Session; branch: string }) {
+  if (!branch || !session.title || session.title === branch) return null;
+  return <span className={parts.branch} data-branch title="Branch">{branch}</span>;
 }
 
 export function Age({ at, prefix = '' }: { at: number; prefix?: string }) {

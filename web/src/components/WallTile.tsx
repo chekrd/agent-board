@@ -3,9 +3,11 @@ import { openDecision } from '../../../server/decision.ts';
 import { promptOf } from '../deck.ts';
 import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
-import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, type Attention } from '../util.ts';
+import { useBusy } from '../sends.ts';
+import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, shownOf, type Attention } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
+import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
 import { PrChip, STATE_HINTS, STATE_LABELS } from './Status.tsx';
 import styles from './WallTile.module.css';
@@ -28,11 +30,12 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const { repo, worktree, branch } = locate(repos, session);
   const name = sessionLabel(session, branch);
   const attention = attentionOf(session);
+  const shown = shownOf(session, useBusy());
   const archived = session.archived;
-  const label = archived ? 'Archived' : STATE_LABELS[attention];
+  const label = archived ? 'Archived' : STATE_LABELS[shown];
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
-  const tag = attention === 'decide' && !archived ? adviceTag(session) : null;
+  const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
 
   const show = () => openSheet(session.id);
   const open = (e: MouseEvent<HTMLElement>) => {
@@ -50,14 +53,14 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       className={styles.tile}
       data-tile
       data-session={session.id}
-      data-attention={attention}
+      data-attention={shown}
       data-archived={archived || undefined}
       aria-label={`${name}, ${label}`}
       onClick={open}
     >
       <header className={styles.head}>
-        <StateMark state={archived ? 'archived' : attention} />
-        <span className={styles.state} title={archived ? undefined : STATE_HINTS[attention]}>{label}</span>
+        <StateMark state={archived ? 'archived' : shown} />
+        <span className={styles.state} title={archived ? undefined : STATE_HINTS[shown]}>{label}</span>
         <span className={styles.age} data-age title={asked !== undefined ? undefined : session.summary ? 'When the status was last updated' : 'When the session last changed'}>
           {asked !== undefined ? `asked ${ago(asked)}` : ago(session.summary?.at ?? session.updatedAt)}
         </span>
@@ -65,6 +68,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
           <SessionMenu session={session} worktree={worktree} name={name} />
         </span>
       </header>
+      <BranchMark session={session} branch={branch} />
       <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
       {working && (

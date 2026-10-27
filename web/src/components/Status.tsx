@@ -1,8 +1,9 @@
 import type { PrFlow, SessionStatus } from '../types.ts';
-import type { Attention } from '../util.ts';
+import type { Shown } from '../util.ts';
 import styles from './Status.module.css';
 
-export const STATE_LABELS: Record<Attention, string> = {
+export const STATE_LABELS: Record<Shown, string> = {
+  sending: 'Sending',
   decide: 'Decide',
   focus: 'Needs focus',
   working: 'In progress',
@@ -10,7 +11,8 @@ export const STATE_LABELS: Record<Attention, string> = {
   exited: 'Ended',
 };
 
-export const STATE_HINTS: Record<Attention, string> = {
+export const STATE_HINTS: Record<Shown, string> = {
+  sending: 'Your answer goes out in a few seconds; Undo takes it back',
   decide: 'Claude asked you something and waits for your decision',
   focus: 'Claude is showing a prompt in its terminal that only the terminal can answer',
   working: 'Claude is working on its turn; nothing for you to do yet',

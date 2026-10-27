@@ -310,7 +310,12 @@ const startsInScroll = (selector: string) => {
 };
 
 // The peeks behind the card, each with its place, session and text.
-const peeks = () => [...document.querySelectorAll<HTMLElement>('[data-peek]')].map((p) => ({ peek: p.dataset.peek, session: p.dataset.session, text: p.innerText.trim() }));
+// The branch mark before the name is left out of `text`.
+const peeks = () => [...document.querySelectorAll<HTMLElement>('[data-peek]')].map((p) => {
+  const branch = p.querySelector<HTMLElement>('[data-branch]')?.innerText;
+  const text = p.innerText.trim();
+  return { peek: p.dataset.peek, session: p.dataset.session, branch, text: branch && text.startsWith(branch) ? text.slice(branch.length).trim() : text };
+});
 
 const segmentsNow = () => [...document.querySelectorAll<HTMLElement>('[data-segment]')].map((s) => ({
   session: s.dataset.session, current: s.hasAttribute('data-current'), new: s.hasAttribute('data-new'), width: Math.round(s.getBoundingClientRect().width),
@@ -731,7 +736,7 @@ export const checks: Check[] = [
       await page.until('the queue box', () => !!document.querySelector('#task-sheet [data-queued]'));
       assert.deepEqual(await page.eval(sidewaysScroll), []);
       // The sheet slides up as it opens.
-      await page.until('Answer it on its card in reach', reachable, '#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.until('Open its card in reach', reachable, '#task-sheet [data-queued] button', 'Open its card');
       await shot('narrow-task');
     },
   },
@@ -2043,12 +2048,12 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.2 the card header names the task, Overview, Diff and Artifacts 2 but no repo or branch; the meta has the rank reason and no rank number; Artifacts 2, O and D open the sheet',
+    name: 'P5.1.2 the card header names the branch and the task, Overview, Diff and Artifacts 2 but no repo; the meta has the rank reason and no rank number; Artifacts 2, O and D open the sheet',
     async run({ page, mock }) {
       await openQueue(page, mock);
       const { header } = (await page.eval(card))!;
-      for (const text of ['Merge guest cart on login', 'Overview', 'Diff', 'Artifacts 2', 'Blocks the checkout fix; Claude idles until you answer']) assert.ok(header.includes(text), `the header lacks ${text}:\n${header}`);
-      for (const text of ['storefront', 'guest-cart-merge']) assert.ok(!header.includes(text), `the header names ${text}`);
+      for (const text of ['guest-cart-merge', 'Merge guest cart on login', 'Overview', 'Diff', 'Artifacts 2', 'Blocks the checkout fix; Claude idles until you answer']) assert.ok(header.includes(text), `the header lacks ${text}:\n${header}`);
+      assert.ok(!header.includes('storefront'), 'the header names storefront');
       assert.doesNotMatch(header, /#\d/);
       const closed = () => !document.querySelector('#task-sheet') && location.pathname === '/';
       await page.click('[data-card] header button', 'Artifacts 2');
@@ -2342,16 +2347,17 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.16 with nothing waiting / reads Nothing needs you. with the Queue toggle off; a decision that arrives brings the queue with it at the front',
+    name: 'P5.1.16 with nothing waiting / shows the empty queue, Nothing needs you., with the Queue toggle on and a way to the Wall; a decision that arrives comes to the front',
     scenario: 'zero',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
-      assert.deepEqual(await page.eval(() => [location.pathname, document.querySelector('nav[aria-label="View"] a[aria-label="Queue"]')?.getAttribute('aria-disabled'), !!document.querySelector('[data-card]')]), ['/', 'true', false]);
+      await page.until('the empty queue', () => document.querySelector('main[data-empty] h1')?.textContent === 'Nothing needs you.');
+      assert.deepEqual(await page.eval(() => [location.pathname, document.querySelector('nav[aria-label="View"] a[aria-label="Queue"]')?.getAttribute('href'), !!document.querySelector('[data-card]'), !!document.querySelector('[data-tile]')]), ['/', '/', false, false]);
+      assert.equal(await page.eval(() => document.querySelector('main[data-empty] a')?.getAttribute('href')), '/wall');
       await shot('queue-zero');
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
       await page.until('the new card at the front', frontIs, 's-new');
-      assert.deepEqual(await page.eval(() => [location.pathname, document.querySelector('nav[aria-label="View"] a[aria-label="Queue"]')?.getAttribute('aria-disabled') ?? null]), ['/', null]);
+      assert.equal(await page.eval(() => location.pathname), '/');
     },
   },
   {
@@ -2466,7 +2472,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.20 N opens New task over the queue with the prompt focused and Esc closes it; V goes to the Wall and back; on the Wall a waiting tile opens its task page over the Wall, whose Answer it on its card brings the card to the front, and so does a working one',
+    name: 'P5.1.20 N opens New task over the queue with the prompt focused and Esc closes it; V goes to the Wall and back; on the Wall a waiting tile opens its task page over the Wall, whose Open its card brings the card to the front, and so does a working one',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.key('n');
@@ -2483,7 +2489,7 @@ export const checks: Check[] = [
       await page.click('[data-tile][data-session="s-group"] p');
       await page.until('the task page of s-group over the Wall', () => location.pathname === '/s/s-group/overview' && !!document.querySelector('#task-sheet [data-queued]') &&
         (window.navigation.currentEntry?.getState() as { base?: string } | undefined)?.base === '/wall');
-      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.click('#task-sheet [data-queued] button', 'Open its card');
       await page.until('s-group at the front of the queue', () => location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-group');
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -2493,11 +2499,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.21 typing in New task over the resting Wall while a session arrives: "we fix 3 x" and Enter stay in the prompt, which keeps focus while the card comes up under the dialog; nothing is held, archived or undone',
+    name: 'P5.1.21 typing in New task over the empty queue while a session arrives: "we fix 3 x" and Enter stay in the prompt, which keeps focus while the card comes up under the dialog; nothing is held, archived or undone',
     scenario: 'zero',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
+      await page.until('the empty queue', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
       await openNewTask(page);
       await page.type('Fix the login ');
       await mock.post('/mock/add', { template: 'idle', id: 's-idle' });
@@ -3145,7 +3151,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, the whole second opinion (its confidence, Merge both carts and its reasoning) and Answer it on its card, and no answer controls; that button closes the sheet with s-cart at the front, also from over the Wall',
+    name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, its options with the second opinion on Merge both carts, a reply box, Dismiss and Open its card; Open its card closes the sheet with s-cart at the front, also from over the Wall; an option pressed on the page is held with Undo and goes out with its key',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -3153,15 +3159,21 @@ export const checks: Check[] = [
       await page.until('the sheet', () => location.pathname === '/s/s-cart/overview' && !!document.querySelector('#task-sheet'));
       const box = () => {
         const q = document.querySelector<HTMLElement>('#task-sheet [data-queued]');
-        return q && { text: [...q.children].map((c) => c.textContent), controls: document.querySelectorAll('#task-sheet [data-option], #task-sheet textarea, #task-sheet input:not([type="file"])').length };
+        return q && {
+          text: [...q.querySelectorAll(':scope > span, :scope > h3')].map((c) => c.textContent),
+          options: [...q.querySelectorAll('[data-option]')].map((o) => o.textContent ?? ''),
+          suggested: q.querySelector('[data-suggestion]')?.textContent?.includes('CHK-412') ?? false,
+          reply: !!q.querySelector('textarea'),
+          actions: [...q.querySelectorAll(':scope > div:last-child button')].map((b) => b.textContent),
+        };
       };
-      assert.deepEqual(await page.until('the queue box', box), {
-        text: ['In your queue · Decision', 'What should happen to a guest cart when the shopper logs in?', 'Second opinion · 82% · highMerge both cartsCHK-412 says a cart must never lose items, and merging is the only option that satisfies it. Stock caps already exist in CartService.reserve().', 'Answer it on its card'], controls: 0,
-      });
-      assert.equal(await page.eval(() => [...document.querySelectorAll('#task-sheet button')].some((b) => /dismiss|accept|send/i.test(b.textContent ?? ''))), false);
+      const shown = await page.until('the queue box', box);
+      assert.deepEqual(shown.text, ['In your queue · Decision', 'What should happen to a guest cart when the shopper logs in?']);
+      for (const label of ['Merge both carts', 'Keep the account cart']) assert.ok(shown.options.some((o) => o.includes(label)), `${label} in ${shown.options}`);
+      assert.deepEqual([shown.suggested, shown.reply, shown.actions], [true, true, ['Dismiss', 'Open its card']]);
       await page.until('the sheet to settle', settled);
       await shot('sheet-in-your-queue');
-      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.click('#task-sheet [data-queued] button', 'Open its card');
       await page.until('the queue with s-cart at the front', () => !document.querySelector('#task-sheet') && location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-cart');
 
       // A task that starts asking while its page is open over the Wall.
@@ -3171,13 +3183,22 @@ export const checks: Check[] = [
         patch: { status: 'idle', activity: null, question: { toolUseId: 'toolu_inv', category: 'plan-problem', askedAt: Date.now(), title: 'Round half cents to even?', details: '', options: [{ label: 'Yes' }, { label: 'No' }] } },
       });
       assert.deepEqual((await page.until('the queue box', box))?.text.slice(0, 2), ['In your queue · Decision', 'Round half cents to even?']);
-      await page.click('#task-sheet [data-queued] button', 'Answer it on its card');
+      await page.click('#task-sheet [data-queued] button', 'Open its card');
       await page.until('the queue with s-invoice at the front', () => !document.querySelector('#task-sheet') && location.pathname === '/' && document.querySelector<HTMLElement>('[data-card]')?.dataset.session === 's-invoice');
       await page.eval(() => history.back());
       await page.until('the Wall again on Back', () => location.pathname === '/wall' && !document.querySelector('#task-sheet'));
 
       await page.goto(`${mock.url}/s/s-hooks/overview`);
       assert.deepEqual((await page.until('the queue box', box))?.text.slice(0, 1), ['In your queue · Asked in the terminal']);
+      assert.ok((await page.eval(box))!.options.length > 1, 'the menu\'s options');
+
+      await page.goto(`${mock.url}/s/s-cart/overview`);
+      await page.until('the queue box', box);
+      await page.click('#task-sheet [data-queued] [data-option]', 'Keep the account cart');
+      await page.until('the undo toast', toastsOf, 'undo');
+      await page.until('the box gone while it is held', () => !document.querySelector('#task-sheet [data-queued]'));
+      const [answer] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
+      assert.deepEqual([answer.sessionId, answer.body], ['s-cart', { key: 'q:toolu_01Cart', choice: 'Keep the account cart' }]);
     },
   },
   {
@@ -3332,6 +3353,28 @@ export const checks: Check[] = [
       await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
       assert.equal(await page.eval(() => !!document.querySelector('#task-sheet')), true, 'the sheet stayed');
       await sleep(HELD_MS);
+      assert.deepEqual(await actions(mock), []);
+    },
+  },
+  {
+    name: 'P5.2.sending a held send shows its task as Sending, not Decide: on its Wall tile and on its page; Esc there takes it back and Decide returns',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      await ready(page, 's-cart');
+      await page.click('[data-card] [data-option="2"]');
+      await page.until('s-hooks at the front', frontIs, 's-hooks');
+      await page.key('v');
+      await page.until('the Wall', tiles);
+      const held = await page.eval(() => {
+        const t = document.querySelector<HTMLElement>('[data-tile][data-session="s-cart"]')!;
+        return [t.dataset.attention, t.querySelector('header')?.textContent?.includes('Sending')];
+      });
+      assert.deepEqual(held, ['sending', true]);
+      await shot('wall-sending');
+      await page.click('[data-tile][data-session="s-cart"] p');
+      await page.until('its page says Sending', () => document.querySelector('#task-sheet header [data-attention]')?.textContent === 'Sending');
+      await page.key('Escape');
+      await page.until('Decide again once Esc took the send back', () => document.querySelector('#task-sheet header [data-attention]')?.textContent === 'Decide');
       assert.deepEqual(await actions(mock), []);
     },
   },
@@ -3599,15 +3642,17 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P6.resting with nothing in the queue / rests on the Wall, which has every agent on it, and draws no dock, as C does; the first card that arrives brings the dock',
+    name: 'P6.resting with nothing in the queue / shows the empty queue with the dock of working agents under it, and it stays; the first card that arrives keeps it',
     scenario: 'zero',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
-      await sleep(300);
-      assert.equal(await page.eval(() => !!document.querySelector('[data-dock]')), false);
-      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
+      await page.until('the empty queue', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
       await page.until('the dock', docked, 3);
+      await sleep(2000);
+      assert.equal(await page.eval(docked, 3), true, 'the dock stayed');
+      await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
+      await page.until('the new card at the front', frontIs, 's-new');
+      assert.equal(await page.eval(docked, 3), true);
     },
   },
   {
@@ -3713,11 +3758,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P7.dock-waits typing in New task over the resting Wall: a card that arrives meanwhile brings the queue and the dock under the dialog, and the prompt keeps focus and text',
+    name: 'P7.dock-waits typing in New task over the empty queue: a card that arrives meanwhile brings the queue and the dock under the dialog, and the prompt keeps focus and text',
     scenario: 'zero',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/`);
-      await page.until('the resting Wall', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
+      await page.until('the empty queue', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
       await openNewTask(page);
       await page.type('Add retries');
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });

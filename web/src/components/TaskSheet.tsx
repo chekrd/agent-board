@@ -3,11 +3,13 @@ import { SHEET_DIALOG } from '../keys.ts';
 import { closeSheet, openerOfTask, showTab, type Route, type Tab } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
-import { attentionOf, locate, sessionLabel } from '../util.ts';
+import { useBusy } from '../sends.ts';
+import { locate, sessionLabel, shownOf } from '../util.ts';
 import { Artifacts } from './Artifacts.tsx';
 import { DiffView } from './DiffView.tsx';
 import { Icon } from './Icon.tsx';
 import { Overview } from './Overview.tsx';
+import { BranchMark } from './Parts.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
 import { PrChip, STATE_HINTS, STATE_LABELS } from './Status.tsx';
@@ -66,8 +68,8 @@ interface BodyProps {
 }
 
 function Body({ session, name, repos, tab, item, back }: BodyProps) {
-  const { worktree } = locate(repos, session);
-  const attention = attentionOf(session);
+  const { worktree, branch } = locate(repos, session);
+  const attention = shownOf(session, useBusy());
   const tabs: { key: Tab; label: string; kbd: string }[] = [
     { key: 'overview', label: 'Overview', kbd: '1' },
     { key: 'diff', label: 'Diff', kbd: '2' },
@@ -84,6 +86,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
           <kbd>Esc</kbd>
         </button>
         <div className={styles.heading}>
+          <BranchMark session={session} branch={branch} />
           <TaskName session={session} name={name} />
           <span className={styles.state} data-attention={session.archived ? 'archived' : attention} title={session.archived ? undefined : STATE_HINTS[attention]}>
             <StateMark state={session.archived ? 'archived' : attention} size={8} />

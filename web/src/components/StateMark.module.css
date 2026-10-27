@@ -16,6 +16,7 @@
       border-right-color: transparent;
       animation: spin 1.1s linear infinite;
     }
+    &[data-state="sending"] { border: 1.5px solid var(--muted); animation: breathe 1.4s ease-in-out infinite; }
     &[data-state="archived"] { border-radius: 2px; border: 1.5px solid var(--muted); }
     &[data-state="exited"] { border: 1.5px solid var(--muted); }
   }

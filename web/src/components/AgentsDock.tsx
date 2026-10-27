@@ -15,9 +15,8 @@ import { PrChip, PrDot } from './Status.tsx';
 const HOVER_MS = 150;
 const narrow = matchMedia('(max-width: 760px)');
 
-// Under the queue's card. Without one the queue shows the Wall, which has every agent on it, as C does; a send on its
-// way keeps the dock up for its Undo.
-export function AgentsDock({ card }: { card: boolean }) {
+// Under the queue's card, or under the empty queue.
+export function AgentsDock() {
   const { sessions, repos, link } = useStore();
   const items = useSends();
   const { fresh } = useQueue();
@@ -30,7 +29,6 @@ export function AgentsDock({ card }: { card: boolean }) {
 
   if (link === 'connecting') return null;
   const { capsules, working, ended } = dockOf(sessions, items);
-  if (!card && !capsules.some((c) => c.send)) return null;
   const nameOf = (s: Session) => sessionLabel(s, locate(repos, s).branch);
 
   return (
@@ -66,7 +64,7 @@ function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: Re
   const name = sessionLabel(s, branch);
   const card = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const glyph = <StateMark state={c.send ? attentionOf(s) : 'working'} />;
+  const glyph = <StateMark state={!c.send ? 'working' : c.send.state === 'held' ? 'sending' : attentionOf(s)} />;
   const clock = !c.send && s.activity && <Clock since={s.activity.since} />;
   const know = s.summary?.learnings?.[0];
   const answered = answeredOf(c);

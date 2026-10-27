@@ -8,7 +8,7 @@ import { adviseOpen, stopAdvice } from './advisor.ts';
 import { answering } from './answering.ts';
 import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
-import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type LiveProcess } from './conversations.ts';
+import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type Activity, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { checkDecision } from './decision.ts';
 import { repos, sessions, type Session, type SessionStatus } from './db.ts';
@@ -100,7 +100,15 @@ async function locateWorktree(cwd: string) {
   return find();
 }
 
-const statusOf = (p: LiveProcess): SessionStatus => (p.status === 'busy' ? 'working' : p.status === 'waiting' ? 'waiting' : 'idle');
+// Claude between turns with work still running in the background will resume by itself, so it counts as working.
+const statusOf = (p: LiveProcess, background = 0): SessionStatus =>
+  p.status === 'busy' || (p.status !== 'waiting' && background > 0) ? 'working' : p.status === 'waiting' ? 'waiting' : 'idle';
+
+function activityOf(p: LiveProcess | undefined, activity: Activity | null, background: string[]): Activity | null {
+  if (!background.length) return activity;
+  const step = p?.status === 'busy' ? activity?.step ?? null : `In the background · ${background[0]}${background.length > 1 ? ` and ${background.length - 1} more` : ''}`;
+  return { step, since: activity?.since ?? Date.now(), background };
+}
 
 const ignored = new Map<string, number>();
 const deleting = new Set<string>();
@@ -126,7 +134,7 @@ async function adopt(id: string, p: LiveProcess) {
   return true;
 }
 
-async function readTranscript(s: Session) {
+async function readTranscript(s: Session, p?: LiveProcess) {
   const meta = await conversationMeta(s.cwd, s.id);
   if (!meta) return false;
   const patch: Parameters<typeof sessions.update>[1] = {};
@@ -135,7 +143,10 @@ async function readTranscript(s: Session) {
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
   const lastTurn = meta.turns.at(-1)?.id ?? null;
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
-  if (JSON.stringify(meta.activity) !== JSON.stringify(s.activity)) patch.activity = meta.activity;
+  const activity = activityOf(p, meta.activity, meta.background.map(([, what]) => what));
+  if (JSON.stringify(activity) !== JSON.stringify(s.activity)) patch.activity = activity;
+  const status = p && statusOf(p, meta.background.length);
+  if (status && status !== s.status) patch.status = status;
   if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
   const artifacts = await storeArtifacts(s, meta.artifacts);
   if (artifacts) patch.artifacts = artifacts;
@@ -176,7 +187,7 @@ async function syncLive() {
       changed = (await adopt(id, p)) || changed;
       continue;
     }
-    const status = statusOf(p);
+    const status = statusOf(p, s.activity?.background?.length);
     if (s.pid !== p.pid || s.status !== status || s.waitingFor !== p.waitingFor) {
       sessions.update(id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
       if (s.status === 'working' && status !== 'working') void refreshDiffstat(id);
@@ -186,7 +197,7 @@ async function syncLive() {
   let starting: Set<string> | undefined;
   for (const s of sessions.all()) {
     if (s.status === 'exited' || live.has(s.id)) {
-      if (s.status !== 'exited') changed = (await readTranscript(s)) || changed;
+      if (s.status !== 'exited') changed = (await readTranscript(s, live.get(s.id))) || changed;
       continue;
     }
     // Claude registers itself only once past prompts such as trusting a new folder, which a

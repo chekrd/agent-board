@@ -14,7 +14,7 @@ import { editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { DecisionBody } from './DecisionBody.tsx';
 import { Icon } from './Icon.tsx';
 import { MenuBody } from './MenuBody.tsx';
-import { Age } from './Parts.tsx';
+import { Age, BranchMark } from './Parts.tsx';
 import { PromptBody } from './PromptBody.tsx';
 import { archive, openTerminal, SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
@@ -272,6 +272,7 @@ export function Card({ session, repos, deck, enter }: CardProps) {
             {STATE_LABELS[attention]}
           </span>
           {q.updated.has(session.id) && <span className={styles.updated} data-updated>Updated just now</span>}
+          <BranchMark session={session} branch={branch} />
           <a className={styles.name} href={sessionPath(session.id)} title="Open the task on its own page" data-open-task>{name}</a>
           <span className={styles.spacer} />
           <nav className={styles.nav} aria-label="Open the task">

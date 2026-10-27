@@ -92,10 +92,10 @@ test('in the sheet 1, 2 and 3 switch tabs (3 when there are artifacts), J and K 
   assert.deepEqual(keyAction(diff, key('?')), { type: 'keys' });
 });
 
-test('V switches views (to the queue only when something waits), N needs a repository, and Esc closes Elaborate, then the composer, then leaves the Wall', () => {
+test('V switches views (to an empty queue too), N needs a repository, and Esc closes Elaborate, then the composer, then leaves the Wall', () => {
   assert.deepEqual(keyAction(ctx(), key('v')), { type: 'view', to: 'wall' });
   assert.deepEqual(keyAction(ctx({ view: 'wall' }), key('V')), { type: 'view', to: 'queue' });
-  assert.equal(keyAction(ctx({ view: 'wall', card: null, deck: 0 }), key('v')), null);
+  assert.deepEqual(keyAction(ctx({ view: 'wall', card: null, deck: 0 }), key('v')), { type: 'view', to: 'queue' });
   assert.deepEqual(keyAction(ctx({ view: 'wall' }), key('n')), { type: 'new-task' });
   assert.equal(keyAction(ctx({ repos: false }), key('n')), null);
   assert.deepEqual(keyAction(ctx({ card: card('ask', { why: true, composing: true }) }), key('Escape')), { type: 'close', what: 'why' });

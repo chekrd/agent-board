@@ -1,6 +1,20 @@
 @layer components {
   /* Small pieces the card's parts share: the tiny button, the section label, the tags and the spinner. */
 
+  .branch {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 1px 7px;
+    border-radius: 6px;
+    background: var(--code-bg);
+    font: 500 0.8em/1.5 var(--mono);
+    color: var(--text-2);
+  }
+
   .tiny {
     flex: none;
     display: inline-flex;

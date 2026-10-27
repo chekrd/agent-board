@@ -55,7 +55,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
           <span className={styles.label}>Repos</span>
         </button>
         <nav className={styles.toggle} aria-label="View">
-          <a href={deck.length ? '/' : undefined} aria-current={onQueue ? 'page' : undefined} aria-disabled={!deck.length || undefined} aria-label="Queue">
+          <a href="/" aria-current={onQueue ? 'page' : undefined} aria-label="Queue">
             <Icon name="queue" />
             <span className={styles.label}>Queue</span>
           </a>
