@@ -81,6 +81,14 @@
     button { height: 40px; padding: 0 16px; border-radius: 11px; font-size: 14.5px; }
   }
 
+  .opinion {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    strong { font-size: 15px; font-weight: 650; }
+  }
+
   .kicker { font-size: 11.5px; font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent-ink); }
 
   .blocked {

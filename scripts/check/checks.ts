@@ -2367,7 +2367,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.19 a second opinion still running shows a spinner, a ticking clock, the step and Stop, which stops it at once; Retry asks again; on a menu the band shows running and failed too',
+    name: 'P5.1.19 a second opinion still running shows a spinner, a ticking clock, the step and Stop, which stops it at once; Retry asks again; on a menu the band shows running and failed too, and so does the task\'s page',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await page.click('[data-peek="2"] > span');
@@ -2404,6 +2404,11 @@ export const checks: Check[] = [
       assert.match(failed, /^Second opinion failed: the advisor gave an empty answer\s+Retry$/);
       await page.until('the card to settle', still);
       await shot('queue-menu-advice-failed');
+      await page.key('o');
+      const onPage = await page.until('the failed second opinion on its page', () => document.querySelector<HTMLElement>('#task-sheet [data-queued] [data-advice="failed"]')?.innerText);
+      assert.match(onPage, /^Second opinion failed: the advisor gave an empty answer\s+Retry$/);
+      await mock.post('/mock/advice', { id: 's-hooks', state: 'thinking' });
+      await page.until('the running second opinion on its page', () => !!document.querySelector('#task-sheet [data-queued] [data-advice="running"] button'));
     },
   },
   {
@@ -3086,7 +3091,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, Second opinion: Merge both carts · 82% and Answer it on its card, and no answer controls; that button closes the sheet with s-cart at the front, also from over the Wall',
+    name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, the whole second opinion (its confidence, Merge both carts and its reasoning) and Answer it on its card, and no answer controls; that button closes the sheet with s-cart at the front, also from over the Wall',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -3097,7 +3102,7 @@ export const checks: Check[] = [
         return q && { text: [...q.children].map((c) => c.textContent), controls: document.querySelectorAll('#task-sheet [data-option], #task-sheet textarea, #task-sheet input:not([type="file"])').length };
       };
       assert.deepEqual(await page.until('the queue box', box), {
-        text: ['In your queue · Decision', 'What should happen to a guest cart when the shopper logs in?', 'Second opinion: Merge both carts · 82%', 'Answer it on its card'], controls: 0,
+        text: ['In your queue · Decision', 'What should happen to a guest cart when the shopper logs in?', 'Second opinion · 82% · highMerge both cartsCHK-412 says a cart must never lose items, and merging is the only option that satisfies it. Stock caps already exist in CartService.reserve().', 'Answer it on its card'], controls: 0,
       });
       assert.equal(await page.eval(() => [...document.querySelectorAll('#task-sheet button')].some((b) => /dismiss|accept|send/i.test(b.textContent ?? ''))), false);
       await page.until('the sheet to settle', settled);

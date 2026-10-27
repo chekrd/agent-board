@@ -1,26 +1,26 @@
 import { queue } from '../queue.ts';
 import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
 import { hold, useBusy } from '../sends.ts';
-import type { Session } from '../types.ts';
+import type { Advice, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer } from './Composer.tsx';
 import { LatestReply } from './LatestReply.tsx';
 import styles from './Overview.module.css';
+import parts from './Parts.module.css';
+import { level, SecondOpinion } from './SecondOpinion.tsx';
 import { FocusButton } from './SessionMenu.tsx';
 
-function opinionOf(s: Session) {
-  const a = adviceFor(s);
-  if (a?.state === 'thinking') return 'The second opinion is still running.';
-  if (a?.state !== 'done') return null;
-  const picked = a.choice ?? (s.menu ? (a.answers ?? []).map((x) => x.other || x.labels.join(', ')).join(' · ') : a.answer);
-  return `Second opinion: ${picked} · ${a.confidence}%`;
+function picked(s: Session, a: Advice) {
+  return a.choice ?? (s.menu ? (a.answers ?? []).map((x) => x.other || x.labels.join(', ')).join(' · ') : a.answer);
 }
 
-// A decision is answered on its card, never in the sheet: the box says what waits and takes the reader there.
+// A decision is answered on its card, never in the sheet: the box says what waits, with the whole second opinion, and
+// takes the reader there.
 function Queued({ session }: { session: Session }) {
   const problem = session.menu ? session.menu.questions.map((q) => q.question).join(' · ') : decisionOf(session)?.problem;
-  const opinion = opinionOf(session);
+  const advice = adviceFor(session);
+  const done = advice?.state === 'done' ? advice : null;
   const answer = () => {
     queue.jump(session.id);
     closeSheetToQueue();
@@ -29,7 +29,16 @@ function Queued({ session }: { session: Session }) {
     <section className={styles.queued} data-queued>
       <span className={styles.kicker}>In your queue · {session.menu ? 'Asked in the terminal' : 'Decision'}</span>
       <h3>{problem}</h3>
-      {opinion && <p>{opinion}</p>}
+      <SecondOpinion session={session} advice={advice} />
+      {done && (
+        <div className={styles.opinion} data-advice="done">
+          <span className={parts.tag} title="Another model's suggestion of what you would likely answer">
+            Second opinion · {done.confidence}% · {level(done.confidence)}
+          </span>
+          <strong>{picked(session, done)}</strong>
+          {done.reasoning && <p>{done.reasoning}</p>}
+        </div>
+      )}
       <button type="button" data-variant="primary" onClick={answer}>Answer it on its card</button>
     </section>
   );
