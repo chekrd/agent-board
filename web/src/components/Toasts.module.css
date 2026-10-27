@@ -28,14 +28,15 @@
     min-height: 46px;
     padding: 8px 8px 8px 16px;
     border-radius: 14px;
-    background: var(--text);
-    color: var(--ground);
+    border: 1px solid light-dark(transparent, rgb(255 255 255 / 0.14));
+    background: var(--toast);
+    color: var(--toast-ink);
     font-size: 14px;
     font-weight: 550;
     line-height: 1.4;
     box-shadow: var(--shadow);
     animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    :focus-visible { outline-color: var(--ground); }
+    :focus-visible { outline-color: var(--toast-ink); }
   }
 
   @keyframes toast-in {
@@ -47,7 +48,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--ground);
+    background: var(--toast-ink);
     opacity: 0.5;
     [data-kind="error"] > & { background: var(--danger); opacity: 1; }
   }
@@ -63,13 +64,13 @@
     gap: 8px;
     height: 30px;
     padding: 0 12px;
-    border: 1px solid color-mix(in srgb, var(--ground) 40%, transparent);
+    border: 1px solid color-mix(in srgb, var(--toast-ink) 40%, transparent);
     border-radius: 9px;
     background: none;
     color: inherit;
     font-weight: 700;
-    &:hover { border-color: var(--ground); }
-    kbd { border-color: color-mix(in srgb, var(--ground) 40%, transparent); background: color-mix(in srgb, var(--ground) 12%, transparent); }
+    &:hover { border-color: var(--toast-ink); }
+    kbd { border-color: color-mix(in srgb, var(--toast-ink) 40%, transparent); background: color-mix(in srgb, var(--toast-ink) 12%, transparent); }
   }
 
   .close {

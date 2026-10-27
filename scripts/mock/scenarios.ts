@@ -214,8 +214,13 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
     }), session({
       id: 's-review-2', repoId: 1, worktree, tty: '/dev/ttys032', pid: 80520,
       title: '#1 Second look · Reviews load twice on a fast scroll', firstPrompt: 'Take a second look at finding 1.',
-      status: 'working', createdAt: now - 2 * MIN, updatedAt: now - MIN,
-      activity: { step: 'Grep inFlight', since: now - 2 * MIN },
+      status: 'idle', createdAt: now - 2 * MIN, updatedAt: now - MIN, rank: 5, rankReason: 'Decides whether #1 is worth fixing',
+      question: {
+        toolUseId: 'toolu_01Look', category: 'plan-problem', askedAt: now - MIN, title: 'Is the double load worth guarding?',
+        details: 'The second request is cancelled by the router before it lands, so users never see it.',
+        options: [{ label: 'Guard it', description: 'One less request on a fast scroll' }, { label: 'Leave it', description: 'The router already drops it' }],
+      },
+      lastTurn: 't-look-1',
       parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'second-look', text: '' },
     })]);
   },

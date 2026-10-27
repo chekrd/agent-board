@@ -13,7 +13,7 @@ registerCustomTheme('darcula', async () => (await import('../themes/darcula.json
 
 // The code keeps the user's Darcula; only the file headers take the board's greys around it.
 const FILE_OPTIONS = {
-  diffStyle: 'split', theme: 'darcula', themeType: 'dark', overflow: 'scroll', lineDiffType: 'word', stickyHeader: true,
+  diffStyle: 'split', theme: 'darcula', themeType: 'dark', overflow: 'wrap', lineDiffType: 'word', stickyHeader: true,
   unsafeCSS: '[data-diffs-header][data-diffs-header] { background-color: #2f2f2f; border-bottom: 1px solid #383838; }',
 } as const;
 

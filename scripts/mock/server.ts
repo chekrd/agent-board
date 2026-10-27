@@ -354,7 +354,8 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
   },
   archive: (s, body) => update(s.id, { archived: body.archived ?? true }),
   'delete-worktree': (s) => {
-    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain && !s.parent) return removeWorktree(mustRepo(s.repoId), s.worktree);
+    if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
+    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
     state.sessions = state.sessions.filter((o) => o !== s);
     push();
   },
@@ -382,8 +383,8 @@ function deleteLoss(s: Session) {
   const repo = repoOf(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
+  if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
-  if (s.parent) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, subtask: true };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0 };
 }

@@ -9,7 +9,7 @@ import type { MenuAnswer, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
-import { Findings, SubtaskOf } from './Findings.tsx';
+import { Findings, Subtasks, SubtaskOf } from './Findings.tsx';
 import { Icon } from './Icon.tsx';
 import { LatestReply } from './LatestReply.tsx';
 import { MenuBody } from './MenuBody.tsx';
@@ -162,6 +162,7 @@ export function Overview({ session, name, branch }: { session: Session; name: st
       <div className={styles.grid}>
         <div className={styles.main}>
           <SubtaskOf session={session} />
+          <Subtasks session={session} />
           {working && (
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />

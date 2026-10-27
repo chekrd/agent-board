@@ -13,8 +13,6 @@ interface Loss {
   commits: number;
   // The task runs in the repository's main checkout, which clearing it keeps.
   checkout?: boolean;
-  // A subtask shares its task's worktree, which clearing it keeps.
-  subtask?: boolean;
 }
 
 type Check = { state: 'checking' } | { state: 'done'; loss: Loss } | { state: 'failed'; error: string };
@@ -67,7 +65,7 @@ export function DeleteWorktreeDialog() {
 
   const check = target?.check;
   const loss = check?.state === 'done' ? check.loss : null;
-  const keeps = loss?.checkout || loss?.subtask;
+  const keeps = !!loss?.checkout;
   const lost = loss
     ? [
       loss.files && plural(loss.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
@@ -80,14 +78,12 @@ export function DeleteWorktreeDialog() {
       {target && (
         <>
           <h2 id="delete-worktree-title">
-            {loss?.subtask ? 'Clear the subtask?' : loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
+            {loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
           </h2>
           <code className={styles.path}>{target.session.worktree}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
-          {loss?.subtask ? (
-            <p>The subtask works in its task's worktree, which stays as it is, with the changes it made.</p>
-          ) : loss?.checkout ? (
+          {loss?.checkout ? (
             <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
           ) : loss && (lost.length ? (
             <>

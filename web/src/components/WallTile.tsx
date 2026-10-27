@@ -5,9 +5,9 @@ import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
-import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, shownOf, type Attention } from '../util.ts';
+import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, shownOf, type Attention, type Shown } from '../util.ts';
 import { Clock } from './Clock.tsx';
-import { ParentCrumb } from './Findings.tsx';
+import { ParentCrumb, SUBTASK_LABELS } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
@@ -19,6 +19,10 @@ function textOf(s: Session, attention: Attention) {
   if (attention === 'focus') return promptOf(s).headline;
   return s.summary?.text ?? s.firstPrompt ?? 'Starting…';
 }
+
+// A subtask in one of these states wants you, and its task's tile says so.
+const WANTS: Shown[] = ['decide', 'focus', 'idle'];
+const rank = (s: Shown) => (WANTS.includes(s) ? WANTS.indexOf(s) : WANTS.length);
 
 function adviceTag(s: Session) {
   const a = adviceFor(s);
@@ -38,7 +42,11 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
-  const subtasks = useStore().sessions.filter((o) => o.parent?.id === session.id && !o.archived).length;
+  const subtasks = useStore().sessions.filter((o) => o.parent?.id === session.id && !o.archived);
+  const busy = useBusy();
+  const wanting = subtasks.filter((o) => WANTS.includes(shownOf(o, busy))).sort((a, b) => WANTS.indexOf(shownOf(a, busy)) - WANTS.indexOf(shownOf(b, busy)));
+  const rest = subtasks.length - wanting.length;
+  const wants = wanting.length && !archived && WANTS.indexOf(shownOf(wanting[0], busy)) < rank(shown) ? shownOf(wanting[0], busy) : undefined;
 
   const show = () => openSheet(session.id);
   const open = (e: MouseEvent<HTMLElement>) => {
@@ -58,6 +66,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       data-session={session.id}
       data-attention={shown}
       data-archived={archived || undefined}
+      data-wants={wants}
       aria-label={`${name}, ${label}`}
       onClick={open}
     >
@@ -75,6 +84,21 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       <BranchMark session={session} branch={branch} />
       <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
+      {subtasks.length > 0 && !archived && (
+        <div className={styles.subtasks} data-subtasks aria-label="Subtasks">
+          {wanting.map((o) => {
+            const state = shownOf(o, busy);
+            return (
+              <button key={o.id} type="button" data-subtask={o.id} data-attention={state} title={`${sessionLabel(o, branch)}; opens the subtask`} onClick={() => openSheet(o.id)}>
+                <StateMark state={state} size={8} />
+                <span>{SUBTASK_LABELS[o.parent!.kind]} #{o.parent!.finding + 1}</span>
+                <span className={styles.subtaskState}>{STATE_LABELS[state]}</span>
+              </button>
+            );
+          })}
+          {rest > 0 && <span className={styles.subtaskRest}>{wanting.length ? `+${rest} more` : `${rest} ${rest === 1 ? 'subtask' : 'subtasks'}`}</span>}
+        </div>
+      )}
       {working && (
         <div className={styles.work}>
           <code>{session.activity?.step ?? 'Starting'}</code>
@@ -85,7 +109,6 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
         <footer className={styles.foot}>
           <span className={styles.where}>{repo?.name} · {branch}</span>
           {tag && <span className={styles.tag}>{tag}</span>}
-          {subtasks > 0 && <span className={styles.subtasks} data-subtasks title="Agents working on this task's findings; their tiles follow this one">{subtasks} {subtasks === 1 ? 'subtask' : 'subtasks'}</span>}
           {!!session.summary?.learnings?.length && <span className={styles.know} title="Claude found something notable; open the task to read it">Worth knowing</span>}
           <PrChip pr={session.pr} status={session.status} />
         </footer>

@@ -4,7 +4,7 @@ import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { locate, sessionLabel, shownOf } from '../util.ts';
+import { decisionOf, locate, sessionLabel, shownOf } from '../util.ts';
 import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -230,6 +230,39 @@ export function SubtaskOf({ session }: { session: Session }) {
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+const URGENCY: Record<string, number> = { decide: 0, focus: 1, idle: 2, sending: 3, working: 4, exited: 5 };
+
+// On a task's page: every subtask started from its findings, the ones that want you first. The Wall leaves them to
+// their task's tile, so this is where they are listed.
+export function Subtasks({ session }: { session: Session }) {
+  const { sessions, repos } = useStore();
+  const busy = useBusy();
+  const subtasks = sessions
+    .filter((o) => o.parent?.id === session.id)
+    .map((o) => ({ o, state: o.archived ? ('archived' as const) : shownOf(o, busy) }))
+    .sort((a, b) => (URGENCY[a.state] ?? 9) - (URGENCY[b.state] ?? 9) || a.o.createdAt - b.o.createdAt);
+  if (!subtasks.length) return null;
+  return (
+    <section className={styles.list} aria-label="Subtasks" data-subtask-list>
+      <h3 className={styles.label}>Subtasks <span>· {subtasks.length}</span></h3>
+      <ul>
+        {subtasks.map(({ o, state }) => (
+          <li key={o.id}>
+            <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
+              <StateMark state={state} size={9} />
+              <span className={styles.listMain}>
+                <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
+                <span>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
+              </span>
+              <span className={styles.listState}>{state === 'archived' ? 'Archived' : STATE_LABELS[state]}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

@@ -378,23 +378,26 @@ export async function deleteWorktreeLoss(id: string) {
   const s = must(id);
   const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
   if (!worktree) throw new Error('worktree not found');
+  if (s.parent) throw new Error(NOT_A_SUBTASK);
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
-  if (s.parent) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, subtask: true };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
   return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
 }
 
+const NOT_A_SUBTASK = "a subtask works in its task's worktree; Quit Claude or Archive it instead";
+
 // Clear task: in a worktree of its own, everything in it goes, the worktree and its branch too. In the main checkout,
-// which other Claudes may share, and for a subtask, which shares its task's worktree, only this session's Claude and
-// its tab go, with the task.
+// which other Claudes may share, only this session's Claude and its tab go, with the task. A subtask is not cleared:
+// it shares its task's worktree.
 export async function deleteWorktree(id: string) {
   const s = must(id);
   const repo = repoView(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
-  if (!worktree.isMain && !s.parent) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
+  if (s.parent) throw new Error(NOT_A_SUBTASK);
+  if (!worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
   stopAdvice(id);
   const pid = s.pid && alive(s.pid) ? s.pid : null;
   const tty = pid ? (s.tty ?? await ttyOf(pid)) : null;

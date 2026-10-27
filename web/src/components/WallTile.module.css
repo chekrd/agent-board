@@ -20,6 +20,10 @@
     &[data-attention="focus"] { border-color: var(--prompt-line); background: var(--tint-focus); }
     &[data-attention="idle"] { border-color: var(--idle-line); }
     &[data-attention="exited"] { border-style: dashed; border-color: var(--line-2); background: none; }
+    /* A subtask wants you more than the task itself does. */
+    &[data-wants="decide"] { border-color: var(--accent-line); }
+    &[data-wants="focus"] { border-color: var(--prompt-line); }
+    &[data-wants="idle"] { border-color: var(--idle-line); }
     &[data-archived] { gap: 8px; min-height: 140px; padding: 16px 18px; border: 1.5px dashed var(--line-2); border-radius: 18px; background: none; }
   }
 
@@ -109,7 +113,7 @@
 
   .where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--mono); color: var(--muted); }
 
-  .tag, .know, .subtasks {
+  .tag, .know {
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -124,5 +128,40 @@
   }
 
   .know { border-color: var(--know-line); color: var(--know); }
-  .subtasks { border-color: var(--line-2); color: var(--text-2); }
+
+  .subtasks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 28px;
+      padding: 0 10px;
+      border: 1.5px solid var(--line-2);
+      border-radius: 999px;
+      background: var(--card);
+      font-size: 13px;
+      font-weight: 650;
+      &[data-attention="decide"] { border-color: var(--accent-line); background: var(--tint-decide); }
+      &[data-attention="focus"] { border-color: var(--prompt-line); background: var(--tint-focus); }
+      &[data-attention="idle"] { border-color: var(--idle-line); }
+    }
+  }
+
+  .subtaskState {
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    [data-attention="decide"] > & { color: var(--accent-ink); }
+    [data-attention="focus"] > & { color: var(--prompt); }
+    [data-attention="idle"] > & { color: var(--idle); }
+  }
+
+  .subtaskRest { font-size: 12.5px; color: var(--muted); }
 }

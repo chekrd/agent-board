@@ -11,19 +11,16 @@ export function compare(a: Session, b: Session) {
   return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.createdAt - b.createdAt;
 }
 
-// A task's subtasks follow it, and the family stands where its most urgent member would.
-function withSubtasks(sorted: Session[]) {
-  const ids = new Set(sorted.map((s) => s.id));
-  const headOf = (s: Session) => (s.parent && ids.has(s.parent.id) ? s.parent.id : s.id);
-  const families = new Map<string, Session[]>();
-  for (const s of sorted) families.set(headOf(s), [...(families.get(headOf(s)) ?? []), s]);
-  return [...families].flatMap(([head, members]) => [...members.filter((s) => s.id === head), ...members.filter((s) => s.id !== head)]);
-}
-
+// The Wall shows tasks, not subtasks: a subtask shows on its task's tile and page, and the task stands where its most
+// urgent subtask would. A subtask whose task is gone or archived shows on its own.
 export function orderTiles(sessions: Session[]) {
+  const active = sessions.filter((s) => !s.archived);
+  const byId = new Map(active.map((s) => [s.id, s]));
+  const ids = new Set(sessions.map((s) => s.id));
+  const tasks = new Set(active.sort(compare).map((s) => (s.parent && byId.has(s.parent.id) ? byId.get(s.parent.id)! : s)));
   return {
-    active: withSubtasks(sessions.filter((s) => !s.archived).sort(compare)),
-    archived: sessions.filter((s) => s.archived).sort((a, b) => b.updatedAt - a.updatedAt),
+    active: [...tasks],
+    archived: sessions.filter((s) => s.archived && !(s.parent && ids.has(s.parent.id))).sort((a, b) => b.updatedAt - a.updatedAt),
   };
 }
 

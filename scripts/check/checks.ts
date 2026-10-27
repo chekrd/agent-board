@@ -674,7 +674,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P0.4 diff: the fixture patch (12 files from ff30c77) renders split and dark; a file in the tree opens whole',
+    name: 'P0.4 diff: the fixture patch (12 files from ff30c77) renders split and dark, long lines wrapped; a file in the tree opens whole',
     async run({ themes, page, mock, shot }) {
       await page.goto(`${mock.url}/s/s-cart/diff`);
       const files = await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length);
@@ -698,6 +698,11 @@ export const checks: Check[] = [
       });
       assert.equal(layout.modified.length, 7);
       assert.deepEqual(layout.split, layout.modified);
+      const sideways = await page.eval(() => [...document.querySelectorAll('section[data-file]')].flatMap((s) => {
+        const pre = s.querySelector('diffs-container')?.shadowRoot?.querySelectorAll<HTMLElement>('pre, [data-code]') ?? [];
+        return [...pre].filter((p) => p.scrollWidth > p.clientWidth + 1).map(() => s.getAttribute('data-file'));
+      }));
+      assert.deepEqual(sideways, [], 'a line too long for its side wraps rather than scrolling sideways');
       await shot('diff');
 
       await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
@@ -4000,7 +4005,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P7.phone-sideways narrow window: nothing scrolls sideways on the Wall, in the sheet\'s tabs, in New task, Repos, Keys, Delete worktree or the ⋯ menu, and each dialog fits the window; only the diff\'s code and the artifacts list scroll sideways, by design',
+    name: 'P7.phone-sideways narrow window: nothing scrolls sideways on the Wall, in the sheet\'s tabs, in New task, Repos, Keys, Delete worktree or the ⋯ menu, and each dialog fits the window; only the artifacts list scrolls sideways, by design, and the diff wraps its lines',
     narrow: true,
     async run({ page, mock, shot }) {
       const inside = (selector: string) => {
@@ -4018,7 +4023,7 @@ export const checks: Check[] = [
         await page.until('the sheet', sheetOpen);
         await page.until('the sheet to settle', settled);
         if (tab === 'diff') await page.until('the diff', () => document.querySelectorAll('section[data-file] diffs-container').length === 12);
-        await sideways(`the sheet's ${tab}`, tab === 'diff' ? /^div\.\w+_diffs$/ : tab === 'artifacts' ? /^div\.\w+_list$/ : undefined);
+        await sideways(`the sheet's ${tab}`, tab === 'artifacts' ? /^div\.\w+_list$/ : undefined);
         assert.equal(await page.eval(inside, '#task-sheet'), true);
         await shot(`phone-sheet-${tab}`);
       }
@@ -4960,9 +4965,9 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall the subtasks follow their task, which counts them, and each tile names its task',
+    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all',
     scenario: 'findings',
-    async run({ page, mock, shot }) {
+    async run({ themes, page, mock, shot }) {
       const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
         n: f.dataset.finding, rejected: f.hasAttribute('data-rejected'),
         subtasks: [...f.querySelectorAll('[data-subtask]')].map((b) => (b as HTMLElement).innerText.replace(/\s+/g, ' ').trim()),
@@ -4970,7 +4975,7 @@ export const checks: Check[] = [
       await openSheetOf(page, mock, 's-review');
       await page.until('the findings', () => document.querySelectorAll('#task-sheet [data-finding]').length === 3);
       assert.deepEqual(await page.eval(items), [
-        { n: '1', rejected: false, subtasks: ['Fix In progress', 'Second look In progress'] },
+        { n: '1', rejected: false, subtasks: ['Fix In progress', 'Second look Decide'] },
         { n: '2', rejected: true, subtasks: [] },
         { n: '3', rejected: false, subtasks: [] },
       ]);
@@ -4985,6 +4990,10 @@ export const checks: Check[] = [
       await page.until('the subtask under #3', () => document.querySelectorAll('#task-sheet [data-finding="3"] [data-subtask]').length === 1);
       const [started] = await page.until('the toast', toastsOf, 'info');
       assert.match(started.text, /Started #3 Fix/);
+      await themes(async (scheme) => {
+        const bg = await page.eval(() => getComputedStyle(document.querySelector("[data-toast][data-kind=\"info\"]")!).backgroundColor);
+        assert.ok(luminance(bg) < 0.05, `the toast ${bg} is not dark in ${scheme}`);
+      });
       assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet [data-finding="3"] textarea')!.value), '');
 
       await page.click('#task-sheet [data-finding="1"] [data-response="reject"]');
@@ -4999,7 +5008,7 @@ export const checks: Check[] = [
       const text = (sel: string) => page.eval((q) => document.querySelector<HTMLElement>(q)!.innerText.replace(/\s+/g, ' ').trim(), sel);
       assert.equal(await text('#task-sheet header [data-parent]'), 'Subtask of Review the lazy reviews branch');
       const origin = await text('#task-sheet [aria-label="Subtask of"]');
-      assert.match(origin, /^Subtask of Review the lazy reviews branch Your turn Back to the task 1 Reviews load twice on a fast scroll src\/reviews\/LazyReviews\.tsx:41 The IntersectionObserver .* Fix “?Guard it with a ref”? Second look In progress$/i);
+      assert.match(origin, /^Subtask of Review the lazy reviews branch Your turn Back to the task 1 Reviews load twice on a fast scroll src\/reviews\/LazyReviews\.tsx:41 The IntersectionObserver .* Fix “?Guard it with a ref”? Second look Decide$/i);
       await page.click('#task-sheet [aria-label="Subtask of"] [data-subtask="s-review-2"]');
       await page.until('the sibling', () => location.pathname === '/s/s-review-2/overview');
       await page.click('#task-sheet header [data-parent] button');
@@ -5013,17 +5022,19 @@ export const checks: Check[] = [
       await shot('findings-card');
 
       await page.click('a[href="/wall"]');
-      await page.until('the subtask tiles', () => document.querySelectorAll('[data-tile] [data-parent]').length === 3);
-      const after = await page.eval(() => {
-        const tiles = [...document.querySelectorAll<HTMLElement>('[data-tile]')];
-        const at = tiles.findIndex((t) => t.dataset.session === 's-review');
-        return tiles.slice(at + 1, at + 4).map((t) => t.querySelector('[data-parent]') ? 'subtask' : t.dataset.session);
-      });
-      assert.deepEqual(after, ['subtask', 'subtask', 'subtask'], 'the subtasks follow their task');
-      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), '3 subtasks');
+      await page.until('the Wall', () => !!document.querySelector('[data-tile][data-session="s-review"]'));
+      assert.equal(await page.eval(() => document.querySelectorAll('[data-tile] [data-parent], [data-tile][data-session^="s-review-"]').length), 0, 'no subtask has a tile');
+      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE +2 more');
+      assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-tile][data-session="s-review"]')!.dataset.wants), 'decide');
       await shot('findings-wall');
-      await page.click('[data-tile][data-session="s-review-1"] [data-parent] button');
-      await page.until('the review from its subtask tile', () => location.pathname === '/s/s-review/overview');
+      await page.click('[data-tile][data-session="s-review"] [data-subtask="s-review-2"]');
+      await page.until('the subtask from its task tile', () => location.pathname === '/s/s-review-2/overview');
+      await page.click('#task-sheet header [data-parent] button');
+      await page.until('the review', () => location.pathname === '/s/s-review/overview');
+      const listed = await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] [data-subtask]')].map((b) => `${b.dataset.subtask}:${b.dataset.attention}`));
+      assert.equal(listed.length, 3);
+      assert.deepEqual(listed.slice(0, 2), ['s-review-2:decide', 's-review-1:working']);
+      await shot('subtask-list');
     },
   },
 ];

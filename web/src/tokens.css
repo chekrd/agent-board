@@ -24,6 +24,9 @@
     --line: light-dark(#ddd5c7, #37322b);
     --line-2: light-dark(#c6bdab, #4b443a);
     --text: light-dark(#1a1712, #f4efe7);
+    /* Toasts are dark in both themes. */
+    --toast: #1a1712;
+    --toast-ink: #eeeae1;
     --text-2: light-dark(#3b352c, #d4ccc0);
     --muted: light-dark(#655d51, #a79e91);
     --accent: #cdf44a;

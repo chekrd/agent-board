@@ -17,7 +17,7 @@ export function Wall({ deck }: { deck: readonly Session[] }) {
     );
   }
   const { active, archived } = orderTiles(sessions);
-  const working = active.filter((s) => attentionOf(s) === 'working').length;
+  const working = sessions.filter((s) => !s.archived && attentionOf(s) === 'working').length;
   const title = !sessions.length ? (repos.length ? 'No sessions yet.' : 'No repositories yet.') : deck.length ? 'Every agent, in priority order' : 'Nothing needs you.';
   const sub = !sessions.length ? null
     : deck.length ? `${meter(deck, null).label} ${deck.length === 1 ? 'waits' : 'wait'} in the queue.`

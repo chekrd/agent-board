@@ -95,7 +95,7 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
             })}
           />
         )}
-        {worktree && (
+        {worktree && !session.parent && (
           <Item
             label="Clear task…"
             note={worktree.isMain ? 'Quits Claude and removes the task; the checkout stays' : 'Quits Claude, deletes the worktree and its branch, removes the task'}
