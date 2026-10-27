@@ -107,8 +107,9 @@ const statusOf = (p: LiveProcess, background = 0): SessionStatus =>
 
 function activityOf(p: LiveProcess | undefined, activity: Activity | null, background: string[]): Activity | null {
   if (!background.length) return activity;
-  const step = p?.status === 'busy' ? activity?.step ?? null : `In the background · ${background[0]}${background.length > 1 ? ` and ${background.length - 1} more` : ''}`;
-  return { step, since: activity?.since ?? Date.now(), background };
+  if (p?.status === 'busy') return { step: activity?.step ?? null, since: activity?.since ?? Date.now(), background };
+  const step = `In the background · ${background[0]}${background.length > 1 ? ` and ${background.length - 1} more` : ''}`;
+  return { step, since: activity?.since ?? Date.now(), background, between: true };
 }
 
 const ignored = new Map<string, number>();

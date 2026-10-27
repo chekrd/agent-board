@@ -1301,6 +1301,27 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P4.4.1 background work shows on the task page: listed under the step while the turn runs, and once the turn ends the banner waits on it',
+    async run({ page, mock, shot }) {
+      const banner = (head: string) => {
+        const b = document.querySelector<HTMLElement>('#task-sheet [aria-label="In the background"]')?.closest('section');
+        return b?.querySelector('strong')?.textContent === head
+          ? { items: [...b.querySelectorAll('li')].map((l) => l.textContent), step: b.querySelector(':scope div > code')?.textContent ?? null }
+          : null;
+      };
+      await openFromWall(page, mock, 's-invoice');
+      await page.until('the sheet to settle', settled);
+      const since = Date.now() - 60_000;
+      const background = ['Bash · Run full e2e suite', 'Agent · Review the diff'];
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { activity: { step: 'Bash: pnpm test invoices --run', since, background } } });
+      assert.deepEqual(await page.until('the background list', banner, 'Claude is working'), { items: background, step: 'Bash: pnpm test invoices --run' });
+      await shot('sheet-working-background');
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { activity: { step: 'In the background · Bash · Run full e2e suite and 1 more', since, background, between: true } } });
+      assert.deepEqual(await page.until('the wait on background work', banner, 'Waiting on background work'), { items: background, step: null });
+      await shot('sheet-between-background');
+    },
+  },
+  {
     name: 'P4.5 Diff: 2 replaces the entry; the tree resizes by key and resets on a double click, kept in localStorage; a file opens whole, J and K step; Esc goes back to all files, a second Esc closes the sheet and focus returns to the tile\'s name',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -2730,7 +2751,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Z; the meter and the tab title count 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
+    name: 'P5.2.1 ⏎ on s-cart deals it down and s-hooks comes up; the toast says Sending “Merge both carts” to Merge guest cart on login, counts down and offers Undo Esc; the meter and the tab title count 2 decisions; 5 s on, one accept-advice goes out with the second opinion it showed',
     async run({ page, mock, shot }) {
       const { advice } = await stateOf(mock, 's-cart');
       await openQueue(page, mock);
@@ -2741,7 +2762,7 @@ export const checks: Check[] = [
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       assert.deepEqual(await page.eval(dealt), ['down']);
       const [held] = await page.until('the undo toast', toastsOf, 'undo');
-      assert.match(held.text, /^Sending “Merge both carts” to Merge guest cart on login · [1-5] s\s+Undo\s+Z$/);
+      assert.match(held.text, /^Sending “Merge both carts” to Merge guest cart on login · [1-5] s\s+Undo\s+Esc$/);
       const count = () => Number(document.querySelector('[data-toast][data-kind="undo"]')?.textContent?.match(/· (\d) s/)?.[1]);
       const first = await page.eval(count);
       await sleep(1100);
@@ -3016,7 +3037,7 @@ export const checks: Check[] = [
       await page.click('[data-card] footer button', 'Dismiss');
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       assert.deepEqual(await page.eval(dealt), ['side']);
-      assert.match((await page.until('the undo toast', toastsOf, 'undo'))[0].text, /^Dismissing “What should happen to a guest cart when the shopper logs in\?” · [1-5] s\s+Undo\s+Z$/);
+      assert.match((await page.until('the undo toast', toastsOf, 'undo'))[0].text, /^Dismissing “What should happen to a guest cart when the shopper logs in\?” · [1-5] s\s+Undo\s+Esc$/);
       const [sent] = await logged(mock, 'the dismissal', (e) => e.action === 'dismiss', POSTED_MS);
       assert.deepEqual([sent.sessionId, sent.status, sent.body], ['s-cart', 204, { key: 'q:toolu_01Cart' }]);
     },
@@ -3264,7 +3285,7 @@ export const checks: Check[] = [
       await page.key('Enter');
       const [held] = await page.until('the undo toast', toastsOf, 'undo');
       assert.deepEqual({ ...held, text: undefined }, { kind: 'undo', text: undefined, inSheet: false, hit: true });
-      assert.match(held.text, /^Sending “Also round the tax lines” to Fix invoice PDF rounding · [1-5] s\s+Undo\s+Z$/);
+      assert.match(held.text, /^Sending “Also round the tax lines” to Fix invoice PDF rounding · [1-5] s\s+Undo\s+Esc$/);
       assert.deepEqual([await page.eval(sheetOpen), (await page.eval(replyIn, '#task-sheet'))?.value], [true, '']);
       await shot('sheet-held');
       const [sent] = await logged(mock, 'the message', (e) => e.action === 'answer', POSTED_MS);
@@ -4537,7 +4558,7 @@ export const checks: Check[] = [
       await page.pointAt(undo.x, undo.y, true);
       await page.until('s-cart back at the front', frontIs, 's-cart');
       const clicks = await page.eval(() => (window as unknown as { e2eClicks: { deal: string | null; on: string }[] }).e2eClicks);
-      assert.deepEqual(clicks.at(-1), { deal: 'down', on: 'UndoZ' });
+      assert.deepEqual(clicks.at(-1), { deal: 'down', on: 'UndoEsc' });
       await ready(page, 's-cart');
       await page.click('[data-card] [data-option]', 'Keep the account cart');
       const capsule = await page.until('the Undo of its capsule while the card is dealt', middle, '[data-capsule][data-session="s-cart"] button', 'Undo');

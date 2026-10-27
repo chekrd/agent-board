@@ -92,7 +92,7 @@ function announce(i: Item<Restore>) {
   const { name } = i.restore;
   const session = i.sessionId;
   if (i.state === 'held') {
-    return toast('undo', heldText(i), { session, until: i.dueAt, lasts: HOLD_MS + 2000, action: { label: 'Undo', kbd: 'Z', run: () => undo(i.id) } });
+    return toast('undo', heldText(i), { session, until: i.dueAt, lasts: HOLD_MS + 2000, action: { label: 'Undo', kbd: 'Esc', run: () => undo(i.id) } });
   }
   if (i.state === 'waiting') return toast('info', `Waiting for Agent Board to send ${quote(i.label)} to ${name}`, { session, lasts: NO_ANSWER_MS });
   if (i.state === 'failed') return toast('error', `Not sent to ${name}: ${i.error}`, { session, action: { label: 'Show', run: () => show(session) } });

@@ -60,8 +60,10 @@ export interface Menu {
 export interface Activity {
   step: string | null;
   since: number;
-  // What Claude left running in the background when its turn ended; it resumes as each one finishes.
+  // What Claude has running in the background; between turns it resumes as each one finishes.
   background?: string[];
+  // Claude's turn has ended and only the background work runs.
+  between?: true;
 }
 
 export interface Turn {

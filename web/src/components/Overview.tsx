@@ -166,8 +166,13 @@ export function Overview({ session, name }: { session: Session; name: string }) 
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />
               <div className={styles.step}>
-                <strong>Claude is working</strong>
-                <code>{activity?.step ?? 'Starting'}</code>
+                <strong>{activity?.between ? 'Waiting on background work' : 'Claude is working'}</strong>
+                {!activity?.between && <code>{activity?.step ?? 'Starting'}</code>}
+                {!!activity?.background?.length && (
+                  <ul className={styles.background} aria-label="In the background" data-between={activity.between}>
+                    {activity.background.map((b, i) => <li key={i}><code>{b}</code></li>)}
+                  </ul>
+                )}
               </div>
               {activity && <span className={styles.clock} title="Time since your last message"><Clock since={activity.since} /></span>}
             </section>

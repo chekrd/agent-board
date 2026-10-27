@@ -55,6 +55,18 @@
     code { font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }
 
+  .background {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    &:not([data-between])::before { content: 'In the background'; font-size: 12px; color: var(--muted); }
+    li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    li::before { content: ''; flex: none; width: 6px; height: 6px; border: 1.5px solid var(--muted); border-radius: 50%; }
+  }
+
   .clock { flex: none; font: 600 30px/1 var(--font-display); font-variant-numeric: tabular-nums; }
 
   .know {
