@@ -1267,7 +1267,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, Worth knowing, the composer, Status · updated, the latest reply, Facts with the repository, the worktree\'s name and its path under ~, whose Path, Branch and Session copy on a click (the path whole) and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
+    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, the composer, Session summary · updated, Worth knowing, the latest reply, Facts with the repository, the worktree\'s name and its path under ~, whose Path, Branch and Session copy on a click (the path whole) and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
     clock: 'fast',
     async run({ wait, page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -1286,7 +1286,7 @@ export const checks: Check[] = [
           working: sheet.innerText.includes('Claude is working'),
           know: sheet.innerText.includes('Two customers were billed one cent too much'),
           composer: !!sheet.querySelector('textarea'),
-          status: [...sheet.querySelectorAll('h3')].map((h) => h.textContent).find((t) => t?.startsWith('Status')),
+          status: [...sheet.querySelectorAll('h3')].map((h) => h.textContent).find((t) => t?.startsWith('Session summary')),
           reply: sheet.innerText.includes("CLAUDE'S LATEST REPLY") && sheet.innerText.includes('The cent goes missing'),
           facts: [...sheet.querySelectorAll('dt')].map((d) => d.textContent),
           values: Object.fromEntries([...sheet.querySelectorAll('dt')].map((d) => [d.textContent, (d.nextElementSibling as HTMLElement).innerText.trim()])),
@@ -1299,7 +1299,7 @@ export const checks: Check[] = [
         working: true, know: true, composer: true, status: undefined, values: undefined, reply: true,
         facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
-      assert.match(overview.status ?? '', /^Status · updated \d+m ago$/);
+      assert.match(overview.status ?? '', /^Session summary · updated \d+m ago$/);
       await wait(1100);
       assert.notEqual((await page.eval(clock))?.text, first.text, 'the clock did not tick');
       await page.until('the sheet to settle', settled);
@@ -2152,15 +2152,15 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.3 the whole card fits the window and the page does not scroll: Worth knowing, the headline, the brief, the details, all three options with their descriptions and the suggestion show; in a narrower window each starts in view, in the card\'s scroll area that scrolls to the rest',
+    name: 'P5.1.3 the whole card fits the window and the page does not scroll: the headline, the brief, the details, all three options with their descriptions, the suggestion and Worth knowing under them show; in a narrower window each starts in view, in the card\'s scroll area that scrolls to the rest',
     async run({ page, mock, look, shot }) {
       await openQueue(page, mock);
       await page.until('the card to settle', still);
       const fit = await page.eval(() => ({ card: !!document.querySelector('[data-card]'), scroll: document.scrollingElement!.scrollHeight, height: innerHeight }));
       assert.equal(fit.scroll, fit.height, 'the page scrolls');
       const parts = [
-        '[data-card]', '[data-card] [data-know]', '[data-card] h1', '[data-card] h1 + p', '[data-card] section[aria-label="Claude\'s details"]',
-        '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-primary]',
+        '[data-card]', '[data-card] h1', '[data-card] h1 + p', '[data-card] section[aria-label="Claude\'s details"]',
+        '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-know]', '[data-card] [data-primary]',
       ];
       // In a narrower window the columns are narrower and their text longer, so the card scrolls to what does not fit (I§3).
       for (const selector of parts) {
@@ -2328,7 +2328,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.10 a click on peek 2 brings s-group to the front; the 5th meter segment shows Lazy-load product reviews as a Your-turn card with its summary, latest reply, Status, the reply box, Reply ↵ and Archive X',
+    name: 'P5.1.10 a click on peek 2 brings s-group to the front; the 5th meter segment shows Lazy-load product reviews as a Your-turn card with its summary, latest reply, Session summary, the reply box, Reply ↵ and Archive X',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await page.click('[data-peek="2"] > span');
@@ -2338,7 +2338,7 @@ export const checks: Check[] = [
       const shown = (await page.eval(card))!;
       assert.deepEqual([shown.kind, shown.label, shown.primary], ['idle', 'Lazy-load product reviews · Your turn', 'Reply']);
       for (const part of [
-        'Reviews now load when scrolled into view', "CLAUDE'S LATEST REPLY", 'The reviews section now loads when it comes within 600 px', 'STATUS', 'Reviews split into a lazy chunk (41 kB)', 'MESSAGE CLAUDE', 'Archive\nX',
+        'Reviews now load when scrolled into view', "CLAUDE'S LATEST REPLY", 'The reviews section now loads when it comes within 600 px', 'SESSION SUMMARY', 'Reviews split into a lazy chunk (41 kB)', 'MESSAGE CLAUDE', 'Archive\nX',
       ]) assert.ok(shown.text.includes(part), `the card lacks ${part}`);
       assert.equal(await page.eval(() => !!document.querySelector('[data-card] textarea') && !!document.querySelector('[data-card] table')), true);
       await page.until('the card to settle', still);

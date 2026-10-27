@@ -138,7 +138,7 @@
     flex-wrap: wrap;
     align-items: baseline;
     gap: 6px 14px;
-    margin: 10px 30px 0;
+    margin: 18px 30px 0;
     padding: 7px 14px;
     border: 1.5px solid var(--know-line);
     border-radius: 12px;
@@ -259,7 +259,8 @@
     .top { flex-wrap: wrap; row-gap: 0; }
     .nav { flex-basis: calc(100% + 20px); margin: 0 -10px; kbd { display: none; } }
     .more { display: flex; margin-left: auto; }
-    .know, .notSent { margin: 10px 18px 0; }
+    .notSent { margin: 10px 18px 0; }
+    .know { margin: 0 18px 16px; }
     .brief { padding: 0 18px; }
     .cols { grid-template-columns: minmax(0, 1fr); gap: 22px; padding: 14px 18px 16px; }
     .foot {

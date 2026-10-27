@@ -292,12 +292,6 @@ export function Card({ session, repos, deck, enter }: CardProps) {
       </header>
       <div ref={scroll} className={styles.scroll} data-scroll>
         {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
-        {learnings.length > 0 && (
-          <div className={styles.know} data-know>
-            <span className={styles.knowLabel}>Worth knowing</span>
-            {learnings.map((k) => <span key={k}>{k}</span>)}
-          </div>
-        )}
         {menu && session.summary?.text && <p className={styles.brief}>{session.summary.text}</p>}
         {decision && (
           <DecisionBody
@@ -332,6 +326,12 @@ export function Card({ session, repos, deck, enter }: CardProps) {
         )}
         {kind === 'prompt' && <PromptBody session={session} />}
         {kind === 'idle' && <TurnBody session={session} composer={composer} />}
+        {learnings.length > 0 && (
+          <div className={styles.know} data-know>
+            <span className={styles.knowLabel}>Worth knowing</span>
+            {learnings.map((k) => <span key={k}>{k}</span>)}
+          </div>
+        )}
       </div>
       <footer className={styles.foot}>
         <button

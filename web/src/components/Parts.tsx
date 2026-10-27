@@ -31,7 +31,7 @@ export function Progress({ items, quiet = false }: { items: readonly string[]; q
   if (!items.length) return null;
   return (
     <section className={parts.progress} data-quiet={quiet || undefined}>
-      <h3 className={parts.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">Status</h3>
+      <h3 className={parts.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">Session summary</h3>
       <ul>{items.map((p) => <li key={p}>{p}</li>)}</ul>
     </section>
   );

@@ -179,12 +179,6 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               {activity && <span className={styles.clock} title="Time since your last message"><Clock since={activity.since} /></span>}
             </section>
           )}
-          {learnings.length > 0 && (
-            <section className={styles.know}>
-              <h3 className={styles.label} title="Something notable Claude found or learned; shown only when it is worth your attention">Worth knowing</h3>
-              {learnings.map((k) => <p key={k}>{k}</p>)}
-            </section>
-          )}
           {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} name={name} />}
           <Findings session={session} />
           {!archived && attention === 'focus' && (
@@ -206,11 +200,17 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
           )}
           <section className={styles.status}>
             <h3 className={styles.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">
-              Status {summary && <span>· updated {ago(summary.at)}</span>}
+              Session summary {summary && <span>· updated {ago(summary.at)}</span>}
             </h3>
             <p>{summary?.text || 'No summary yet; it is written once Claude replies.'}</p>
             {!!summary?.progress?.length && <ul>{summary.progress.map((k) => <li key={k}>{k}</li>)}</ul>}
           </section>
+          {learnings.length > 0 && (
+            <section className={styles.know}>
+              <h3 className={styles.label} title="Something notable Claude found or learned; shown only when it is worth your attention">Worth knowing</h3>
+              {learnings.map((k) => <p key={k}>{k}</p>)}
+            </section>
+          )}
           {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
         </div>
         <aside className={styles.aside}>
