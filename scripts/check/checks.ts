@@ -323,6 +323,18 @@ async function openNewTask(page: Page) {
     !!document.querySelector<HTMLDialogElement>('dialog#new-task')?.open && document.activeElement === document.querySelector('dialog#new-task textarea'));
 }
 
+const pickerOpen = () => !!document.querySelector('#new-task [data-repo-picker]:popover-open');
+
+// Opens New task's repository picker, types `filter` and picks the first match with Enter.
+async function pickRepo(page: Page, filter: string) {
+  await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+  await page.until('the picker, its filter focused', () => !!document.querySelector('#new-task [data-repo-picker]:popover-open') &&
+    document.activeElement === document.querySelector('#new-task [data-repo-picker] input'));
+  await page.type(filter);
+  await page.key('Enter');
+  await page.until('the picker to close', () => !document.querySelector('#new-task [data-repo-picker]:popover-open'));
+}
+
 async function openQueue(page: Page, mock: Mock, front = 's-cart') {
   await page.goto(`${mock.url}/`);
   await page.until(`the card of ${front}`, frontIs, front);
@@ -1465,11 +1477,7 @@ export const checks: Check[] = [
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await page.type('Fix the login redirect');
-      await page.eval(() => {
-        const repo = document.querySelector<HTMLSelectElement>('dialog#new-task select')!;
-        repo.value = '1';
-        repo.dispatchEvent(new Event('change', { bubbles: true }));
-      });
+      await pickRepo(page, 'storefront');
       await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
       await page.type('fix-login');
       await shot('new-task-wall');
@@ -1491,7 +1499,7 @@ export const checks: Check[] = [
       await page.eval(submit);
       const error = await page.until('the inline error', () => document.querySelector('dialog#new-task [role="alert"]')?.textContent);
       assert.match(error, /cannot be created here/);
-      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('dialog#new-task textarea, dialog#new-task input')].map((f) => f.value)), ['Try a refused name', 'fail']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('dialog#new-task textarea, dialog#new-task input:not([data-repo-picker] *)')].map((f) => f.value)), ['Try a refused name', 'fail']);
 
       await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
@@ -1803,25 +1811,66 @@ export const checks: Check[] = [
     async run({ page, mock }) {
       const reads = async (repo: number) => (await mock.log()).filter((e) => e.method === 'GET' && e.path === `/api/repos/${repo}/branches`).length;
       const chips = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
-      const pick = (repo: string) => {
-        const select = document.querySelector<HTMLSelectElement>('dialog#new-task select')!;
-        select.value = repo;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-      };
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
       await openNewTask(page);
-      await page.eval(pick, '1');
+      await pickRepo(page, 'storefront');
       await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
       await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), 'dialog#new-task');
       await sleep(300);
       assert.equal(await reads(1), 1);
-      await page.eval(pick, '2');
+      await pickRepo(page, 'billing');
       await page.until('the billing-api branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'webhook-retries'), 'dialog#new-task');
       await sleep(300);
       assert.deepEqual([await reads(1), await reads(2)], [1, 1]);
       assert.ok((await page.eval(chips, 'dialog#new-task')).includes('webhook-retries'));
+    },
+  },
+  {
+    name: 'P4.repo-filter New task\'s repository picker filters by typing: by name or path, arrows and Enter pick, a letter on the closed button opens it already filtered, and no match says so',
+    async run({ page, mock, shot }) {
+      const picker = '#new-task [data-repo-picker]';
+      const shown = (picker: string) => [...document.querySelectorAll(`${picker} [role="option"]`)].map((o) => o.querySelector('strong')?.textContent);
+      const picked = () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent;
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
+      await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+      await page.until('the filter focused', (picker: string) => document.activeElement === document.querySelector(`${picker} input`), picker);
+      assert.deepEqual(await page.eval(shown, picker), ['storefront', 'billing-api', 'agent-board', 'docs-site']);
+      await page.type('code/');
+      await page.until('the repositories under ~/code', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 3, picker);
+      await page.key('ArrowDown');
+      await page.key('ArrowDown');
+      await shot('new-task-repo-filter');
+      await page.key('Enter');
+      await page.until('docs-site picked', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'docs-site');
+      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#new-task button[aria-haspopup="listbox"]')), true, 'focus went back to the button');
+      assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'Enter kept the dialog');
+      assert.equal((await mock.log()).some((e) => e.method === 'POST' && e.path === '/api/worktrees'), false, 'Enter created nothing');
+
+      await page.key('A');
+      await page.until('the picker filtered by the letter', (picker: string) =>
+        !!document.querySelector(`${picker}:popover-open`) && document.querySelector<HTMLInputElement>(`${picker} input`)?.value === 'A', picker);
+      await page.type('GENT');
+      await page.until('agent-board alone', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 1, picker);
+      await page.key('Enter');
+      await page.until('agent-board picked', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'agent-board');
+
+      await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+      await page.until('the filter, empty again', (picker: string) => document.querySelector<HTMLInputElement>(`${picker} input`)?.value === '' &&
+        document.querySelectorAll(`${picker} [role="option"]`).length === 4, picker);
+      await page.type('nothing-like-it');
+      await page.until('the empty note', (picker: string) => document.querySelector(`${picker} p`)?.textContent === 'No repository matches “nothing-like-it”', picker);
+      await page.key('Enter');
+      await page.key('Escape');
+      await page.until('the picker to close', (picker: string) => !document.querySelector(`${picker}:popover-open`), picker);
+      assert.deepEqual([await page.eval(picked), await page.eval(() => !!document.querySelector('#new-task:modal'))], ['agent-board', true]);
+      await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+      await page.until('the picker', (picker: string) => !!document.querySelector(`${picker}:popover-open`), picker);
+      await page.click(`${picker} [role="option"]`, 'billing-api');
+      await page.until('billing-api picked by a click', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'billing-api');
     },
   },
   {
@@ -3619,10 +3668,10 @@ export const checks: Check[] = [
       await page.key('n');
       await page.until('New task', () => !!document.querySelector('#new-task:modal'));
       await page.until('the dialog to settle', settled);
-      await page.click('#new-task select');
-      await page.until('the picker', () => document.querySelector('#new-task select')!.matches(':open'));
+      await page.click('#new-task button[aria-haspopup="listbox"]');
+      await page.until('the picker', pickerOpen);
       await page.pointAt(24, 860, true);
-      await page.until('the picker to close', () => !document.querySelector('#new-task select')!.matches(':open'));
+      await page.until('the picker to close', () => !document.querySelector('#new-task [data-repo-picker]:popover-open'));
       await sleep(300);
       assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'the click closed the dialog with the picker');
       await page.pointAt(24, 860, true);
@@ -3904,8 +3953,8 @@ export const checks: Check[] = [
       await page.type('Add retries to the webhook worker');
       await page.click('#new-task button', 'More options');
       await audit('New task');
-      await page.click('#new-task select');
-      await page.until('the picker', () => document.querySelector('#new-task select')!.matches(':open'));
+      await page.click('#new-task button[aria-haspopup="listbox"]');
+      await page.until('the picker', pickerOpen);
       await audit('New task, its picker');
       await page.key('Escape');
       await page.key('Escape');
@@ -4225,10 +4274,11 @@ export const checks: Check[] = [
     name: 'shell-3 keys typed into New task\'s open repository picker over the Wall are the picker\'s: Esc closes only it, V, ? and Z do nothing, and a send held meanwhile still goes out',
     async run({ page, mock }) {
       const openPicker = async () => {
-        await page.click('dialog#new-task select');
-        await page.until('the picker, focused', () => !!document.querySelector('dialog#new-task select:open') && document.activeElement?.tagName === 'OPTION');
+        await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+        await page.until('the picker, its filter focused', () => !!document.querySelector('#new-task [data-repo-picker]:popover-open') &&
+          document.activeElement === document.querySelector('#new-task [data-repo-picker] input'));
       };
-      const where = () => ({ path: location.pathname, picker: !!document.querySelector('select:open'), modal: !!document.querySelector('dialog:modal') });
+      const where = () => ({ path: location.pathname, picker: !!document.querySelector('#new-task [data-repo-picker]:popover-open'), modal: !!document.querySelector('dialog:modal') });
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.click('[data-card] [data-option]', 'Keep the account cart');
@@ -4245,7 +4295,7 @@ export const checks: Check[] = [
       }
       assert.equal((await page.eval(toastsOf, 'undo'))?.length, 1, 'z took back the held send');
       await page.key('Escape');
-      await page.until('the picker to close', () => !document.querySelector('select:open'));
+      await page.until('the picker to close', () => !document.querySelector('#new-task [data-repo-picker]:popover-open'));
       await sleep(200);
       assert.deepEqual(await page.eval(where), { path: '/wall', picker: false, modal: true });
       const [sent] = await logged(mock, 'the held answer', (e) => e.action === 'answer', POSTED_MS - (Date.now() - pressed));

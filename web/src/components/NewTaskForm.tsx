@@ -1,4 +1,4 @@
-import { useActionState, useEffect, useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ToggleEvent } from 'react';
 import { api } from '../api.ts';
 import { keepUnderLayer } from '../layers.ts';
 import { openSheet } from '../router.ts';
@@ -81,6 +81,104 @@ export function openNewTask() {
   dialog.querySelector('textarea')?.focus();
 }
 
+// Typing on the closed button opens the list with that letter already in the filter.
+function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; pick: (id: number) => void }) {
+  const id = useId();
+  const list = useRef<HTMLDivElement>(null);
+  const filter = useRef<HTMLInputElement>(null);
+  const seed = useRef('');
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const q = query.trim().toLowerCase();
+  const shown = q ? repos.filter((r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)) : repos;
+  const at = Math.min(active, shown.length - 1);
+  const activeId = shown[at] && `${id}-${shown[at].id}`;
+
+  useEffect(() => {
+    if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+  }, [activeId]);
+
+  const choose = (r: RepoView) => {
+    pick(r.id);
+    list.current?.hidePopover();
+  };
+
+  const onToggle = (e: ToggleEvent<HTMLDivElement>) => {
+    if (e.newState !== 'open') return;
+    setQuery(seed.current);
+    setActive(seed.current ? 0 : Math.max(0, repos.indexOf(repo)));
+    seed.current = '';
+    filter.current?.focus();
+  };
+
+  const onButtonKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const letter = e.key.length === 1 && e.key !== ' ' && !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (!letter && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    if (letter) seed.current = e.key;
+    list.current?.showPopover();
+  };
+
+  const onFilterKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (shown.length) setActive((at + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length);
+    } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      if (shown[at]) choose(shown[at]);
+    }
+  };
+
+  return (
+    <>
+      <button type="button" className={styles.repo} popoverTarget={`${id}-list`} aria-haspopup="listbox" aria-label={`Repository: ${repo.name}`} onKeyDown={onButtonKey}>
+        <span className={styles.caption}>Repository</span>
+        <strong>{repo.name}</strong>
+        <Icon name="chevron-down" size={14} />
+      </button>
+      <div id={`${id}-list`} ref={list} popover="auto" className={styles.picker} onToggle={onToggle} data-repo-picker>
+        <input
+          ref={filter}
+          className={styles.filter}
+          role="combobox"
+          aria-label="Filter repositories"
+          aria-expanded
+          aria-controls={`${id}-options`}
+          aria-activedescendant={activeId}
+          placeholder="Filter repositories"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.currentTarget.value);
+            setActive(0);
+          }}
+          onKeyDown={onFilterKey}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <div id={`${id}-options`} role="listbox" aria-label="Repositories" className={styles.repos}>
+          {shown.map((r, i) => (
+            <button
+              key={r.id}
+              id={`${id}-${r.id}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={r.id === repo.id}
+              data-active={i === at || undefined}
+              onPointerMove={() => setActive(i)}
+              onClick={() => choose(r)}
+            >
+              <strong>{r.name}</strong>
+              <code>{r.path}</code>
+            </button>
+          ))}
+          {shown.length === 0 && <p className={styles.none}>No repository matches “{query.trim()}”</p>}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
@@ -140,19 +238,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         onKeyDown={onPromptKey}
       />
       <div className={styles.row}>
-        <select className={styles.repo} aria-label="Repository" value={repo.id} onChange={(e) => edit({ repoId: Number(e.currentTarget.value), branch: '' })}>
-          <button type="button" className={styles.picked}>
-            <span className={styles.caption}>Repository</span>
-            <strong>{repo.name}</strong>
-            <Icon name="chevron-down" size={14} />
-          </button>
-          {repos.map((r) => (
-            <option key={r.id} value={r.id}>
-              <strong>{r.name}</strong>
-              <code>{r.path}</code>
-            </option>
-          ))}
-        </select>
+        <RepoPicker repos={repos} repo={repo} pick={(id) => edit({ repoId: id, branch: '' })} />
         {f.existing ? (
           <label className={styles.field}>
             <span className={styles.caption}>Branch</span>
