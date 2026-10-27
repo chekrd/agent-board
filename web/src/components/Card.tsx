@@ -15,6 +15,7 @@ import { DecisionBody } from './DecisionBody.tsx';
 import { Icon } from './Icon.tsx';
 import { MenuBody } from './MenuBody.tsx';
 import { Age, BranchMark } from './Parts.tsx';
+import { ParentCrumb } from './Findings.tsx';
 import { PromptBody } from './PromptBody.tsx';
 import { archive, openTerminal, SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
@@ -284,7 +285,10 @@ export function Card({ session, repos, deck, enter }: CardProps) {
             <span className={styles.more}><SessionMenu session={session} worktree={worktree} name={name} /></span>
           </nav>
         </div>
-        <div className={styles.meta}>{meta}</div>
+        <div className={styles.meta}>
+          <ParentCrumb session={session} />
+          {meta}
+        </div>
       </header>
       <div ref={scroll} className={styles.scroll} data-scroll>
         {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}

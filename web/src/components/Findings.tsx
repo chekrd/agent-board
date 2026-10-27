@@ -4,8 +4,9 @@ import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { shownOf } from '../util.ts';
+import { locate, sessionLabel, shownOf } from '../util.ts';
 import styles from './Findings.module.css';
+import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
 import { StateMark } from './StateMark.tsx';
 import { STATE_LABELS } from './Status.tsx';
@@ -144,20 +145,91 @@ function Item({ session, basis, index, finding, subtasks, compact }: ItemProps) 
   );
 }
 
-// On a subtask's page: what it was started from, with the way back to its task.
-export function SubtaskOf({ session }: { session: Session }) {
-  const { sessions } = useStore();
+function useParent(session: Session) {
+  const { sessions, repos } = useStore();
   const p = session.parent;
+  const task = p ? sessions.find((s) => s.id === p.id) : undefined;
+  return { p, task, name: task ? sessionLabel(task, locate(repos, task).branch) : 'its task', sessions };
+}
+
+// A subtask names the task it belongs to wherever it shows: above its title on its page, on its tile and its card.
+export function ParentCrumb({ session }: { session: Session }) {
+  const { p, task, name } = useParent(session);
+  const busy = useBusy();
   if (!p) return null;
-  const task = sessions.find((s) => s.id === p.id);
+  const state = task ? (task.archived ? 'archived' : shownOf(task, busy)) : null;
+  return (
+    <span className={styles.crumb} data-parent>
+      <Icon name="subtask" size={14} />
+      <span className={styles.crumbOf}>Subtask of</span>
+      {task ? (
+        <button type="button" title="Open the task this subtask belongs to" onClick={() => openSheet(task.id)}>
+          {state && <StateMark state={state} size={7} />}
+          {name}
+        </button>
+      ) : <span>{name}</span>}
+    </span>
+  );
+}
+
+// On a subtask's page: the task it belongs to, the finding it was started from with your answer, and the finding's
+// other subtasks, which work in the same worktree.
+export function SubtaskOf({ session }: { session: Session }) {
+  const { p, task, name, sessions } = useParent(session);
+  const busy = useBusy();
+  if (!p) return null;
+  const finding = task?.findings?.basis === p.basis ? task.findings.items[p.finding] : undefined;
+  const siblings = sessions.filter((o) => o.id !== session.id && o.parent?.id === p.id && o.parent.basis === p.basis && o.parent.finding === p.finding);
+  const taskState = task ? (task.archived ? 'archived' : shownOf(task, busy)) : null;
   return (
     <section className={styles.origin} aria-label="Subtask of">
-      <h3 className={styles.label}>Subtask · {SUBTASK_LABELS[p.kind]}</h3>
-      <p>
-        Finding {p.finding + 1}: <strong>{p.title}</strong>
-        {task && <> of <button type="button" className={styles.link} onClick={() => openSheet(task.id)}>{task.title || 'its task'}</button></>}
-      </p>
-      {p.text && <blockquote>{p.text}</blockquote>}
+      <div className={styles.originTask}>
+        <span className={styles.label}><Icon name="subtask" size={14} />Subtask of</span>
+        {task ? (
+          <button type="button" className={styles.originName} title="Open the task this subtask belongs to" onClick={() => openSheet(task.id)}>
+            {name}
+          </button>
+        ) : <strong className={styles.originName}>{name}</strong>}
+        {taskState && (
+          <span className={styles.state}>
+            <StateMark state={taskState} size={8} />
+            {taskState === 'archived' ? 'Archived' : STATE_LABELS[taskState]}
+          </span>
+        )}
+        {task && (
+          <button type="button" className={styles.back} onClick={() => openSheet(task.id)}>
+            <Icon name="arrow-left" size={14} />Back to the task
+          </button>
+        )}
+      </div>
+      <div className={styles.originFinding}>
+        <span className={styles.n}>{p.finding + 1}</span>
+        <div>
+          <strong>{p.title}</strong>
+          {finding?.location && <code className={styles.where}>{finding.location}</code>}
+          {finding?.detail && <div className={styles.detail}><Markdown source={finding.detail} /></div>}
+          <p className={styles.asked}>
+            <span className={styles.kind}>{SUBTASK_LABELS[p.kind]}</span>
+            {p.text ? <q>{p.text}</q> : <span className={styles.state}>without a note</span>}
+          </p>
+        </div>
+      </div>
+      {siblings.length > 0 && (
+        <ul className={styles.subtasks} aria-label={`Other subtasks of finding ${p.finding + 1}`}>
+          {siblings.map((o) => {
+            const shown = shownOf(o, busy);
+            return (
+              <li key={o.id}>
+                <button type="button" data-subtask={o.id} title={o.parent!.text || undefined} onClick={() => openSheet(o.id)}>
+                  <StateMark state={o.archived ? 'archived' : shown} size={8} />
+                  <span>{SUBTASK_LABELS[o.parent!.kind]}</span>
+                  <span className={styles.state}>{o.archived ? 'Archived' : STATE_LABELS[shown]}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

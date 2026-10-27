@@ -4,8 +4,10 @@ import { promptOf } from '../deck.ts';
 import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
+import { useStore } from '../store.ts';
 import { adviceFor, ago, attentionOf, decisionOf, locate, sessionLabel, shownOf, type Attention } from '../util.ts';
 import { Clock } from './Clock.tsx';
+import { ParentCrumb } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
@@ -36,6 +38,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
+  const subtasks = useStore().sessions.filter((o) => o.parent?.id === session.id && !o.archived).length;
 
   const show = () => openSheet(session.id);
   const open = (e: MouseEvent<HTMLElement>) => {
@@ -68,6 +71,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
           <SessionMenu session={session} worktree={worktree} name={name} />
         </span>
       </header>
+      <ParentCrumb session={session} />
       <BranchMark session={session} branch={branch} />
       <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
@@ -81,6 +85,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
         <footer className={styles.foot}>
           <span className={styles.where}>{repo?.name} · {branch}</span>
           {tag && <span className={styles.tag}>{tag}</span>}
+          {subtasks > 0 && <span className={styles.subtasks} data-subtasks title="Agents working on this task's findings; their tiles follow this one">{subtasks} {subtasks === 1 ? 'subtask' : 'subtasks'}</span>}
           {!!session.summary?.learnings?.length && <span className={styles.know} title="Claude found something notable; open the task to read it">Worth knowing</span>}
           <PrChip pr={session.pr} status={session.status} />
         </footer>

@@ -21,6 +21,7 @@ const shapes = {
   'arrow-right': <path d="M5 12h14M13 6l6 6-6 6" />,
   'chevron-down': <path d="M6 9l6 6 6-6" />,
   'chevron-right': <path d="M9 6l6 6-6 6" />,
+  subtask: <path d="M6 4v7a4 4 0 0 0 4 4h9M15 11l4 4-4 4" />,
   more: (
     <g fill="currentColor" stroke="none">
       <circle cx="5" cy="12" r="1.7" />

@@ -7,6 +7,7 @@ import { useBusy } from '../sends.ts';
 import { locate, sessionLabel, shownOf } from '../util.ts';
 import { Artifacts } from './Artifacts.tsx';
 import { DiffView } from './DiffView.tsx';
+import { ParentCrumb } from './Findings.tsx';
 import { Icon } from './Icon.tsx';
 import { Overview } from './Overview.tsx';
 import { BranchMark } from './Parts.tsx';
@@ -85,7 +86,8 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
           <span>{back === 'wall' ? 'Wall' : 'Queue'}</span>
           <kbd>Esc</kbd>
         </button>
-        <div className={styles.heading}>
+        <div className={styles.heading} data-subtask={!!session.parent || undefined}>
+          {session.parent && <div className={styles.crumb}><ParentCrumb session={session} /></div>}
           <BranchMark session={session} branch={branch} />
           <TaskName session={session} name={name} />
           <span className={styles.state} data-attention={session.archived ? 'archived' : attention} title={session.archived ? undefined : STATE_HINTS[attention]}>

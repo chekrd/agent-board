@@ -11,9 +11,18 @@ export function compare(a: Session, b: Session) {
   return (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.createdAt - b.createdAt;
 }
 
+// A task's subtasks follow it, and the family stands where its most urgent member would.
+function withSubtasks(sorted: Session[]) {
+  const ids = new Set(sorted.map((s) => s.id));
+  const headOf = (s: Session) => (s.parent && ids.has(s.parent.id) ? s.parent.id : s.id);
+  const families = new Map<string, Session[]>();
+  for (const s of sorted) families.set(headOf(s), [...(families.get(headOf(s)) ?? []), s]);
+  return [...families].flatMap(([head, members]) => [...members.filter((s) => s.id === head), ...members.filter((s) => s.id !== head)]);
+}
+
 export function orderTiles(sessions: Session[]) {
   return {
-    active: sessions.filter((s) => !s.archived).sort(compare),
+    active: withSubtasks(sessions.filter((s) => !s.archived).sort(compare)),
     archived: sessions.filter((s) => s.archived).sort((a, b) => b.updatedAt - a.updatedAt),
   };
 }

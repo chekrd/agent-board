@@ -214,8 +214,17 @@ export function Overview({ session, name, branch }: { session: Session; name: st
         <aside className={styles.aside}>
           <section aria-label="Facts">
             <dl className={styles.facts}>
-              <dt>Task</dt>
-              <dd>{session.firstPrompt ?? '—'}</dd>
+              {session.parent ? (
+                <>
+                  <dt>Finding</dt>
+                  <dd>#{session.parent.finding + 1} {session.parent.title}</dd>
+                </>
+              ) : (
+                <>
+                  <dt>Task</dt>
+                  <dd>{session.firstPrompt ?? '—'}</dd>
+                </>
+              )}
               <dt>Worktree</dt>
               <dd><Copy value={session.worktree} what="Worktree path" /></dd>
               {branch && (

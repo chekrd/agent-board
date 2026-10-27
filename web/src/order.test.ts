@@ -57,3 +57,16 @@ test('archived tasks are listed apart, the most recently changed first', () => {
   assert.deepEqual(ids(active), ['live']);
   assert.deepEqual(ids(archived), ['recent', 'old']);
 });
+
+test('subtasks follow their task, the family where its most urgent member stands', () => {
+  const parent = (id: string) => ({ id, basis: 't1', finding: 0, title: 'f', kind: 'accept' as const, text: '' });
+  const { active } = orderTiles([
+    session('review'),
+    session('fix', { status: 'working', parent: parent('review') }),
+    session('other', { status: 'waiting' }),
+    session('ask', { question: question('q1'), parent: parent('review') }),
+    session('orphan', { status: 'working', parent: parent('gone') }),
+    session('working', { status: 'working', createdAt: -1 }),
+  ]);
+  assert.deepEqual(ids(active), ['review', 'ask', 'fix', 'other', 'working', 'orphan']);
+});

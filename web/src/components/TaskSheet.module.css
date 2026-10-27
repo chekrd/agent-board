@@ -54,7 +54,9 @@
     &:hover { background: var(--hover); color: var(--text); }
   }
 
-  .heading { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .heading { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; &[data-subtask] { row-gap: 2px; } }
+
+  .crumb { flex-basis: 100%; min-width: 0; display: flex; }
 
   .state {
     display: inline-flex;

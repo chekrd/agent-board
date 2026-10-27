@@ -211,6 +211,12 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
       status: 'working', createdAt: now - 3 * MIN, updatedAt: now - MIN,
       activity: { step: 'Read src/reviews/LazyReviews.tsx', since: now - 3 * MIN },
       parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'accept', text: 'Guard it with a ref' },
+    }), session({
+      id: 's-review-2', repoId: 1, worktree, tty: '/dev/ttys032', pid: 80520,
+      title: '#1 Second look · Reviews load twice on a fast scroll', firstPrompt: 'Take a second look at finding 1.',
+      status: 'working', createdAt: now - 2 * MIN, updatedAt: now - MIN,
+      activity: { step: 'Grep inFlight', since: now - 2 * MIN },
+      parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'second-look', text: '' },
     })]);
   },
 
