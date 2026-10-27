@@ -1512,10 +1512,11 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.9.checkout Clear task… on a task in the main checkout asks to clear only the task, says the checkout stays on its branch, and removes the task alone',
+    name: 'P4.9.checkout a task in the main checkout says it has no worktree in its facts; Clear task… on it asks to clear only the task, says the checkout stays on its branch, and removes the task alone',
     async run({ page, mock }) {
       await page.goto(`${mock.url}/s/s-edge/overview`);
       await page.until('the task page', sheetOpen);
+      assert.equal(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet dt')].find((d) => d.textContent === 'Worktree')?.nextElementSibling?.textContent), 'None, the main checkout');
       await page.click('#task-sheet button[aria-label="Session actions"]');
       assert.ok((await page.until('the menu', menuItems)).includes('Clear task…'), 'no Clear task… for a task in the main checkout');
       await page.click(':popover-open button', 'Clear task');

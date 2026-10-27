@@ -52,11 +52,12 @@ test('a path under the home folder starts with ~, any other stays whole', () => 
   assert.equal(tilde('/opt/x', ''), '/opt/x');
 });
 
-test('a worktree is named by its folder, without the repository folder git-wt puts in it; the repository is the main checkout', () => {
-  const repo = { path: '/g/board', name: 'board' } as RepoView;
+test('a worktree is named by its folder, without the repository folder git-wt puts in it; the main checkout and a removed worktree are none', () => {
+  const repo = { path: '/g/board', name: 'board', worktrees: [{ path: '/g/board' }, { path: '/g/worktrees/review/board' }, { path: '/g/worktrees/spike' }] } as RepoView;
   assert.equal(worktreeName('/g/worktrees/review/board', repo), 'review');
   assert.equal(worktreeName('/g/worktrees/spike', repo), 'spike');
-  assert.equal(worktreeName('/g/board', repo), 'main checkout');
+  assert.equal(worktreeName('/g/board', repo), 'None, the main checkout');
+  assert.equal(worktreeName('/g/worktrees/gone/board', repo), 'None, it was removed');
   assert.equal(worktreeName('/g/worktrees/x/board', undefined), 'board');
 });
 
