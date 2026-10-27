@@ -1601,6 +1601,12 @@ export const checks: Check[] = [
       await page.until('the Wall', () => !document.querySelector('#task-sheet') && location.pathname === '/wall');
       await openNewTask(page);
       assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')!.value), '', 'the form kept the created task');
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
+      await page.type('half-typed');
+      await page.key('Escape');
+      await page.until('New task to close', () => !document.querySelector('#new-task[open]'));
+      await openNewTask(page);
+      assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('dialog#new-task input[placeholder="fix-login-redirect"]')!.value), '', 'the name starts empty each time');
       await page.type('Try a refused name');
       await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
       await page.type('fail');

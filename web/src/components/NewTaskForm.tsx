@@ -45,7 +45,7 @@ function stored(): Fields {
   }
 }
 
-// A prompt begun and closed is there when New task opens again, and a reload keeps it.
+// A prompt begun and closed is there when New task opens again, and a reload keeps it; the name starts empty each time.
 let fields = stored();
 // They share the branch list too: both are mounted at once, and one read serves them.
 let branches: { repoId: number; list: Branch[] } | null = null;
@@ -99,7 +99,10 @@ const subscribe = (fn: () => void) => {
 export function openNewTask() {
   const dialog = document.getElementById(DIALOG) as HTMLDialogElement | null;
   if (!dialog) return;
-  if (!dialog.open) dialog.showModal();
+  if (!dialog.open) {
+    edit({ name: '' });
+    dialog.showModal();
+  }
   dialog.querySelector('textarea')?.focus();
 }
 
