@@ -36,7 +36,7 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
   return (
     <header className={styles.bar}>
       <div className={styles.start}>
-        <span className={styles.wordmark} data-wordmark>Agent Board</span>
+        <span className={styles.wordmark} data-wordmark><img src="/icon.svg?v=2" alt="" width={26} height={26} /><span className={styles.name}>Agent Board</span></span>
         <ConnectionPill link={link} />
         {newVersion && link === 'live' && (
           <button type="button" className={styles.reload} data-new-version onClick={reloadNow}>

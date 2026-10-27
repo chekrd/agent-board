@@ -13,7 +13,20 @@
 
   .start { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
-  .wordmark { font: 700 19px/1 var(--font-display); letter-spacing: -0.015em; white-space: nowrap; }
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 700 19px/1 var(--font-display);
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+    img { margin: -2px 0 -2px -3px; }
+  }
+
+  /* Narrower windows need the room for the meter, so the name stays only for screen readers. */
+  @media (max-width: 1599px) {
+    .name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  }
 
   .link {
     display: inline-flex;
