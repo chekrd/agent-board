@@ -6,7 +6,7 @@ import type { Session } from './types.ts';
 const session = (id: string, patch: Partial<Session> = {}): Session => ({
   id, repoId: 1, worktree: `/w/${id}`, cwd: `/w/${id}`, pid: 1, tty: '/dev/ttys001', title: id, firstPrompt: null, status: 'idle',
   question: null, rank: null, rankReason: null, diffstat: null, lastMessage: null, lastTurn: 't1', waitingFor: null,
-  dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, answered: null, artifacts: [], archived: false,
+  dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, answered: null, artifacts: [], findings: null, parent: null, archived: false,
   createdAt: 0, updatedAt: 0, ...patch,
 });
 

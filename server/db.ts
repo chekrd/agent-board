@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -117,6 +117,8 @@ export interface Summary {
   progress?: string[];
   learnings?: string[];
   decision?: Decision | null;
+  // How many findings the summary read from its message; absent in summaries written before findings were read.
+  findings?: number;
   question?: string | null;
   basis: string;
   at: number;
@@ -141,6 +143,31 @@ export interface Answered {
   key: string | null;
   text: string;
   at: number;
+}
+
+export interface Finding {
+  title: string;
+  detail: string;
+  location: string;
+  rejected?: { reason: string; at: number } | null;
+}
+
+// The findings Claude listed in one message, its turn id in `basis`, kept until a later message lists others.
+export interface Findings {
+  basis: string;
+  items: Finding[];
+}
+
+export type SubtaskKind = 'accept' | 'elaborate' | 'second-look' | 'reply';
+
+// A subtask's task and the finding it was started from.
+export interface Parent {
+  id: string;
+  basis: string;
+  finding: number;
+  title: string;
+  kind: SubtaskKind;
+  text: string;
 }
 
 export interface Session {
@@ -169,6 +196,8 @@ export interface Session {
   menu: Menu | null;
   answered: Answered | null;
   artifacts: Artifact[];
+  findings: Findings | null;
+  parent: Parent | null;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -213,6 +242,8 @@ const toSession = (r: Row): Session => ({
   menu: r.menu ? JSON.parse(r.menu) : null,
   answered: r.answered ? JSON.parse(r.answered) : null,
   artifacts: r.artifacts ? JSON.parse(r.artifacts) : [],
+  findings: r.findings ? JSON.parse(r.findings) : null,
+  parent: r.parent ? JSON.parse(r.parent) : null,
   archived: !!r.archived,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -267,6 +298,8 @@ const columns: Record<string, string> = {
   menu: 'menu',
   answered: 'answered',
   artifacts: 'artifacts',
+  findings: 'findings',
+  parent: 'parent',
   archived: 'archived',
   pid: 'pid',
   tty: 'tty',
@@ -285,7 +318,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'archived' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

@@ -4876,4 +4876,53 @@ export const checks: Check[] = [
       assert.deepEqual({ theme: back.theme, ground: back.ground }, { theme: 'system', ground: system.ground });
     },
   },
+  {
+    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask page leads back; the Your turn card lists them in place of the reply',
+    scenario: 'findings',
+    async run({ page, mock, shot }) {
+      const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
+        n: f.dataset.finding, rejected: f.hasAttribute('data-rejected'),
+        subtasks: [...f.querySelectorAll('[data-subtask]')].map((b) => (b as HTMLElement).innerText.replace(/\s+/g, ' ').trim()),
+      }));
+      await openSheetOf(page, mock, 's-review');
+      await page.until('the findings', () => document.querySelectorAll('#task-sheet [data-finding]').length === 3);
+      assert.deepEqual(await page.eval(items), [
+        { n: '1', rejected: false, subtasks: ['Fix In progress'] },
+        { n: '2', rejected: true, subtasks: [] },
+        { n: '3', rejected: false, subtasks: [] },
+      ]);
+      await shot('findings');
+
+      await page.click('#task-sheet [data-finding="3"] button[aria-expanded]');
+      await page.click('#task-sheet [data-finding="3"] textarea');
+      await page.type('Use config/lazy.ts');
+      await page.click('#task-sheet [data-finding="3"] [data-response="accept"]');
+      const [posted] = await logged(mock, 'the accept', (e) => e.action === 'finding');
+      assert.deepEqual(posted.body, { basis: 't-review-4', finding: 2, kind: 'accept', text: 'Use config/lazy.ts' });
+      await page.until('the subtask under #3', () => document.querySelectorAll('#task-sheet [data-finding="3"] [data-subtask]').length === 1);
+      const [started] = await page.until('the toast', toastsOf, 'info');
+      assert.match(started.text, /Started #3 Fix/);
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet [data-finding="3"] textarea')!.value), '');
+
+      await page.click('#task-sheet [data-finding="1"] [data-response="reject"]');
+      await page.until('#1 rejected', () => document.querySelector('#task-sheet [data-finding="1"]')!.hasAttribute('data-rejected'));
+      await page.click('#task-sheet [data-finding="2"] button', 'Reopen');
+      await page.until('#2 open again', () => !document.querySelector('#task-sheet [data-finding="2"]')!.hasAttribute('data-rejected'));
+      assert.deepEqual((await stateOf(mock, 's-review')).findings.items.map((f: { rejected?: unknown }) => !!f.rejected), [true, false, false]);
+
+      await page.click('#task-sheet [data-subtask="s-review-1"]');
+      await page.until('the subtask page', () => location.pathname === '/s/s-review-1/overview' && !!document.querySelector('#task-sheet [aria-label="Subtask of"]'));
+      const origin = await page.eval(() => document.querySelector<HTMLElement>('#task-sheet [aria-label="Subtask of"]')!.innerText.replace(/\s+/g, ' ').trim());
+      assert.match(origin, /^Subtask · Fix Finding 1: Reviews load twice on a fast scroll of Review the lazy reviews branch Guard it with a ref$/i);
+      await page.click('#task-sheet [aria-label="Subtask of"] button');
+      await page.until('back on the review', () => location.pathname === '/s/s-review/overview');
+
+      await openQueue(page, mock);
+      await page.click('[data-segment][data-session="s-review"]');
+      await page.until('the review at the front', frontIs, 's-review');
+      assert.equal(await page.eval(() => document.querySelectorAll('[data-card] [data-finding]').length), 3);
+      await page.until('the card to settle', still);
+      await shot('findings-card');
+    },
+  },
 ];

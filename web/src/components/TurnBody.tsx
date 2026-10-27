@@ -2,6 +2,7 @@ import type { Session } from '../types.ts';
 import card from './Card.module.css';
 import { Composer } from './Composer.tsx';
 import type { ComposerHooks } from './DecisionBody.tsx';
+import { Findings } from './Findings.tsx';
 import { Column, Headline, LatestReply, Progress } from './Parts.tsx';
 import { PrChip } from './Status.tsx';
 import styles from './TurnBody.module.css';
@@ -9,12 +10,14 @@ import styles from './TurnBody.module.css';
 // Your turn: Claude finished its turn and waits for the next message.
 export function TurnBody({ session, composer }: { session: Session; composer: ComposerHooks }) {
   const { pr } = session;
+  // The findings are what the latest reply says, there one by one to answer.
+  const listed = !!session.findings?.items.length && session.findings.basis === session.lastTurn;
   const failed = pr?.result?.startsWith('FAILED') ? pr.result.split(': ').slice(1).join(': ') : '';
   return (
     <div className={card.cols}>
       <Column side="left">
         <Headline text={session.summary?.text || 'Claude finished its turn'} />
-        <LatestReply text={session.lastMessage} />
+        {listed ? <Findings session={session} compact /> : <LatestReply text={session.lastMessage} />}
         <Progress items={session.summary?.progress ?? []} quiet />
       </Column>
       <Column side="right">

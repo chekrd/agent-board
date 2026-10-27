@@ -9,6 +9,7 @@ import type { MenuAnswer, Session } from '../types.ts';
 import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
+import { Findings, SubtaskOf } from './Findings.tsx';
 import { Icon } from './Icon.tsx';
 import { LatestReply } from './LatestReply.tsx';
 import { MenuBody } from './MenuBody.tsx';
@@ -160,6 +161,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
     <div className={styles.scroll}>
       <div className={styles.grid}>
         <div className={styles.main}>
+          <SubtaskOf session={session} />
           {working && (
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />
@@ -177,6 +179,7 @@ export function Overview({ session, name }: { session: Session; name: string }) 
             </section>
           )}
           {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} name={name} />}
+          <Findings session={session} />
           {!archived && attention === 'focus' && (
             <section className={styles.blocked}>
               <p>Claude is showing <strong>{session.waitingFor ?? 'a prompt'}</strong> in its terminal. Answer it there.</p>

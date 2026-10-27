@@ -9,7 +9,7 @@ import { parseArgs, promisify } from 'node:util';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { answering, closeQuestion, liveTty, type Reply } from '../../server/answering.ts';
 import type { FullDiff } from '../../server/git.ts';
-import type { Session } from '../../server/db.ts';
+import type { Session, SubtaskKind } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
 import { readEntry, watchEntry } from '../../server/uiEntry.ts';
@@ -311,7 +311,29 @@ function removeWorktree(repo: RepoView, path: string) {
 
 const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-advice', 'elaborate']);
 
-const actions: Record<string, (s: Session, body: any) => void | Promise<void>> = {
+const SUBTASK_LABELS: Record<SubtaskKind, string> = { accept: 'Fix', elaborate: 'Explain', 'second-look': 'Second look', reply: 'Reply' };
+
+// As the server's respond(): Reject and Reopen mark the finding, any other answer starts a subtask in its worktree.
+function respond(s: Session, body: any) {
+  const index = Number(body.finding);
+  const f = s.findings?.items[index];
+  if (!s.findings || s.findings.basis !== body.basis || !f) throw new Refusal('these findings were replaced; read them again', 'stale');
+  const kind = body.kind as SubtaskKind | 'reject' | 'reopen';
+  const text = String(body.text ?? '').trim();
+  if (kind === 'reject' || kind === 'reopen') {
+    const items = s.findings.items.map((x, i) => (i === index ? { ...x, rejected: kind === 'reject' ? { reason: text, at: Date.now() } : null } : x));
+    update(s.id, { findings: { ...s.findings, items } });
+    return { id: null };
+  }
+  if (!['accept', 'elaborate', 'second-look', 'reply'].includes(kind)) throw new Error('unknown response');
+  if (kind === 'reply' && !text) throw new Error('write an answer first');
+  const id = startSession(mustRepo(s.repoId), s.worktree, { title: `#${index + 1} ${SUBTASK_LABELS[kind]} · ${f.title}`, prompt: `${f.title}\n\n${text}` });
+  update(id, { parent: { id: s.id, basis: s.findings.basis, finding: index, title: f.title, kind, text } });
+  return { id };
+}
+
+const actions: Record<string, (s: Session, body: any) => unknown> = {
+  finding: respond,
   answer: (s, body) => (args.legacy ? legacyAnswer(s, body) : answers.answer(s.id, body)),
   dismiss: (s, body) => closeQuestion({ get: find, update }, s.id, body.key),
   rename: (s, body) => rename(s, body.title),
@@ -332,7 +354,7 @@ const actions: Record<string, (s: Session, body: any) => void | Promise<void>> =
   },
   archive: (s, body) => update(s.id, { archived: body.archived ?? true }),
   'delete-worktree': (s) => {
-    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
+    if (!mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree)?.isMain && !s.parent) return removeWorktree(mustRepo(s.repoId), s.worktree);
     state.sessions = state.sessions.filter((o) => o !== s);
     push();
   },
@@ -349,7 +371,7 @@ async function sessionAction(id: string, action: string, body: any) {
   if (!act) throw new HttpError(404, 'unknown action');
   const s = must(id);
   if (onDecision.has(action)) checkDecision(s, body.key);
-  await act(s, body);
+  return act(s, body);
 }
 
 const longLived = (repo: RepoView, branch: string) =>
@@ -361,6 +383,7 @@ function deleteLoss(s: Session) {
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
+  if (s.parent) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, subtask: true };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0 };
 }
@@ -381,7 +404,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
     id, repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
-    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], archived: false, createdAt: now, updatedAt: now,
+    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;
@@ -559,8 +582,7 @@ route('GET', '/api/sessions/:id/artifacts/:artifact', ({ params }) => {
 });
 route('GET', '/api/sessions/:id/delete-worktree', ({ params }) => deleteLoss(must(params[0])));
 route('POST', '/api/sessions/:id/:action', async ({ params, body }) => {
-  await sessionAction(params[0], params[1], body);
-  return NONE;
+  return (await sessionAction(params[0], params[1], body)) ?? NONE;
 });
 route('POST', '/api/uploads', ({ raw, headers }) => {
   if (!raw.length) throw new Error('empty file');

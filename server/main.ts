@@ -14,6 +14,7 @@ import { repos, roots, sessions } from './db.ts';
 import { listCommands } from './commands.ts';
 import { Refusal } from './decision.ts';
 import { elaborate } from './explain.ts';
+import { respond } from './findings.ts';
 import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import * as S from './sessions.ts';
@@ -181,6 +182,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'forget': await S.forget(id); break;
     case 'archive': S.archive(id, body.archived ?? true); break;
     case 'delete-worktree': await S.deleteWorktree(id); break;
+    case 'finding': return c.json({ id: await respond(id, body) });
     default: return c.text('unknown action', 404);
   }
   return c.body(null, 204);

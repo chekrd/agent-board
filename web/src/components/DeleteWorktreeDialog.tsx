@@ -13,6 +13,8 @@ interface Loss {
   commits: number;
   // The task runs in the repository's main checkout, which clearing it keeps.
   checkout?: boolean;
+  // A subtask shares its task's worktree, which clearing it keeps.
+  subtask?: boolean;
 }
 
 type Check = { state: 'checking' } | { state: 'done'; loss: Loss } | { state: 'failed'; error: string };
@@ -65,6 +67,7 @@ export function DeleteWorktreeDialog() {
 
   const check = target?.check;
   const loss = check?.state === 'done' ? check.loss : null;
+  const keeps = loss?.checkout || loss?.subtask;
   const lost = loss
     ? [
       loss.files && plural(loss.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
@@ -77,12 +80,14 @@ export function DeleteWorktreeDialog() {
       {target && (
         <>
           <h2 id="delete-worktree-title">
-            {loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
+            {loss?.subtask ? 'Clear the subtask?' : loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
           </h2>
           <code className={styles.path}>{target.session.worktree}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
-          {loss?.checkout ? (
+          {loss?.subtask ? (
+            <p>The subtask works in its task's worktree, which stays as it is, with the changes it made.</p>
+          ) : loss?.checkout ? (
             <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
           ) : loss && (lost.length ? (
             <>
@@ -93,7 +98,7 @@ export function DeleteWorktreeDialog() {
             <p>Nothing is lost: there are no uncommitted changes, and every commit is on a remote or another branch.</p>
           ))}
           <p className={styles.muted}>
-            {loss?.checkout ? "This task's Claude quits, its terminal closes and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
+            {keeps ? "This task's Claude quits, its terminal closes and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
           </p>
           <footer>
             <button type="button" ref={cancel} commandfor="delete-worktree" command="close">Cancel</button>

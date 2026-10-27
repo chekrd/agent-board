@@ -174,6 +174,46 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
     lastMessage: 'The new key is in place. Should I revoke the old one right away?', lastTurn: 't-gone-3',
   })]),
 
+  // A finished review whose findings are answered one by one: the second is rejected, the first has a subtask at work.
+  findings: (now) => {
+    const basis = 't-review-4';
+    const worktree = '~/code/worktrees/lazy-reviews/storefront';
+    return base(now, [...queue(now).filter((s) => s.id !== 's-reviews'), session({
+      id: 's-review', repoId: 1, worktree, tty: '/dev/ttys030', pid: 80500,
+      title: 'Review the lazy reviews branch', firstPrompt: 'Review this branch against main.',
+      status: 'idle', createdAt: now - 40 * MIN, updatedAt: now - 5 * MIN,
+      summary: {
+        text: 'The review of the branch found three issues, none verified yet.', progress: ['Reviewed main...HEAD, 5 files'], learnings: [],
+        decision: null, findings: 3, question: null, basis, at: now - 5 * MIN,
+      },
+      findings: {
+        basis,
+        items: [
+          {
+            title: 'Reviews load twice on a fast scroll', location: 'src/reviews/LazyReviews.tsx:41',
+            detail: 'The `IntersectionObserver` callback calls `load()` without checking whether a load is already running, so a fast scroll past the section starts two requests.',
+          },
+          {
+            title: 'The skeleton has no accessible name', location: 'src/reviews/Skeleton.tsx:8',
+            detail: 'Screen readers announce an empty region while reviews load.', rejected: { reason: 'Covered by the a11y ticket', at: now - 4 * MIN },
+          },
+          {
+            title: 'The 600 px margin is hard-coded', location: '',
+            detail: 'The margin should come from `config/lazy.ts` like the other lazy sections.',
+          },
+        ],
+      },
+      lastMessage: 'The review found 3 issues:\n\n1. **Reviews load twice on a fast scroll** (`src/reviews/LazyReviews.tsx:41`)\n2. **The skeleton has no accessible name** (`src/reviews/Skeleton.tsx:8`)\n3. **The 600 px margin is hard-coded**',
+      lastTurn: basis, diffstat: { files: 5, insertions: 96, deletions: 12 },
+    }), session({
+      id: 's-review-1', repoId: 1, worktree, tty: '/dev/ttys031', pid: 80510,
+      title: '#1 Fix · Reviews load twice on a fast scroll', firstPrompt: 'Fix finding 1.',
+      status: 'working', createdAt: now - 3 * MIN, updatedAt: now - MIN,
+      activity: { step: 'Read src/reviews/LazyReviews.tsx', since: now - 3 * MIN },
+      parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'accept', text: 'Guard it with a ref' },
+    })]);
+  },
+
   zero: (now) => base(now, queue(now).filter((s) => s.status === 'working' || (s.status === 'exited' && !s.archived))),
   empty: (now) => base(now, []),
   norepos: () => ({ roots: [], repos: [], sessions: [], usage: null, flags: {} }),

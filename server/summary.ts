@@ -33,8 +33,16 @@ const schema = {
       },
       required: ['problem', 'brief', 'context', 'options'],
     },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string' }, detail: { type: 'string' }, location: { type: 'string' } },
+        required: ['title', 'detail', 'location'],
+      },
+    },
   },
-  required: ['headline', 'progress', 'learnings', 'decision'],
+  required: ['headline', 'progress', 'learnings', 'decision', 'findings'],
 };
 
 let looping = false;
@@ -69,7 +77,7 @@ const due = (s: Session) =>
 
 const fresh = (s: Session, latest: string) =>
   s.summary?.basis === latest && s.summary.question === (s.question?.toolUseId ?? null) && !!s.summary.learnings &&
-  (!s.summary.decision || s.summary.decision.context !== undefined);
+  (!s.summary.decision || s.summary.decision.context !== undefined) && (s.summary.findings !== undefined || s.status === 'exited');
 
 // Only the turns since the previous summary, so a long session costs the same as a short one. Claude's
 // latest message always goes in: it is what any open decision is read from.
@@ -123,7 +131,11 @@ Reply with:
   - problem: one plain sentence naming what has to be decided.
   - brief: 2 to 4 sentences of plain text: the situation, the trade-off, and which way Claude leans.
   - context: Markdown with the rest of what the decision needs. When the choice is among items, proposals, files or findings in Claude's message, list every one of them with its number if it has one, what it is and why it matters, one tight line each. "" when the brief already says it all.
-  - options: each concrete choice Claude offered. label: short button text. description: one plain sentence saying exactly what happens if it is chosen, naming the items it covers rather than only their numbers. [] when Claude needs free text.`}`;
+  - options: each concrete choice Claude offered. label: short button text. description: one plain sentence saying exactly what happens if it is chosen, naming the items it covers rather than only their numbers. [] when Claude needs free text.`}
+- findings: when Claude's latest message lists separate findings the developer can act on one by one (the issues a code review found, bugs, risks or problems it reports), one entry per finding, in Claude's order; otherwise []. Never a plan's steps, changes Claude made, or options of a decision. Each finding gets acted on alone by an agent that has not seen the conversation, so each must stand on its own:
+  - title: a short plain-text name for it, under 80 characters, without its number.
+  - detail: Markdown with everything Claude said about it: what is wrong, why it matters, the scenario and the suggested fix, keeping names of files, functions and symbols in code spans.
+  - location: the file and line it points at, as Claude gave it (e.g. "src/a.ts:26"), several separated by ", "; "" when it names none.`;
 }
 
 async function summarize(s: Session, turns: Turn[]) {
@@ -151,8 +163,13 @@ async function summarize(s: Session, turns: Turn[]) {
         options: s.question ? [] : options,
       }
       : null;
+    const findings = (Array.isArray(r.findings) ? r.findings : [])
+      .map((f: any) => ({ title: String(f?.title ?? '').trim(), detail: String(f?.detail ?? '').trim(), location: String(f?.location ?? '').trim() }))
+      .filter((f: { title: string }) => f.title);
+    // A summary rewritten from the same message keeps what the developer did with its findings.
+    if (findings.length && s.findings?.basis !== basis) sessions.update(s.id, { findings: { basis, items: findings } });
     const strings = (v: unknown) => (Array.isArray(v) ? v.map(String).map((x) => x.trim()).filter(Boolean) : []);
-    sessions.update(s.id, { summary: { text, progress: strings(r.progress), learnings: strings(r.learnings), decision, question: s.question?.toolUseId ?? null, basis, at: Date.now() } });
+    sessions.update(s.id, { summary: { text, progress: strings(r.progress), learnings: strings(r.learnings), decision, findings: findings.length, question: s.question?.toolUseId ?? null, basis, at: Date.now() } });
     failed.delete(s.id);
     notify();
   } catch (err) {

@@ -11,7 +11,7 @@ import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type Activity, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { checkDecision } from './decision.ts';
-import { repos, sessions, type Session, type SessionStatus } from './db.ts';
+import { repos, sessions, type Parent, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
 import { CLAUDE } from './headless.ts';
@@ -40,12 +40,13 @@ async function launch(id: string, cwd: string, args: string[], setup?: string | 
 }
 
 // With a prompt, Claude starts on it at once; until it registers, idle would show a finished turn that never was.
-export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null }) {
+export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null; parent?: Parent }) {
   const id = randomUUID();
   sessions.insert({
     id, repoId: opts.repoId, worktree: opts.worktree, cwd: opts.worktree, pid: null, tty: null,
     title: opts.title || null, firstPrompt: opts.prompt || null, status: opts.prompt ? 'working' : 'idle',
   });
+  if (opts.parent) sessions.update(id, { parent: opts.parent });
   try {
     await launch(id, opts.worktree, ['--session-id', id, ...(opts.prompt ? ['--', opts.prompt] : [])], opts.setup);
   } catch (err) {
@@ -377,6 +378,7 @@ export async function deleteWorktreeLoss(id: string) {
   const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
   if (!worktree) throw new Error('worktree not found');
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true };
+  if (s.parent) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, subtask: true };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
@@ -384,13 +386,14 @@ export async function deleteWorktreeLoss(id: string) {
 }
 
 // Clear task: in a worktree of its own, everything in it goes, the worktree and its branch too. In the main checkout,
-// which other Claudes may share, only this session's Claude and its tab go, with the task.
+// which other Claudes may share, and for a subtask, which shares its task's worktree, only this session's Claude and
+// its tab go, with the task.
 export async function deleteWorktree(id: string) {
   const s = must(id);
   const repo = repoView(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (!repo || !worktree) throw new Error('worktree not found');
-  if (!worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
+  if (!worktree.isMain && !s.parent) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
   stopAdvice(id);
   const pid = s.pid && alive(s.pid) ? s.pid : null;
   const tty = pid ? (s.tty ?? await ttyOf(pid)) : null;
