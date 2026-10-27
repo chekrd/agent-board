@@ -56,7 +56,7 @@ export async function summarizeStale() {
       if (running.size >= MAX_PARALLEL) return;
       const s = sessions.get(id);
       if (!s || !due(s)) continue;
-      const meta = await conversationMeta(s.cwd, s.id);
+      const meta = await conversationMeta(s.cwd, s.conversation);
       const latest = meta?.turns.at(-1);
       const current = sessions.get(id);
       if (!latest || latest.role !== 'claude' || !current || !due(current) || fresh(current, latest.id)) continue;

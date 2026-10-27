@@ -252,10 +252,24 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               <dt title="The terminal device Claude runs on">Terminal</dt>
               <dd title="The terminal device Claude runs on">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
               <dt title="Claude Code's session id; claude --resume takes it">Session</dt>
-              <dd><Copy value={session.id} what="Session id" title="Claude Code's session id; claude --resume takes it" /></dd>
+              <dd><Copy value={session.conversation} what="Session id" title="Claude Code's session id; claude --resume takes it" /></dd>
             </dl>
           </section>
           <Subtasks session={session} />
+          {session.history.length > 0 && (
+            <section>
+              <h3 className={styles.label} title="The conversations this task had before a /clear started the one it has now; claude --resume takes their ids">Earlier conversations</h3>
+              <ul className={styles.history}>
+                {session.history.toReversed().map((h) => (
+                  <li key={h.id}>
+                    <span>Cleared {ago(h.until)}</span>
+                    {h.lastMessage && <p>{h.lastMessage}</p>}
+                    <Copy value={h.id} what="Session id" title="claude --resume takes it" />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {artifacts.length > 0 && (
             <section>
               <h3 className={styles.label} title="Visual explanations Claude made in this session">Artifacts</h3>

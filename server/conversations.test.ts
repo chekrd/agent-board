@@ -174,3 +174,10 @@ test('huge inline lines are skipped and the tail grows back to the last prompt',
   assert.equal(m.ask?.toolUseId, 'q-far');
   assert.equal(m.activity?.step, 'agent-board: ask_human');
 });
+
+test('a conversation that /clear started says so; one that only mentions /clear later does not', async () => {
+  const caveat = { type: 'user', isMeta: true, uuid: `m${n++}`, timestamp: at(0), message: { content: '<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>' } };
+  const clear = prompt('<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>');
+  assert.equal((await meta([caveat, clear, prompt('Now the tests', 1)])).cleared, true);
+  assert.equal((await meta([prompt('Fix the login'), clear])).cleared, false);
+});

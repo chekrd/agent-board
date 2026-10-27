@@ -11,6 +11,7 @@ import { listCommands } from './commands.ts';
 import { alive, conversationMeta, liveConversations, parseMenu, transcriptFile, type Activity, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { checkDecision } from './decision.ts';
+import { handOver, leftBy, taskOf } from './handover.ts';
 import { repos, sessions, type Parent, type Session, type SessionStatus } from './db.ts';
 import { quote } from './env.ts';
 import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
@@ -57,17 +58,27 @@ export async function startClaude(opts: { repoId: number; worktree: string; prom
   return id;
 }
 
+// `continueId` names a conversation; a task that ran it, now or before a /clear, picks it up again.
 export async function continueConversation(opts: { repoId: number; worktree: string; continueId: string; cwd?: string }) {
   const id = opts.continueId;
   const cwd = opts.cwd ?? opts.worktree;
-  const existing = sessions.get(id);
+  const existing = taskOf(sessions.all(), id);
   if (existing && existing.status !== 'exited') {
-    await focus(id);
-    return id;
+    await focus(existing.id);
+    return existing.id;
   }
   if ((await liveConversations()).has(id)) throw new Error('this conversation is open in a terminal that is not a Ghostty tab');
-  const meta = await conversationMeta(cwd, id);
+  const meta = await conversationMeta(existing?.cwd ?? cwd, id);
   if (!meta) throw new Error('conversation not found in this worktree');
+  if (existing) {
+    sessions.update(existing.id, {
+      ...(existing.conversation !== id && handOver(existing, id, Date.now())),
+      pid: null, tty: null, status: 'idle', archived: false,
+    });
+    await launch(existing.id, existing.cwd, ['--resume', id]);
+    notify();
+    return existing.id;
+  }
   sessions.insert({
     id, repoId: opts.repoId, worktree: opts.worktree, cwd, pid: null, tty: null,
     title: meta.title, firstPrompt: meta.firstPrompt, status: 'idle',
@@ -112,6 +123,13 @@ function activityOf(p: LiveProcess | undefined, activity: Activity | null, backg
   return { step, since: activity?.since ?? Date.now(), background, between: true };
 }
 
+// Only a conversation that /clear started takes over the task its Claude left; one that /resume opened does not, nor a
+// new one without its transcript yet, which /resume never opens.
+const startedByClear = async (cwd: string, conversation: string) => {
+  const meta = await conversationMeta(cwd, conversation);
+  return !meta || meta.cleared;
+};
+
 const ignored = new Map<string, number>();
 const deleting = new Set<string>();
 
@@ -137,7 +155,7 @@ async function adopt(id: string, p: LiveProcess) {
 }
 
 async function readTranscript(s: Session, p?: LiveProcess) {
-  const meta = await conversationMeta(s.cwd, s.id);
+  const meta = await conversationMeta(s.cwd, s.conversation);
   if (!meta) return false;
   const patch: Parameters<typeof sessions.update>[1] = {};
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
@@ -183,23 +201,37 @@ async function syncLive() {
   const live = await liveConversations();
   const livePids = new Set([...live.values()].map((p) => p.pid));
   let changed = false;
-  for (const [id, p] of live) {
-    const s = sessions.get(id);
+  for (const [conversation, p] of live) {
+    let s = taskOf(sessions.all(), conversation);
     if (!s) {
-      changed = (await adopt(id, p)) || changed;
-      continue;
+      const left = leftBy(sessions.all(), p.pid, new Set(live.keys()));
+      if (!left || !(await startedByClear(p.cwd, conversation))) {
+        changed = (await adopt(conversation, p)) || changed;
+        continue;
+      }
+      sessions.update(left.id, handOver(left, conversation, Date.now()));
+      s = sessions.get(left.id)!;
+      changed = true;
+    } else if (s.conversation !== conversation) {
+      sessions.update(s.id, handOver(s, conversation, Date.now()));
+      changed = true;
+    }
+    // A conversation that left its task by /resume and came back brings the task back.
+    if (s.status === 'exited' && s.archived && !s.resolution) {
+      sessions.update(s.id, { archived: false });
+      changed = true;
     }
     const status = statusOf(p, s.activity?.background?.length);
     if (s.pid !== p.pid || s.status !== status || s.waitingFor !== p.waitingFor) {
-      sessions.update(id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
-      if (s.status === 'working' && status !== 'working') void refreshDiffstat(id);
+      sessions.update(s.id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
+      if (s.status === 'working' && status !== 'working') void refreshDiffstat(s.id);
       changed = true;
     }
   }
   let starting: Set<string> | undefined;
   for (const s of sessions.all()) {
-    if (s.status === 'exited' || live.has(s.id)) {
-      if (s.status !== 'exited') changed = (await readTranscript(s, live.get(s.id))) || changed;
+    if (s.status === 'exited' || live.has(s.conversation)) {
+      if (s.status !== 'exited') changed = (await readTranscript(s, live.get(s.conversation))) || changed;
       continue;
     }
     // Claude registers itself only once past prompts such as trusting a new folder, which a
@@ -213,7 +245,7 @@ async function syncLive() {
       continue;
     }
     if (s.pid === null && Date.now() - s.updatedAt < STARTUP_GRACE_MS) continue;
-    // The process lives on in another conversation after /clear or /resume; this one is done.
+    // The process lives on in another conversation after a /resume; this task is done. A /clear took the task with it.
     const replaced = s.pid !== null && livePids.has(s.pid);
     sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, ...(replaced && { archived: true }) });
     await readTranscript(s);
@@ -229,7 +261,7 @@ async function syncLive() {
 export async function focus(id: string) {
   await answers.settled(id);
   const s = must(id);
-  if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: id });
+  if (s.status === 'exited') await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: s.conversation });
   else await terminal.show(s.tty, s.id, s.cwd);
 }
 
@@ -260,7 +292,7 @@ export async function rename(id: string, title: string) {
   const name = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!name) throw new Error('the name is empty');
   if (s.status === 'exited') {
-    const file = await transcriptFile(s.cwd, s.id);
+    const file = await transcriptFile(s.cwd, s.conversation);
     if (await stat(file).catch(() => null)) await appendFile(file, `${JSON.stringify({ type: 'custom-title', customTitle: name, sessionId: s.id })}\n`);
   } else {
     await answers.type(id, `/rename ${name}`);
@@ -272,8 +304,9 @@ export async function rename(id: string, title: string) {
 // Posted by the PreToolUse hook that `pnpm claude:connect` installs, just before the dialog opens.
 export function menuOpened(hook: { session_id?: string; tool_use_id?: string; tool_input?: unknown }) {
   const menu = parseMenu(String(hook.tool_use_id ?? ''), hook.tool_input);
-  if (!menu || !hook.session_id || !sessions.get(hook.session_id)) return;
-  sessions.update(hook.session_id, { menu });
+  const s = hook.session_id ? sessions.byConversation(hook.session_id) : undefined;
+  if (!menu || !s) return;
+  sessions.update(s.id, { menu });
   notify();
 }
 

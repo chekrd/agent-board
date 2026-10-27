@@ -11,6 +11,7 @@ import { answering, closeQuestion, liveTty, type Reply } from '../../server/answ
 import type { FullDiff } from '../../server/git.ts';
 import type { Session, SubtaskKind } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
+import { handOver, taskOf } from '../../server/handover.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
 import { readEntry, watchEntry } from '../../server/uiEntry.ts';
 import type { RepoView } from '../../server/workspace.ts';
@@ -411,7 +412,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
   const id = o.id ?? randomUUID();
   const working = !!o.prompt;
   state.sessions.push({
-    id, repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
+    id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null, archived: false, createdAt: now, updatedAt: now,
@@ -576,13 +577,13 @@ route('DELETE', '/api/worktrees', ({ body }) => {
 route('POST', '/api/sessions', ({ body }) => {
   const repo = mustRepo(body.repoId);
   if (!body.continueId) return { id: startSession(repo, body.worktree, { prompt: body.prompt }) };
-  const existing = find(body.continueId);
+  const existing = taskOf(state.sessions, body.continueId);
   if (existing && existing.status !== 'exited') return { id: existing.id };
   const conversation = repo.worktrees.find((w) => w.path === body.worktree)?.conversations.find((c) => c.id === body.continueId);
   if (!existing && !conversation) throw new Error('conversation not found in this worktree');
-  if (existing) update(existing.id, { status: 'idle', pid: 41_500, tty: '/dev/ttys042' });
-  else startSession(repo, body.worktree, { id: body.continueId, title: conversation!.title, prompt: null });
-  return { id: body.continueId };
+  if (!existing) return { id: startSession(repo, body.worktree, { id: body.continueId, title: conversation!.title, prompt: null }) };
+  update(existing.id, { ...(existing.conversation !== body.continueId && handOver(existing, body.continueId, Date.now())), status: 'idle', pid: 41_500, tty: '/dev/ttys042', archived: false });
+  return { id: existing.id };
 });
 route('POST', '/api/shell', () => NONE);
 route('GET', '/api/sessions/:id/artifacts/:artifact', ({ params }) => {
@@ -642,6 +643,24 @@ route('POST', '/mock/add', ({ body }) => {
   if (flags) state.flags[id] = flags;
   push();
   return s;
+});
+// As the server's sync when a task's Claude runs /clear: the new conversation takes the task over.
+route('POST', '/mock/clear', ({ body }) => {
+  const s = must(body.id);
+  update(s.id, { ...handOver(s, String(body.conversation ?? randomUUID()), Date.now()), status: 'idle' });
+  return s;
+});
+// As the server's sync when a task's Claude runs /resume into conversation `to`: a task that ran it comes back with
+// the process, any other is a new task, and the task it left is done.
+route('POST', '/mock/resume', ({ body }) => {
+  const s = must(body.id);
+  const to = String(body.to);
+  const known = taskOf(state.sessions, to);
+  if (known === s) throw new Error('the task runs that conversation already');
+  if (known) update(known.id, { ...(known.conversation !== to && handOver(known, to, Date.now())), pid: s.pid, tty: s.tty, status: 'idle', archived: !!known.resolution && known.archived });
+  else startSession(mustRepo(s.repoId), s.worktree, { id: to, prompt: null });
+  update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, archived: true });
+  return known ?? find(to);
 });
 route('POST', '/mock/advice', ({ body }) => {
   setAdvice(must(body.id), body);

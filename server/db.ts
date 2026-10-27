@@ -53,7 +53,9 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+
+db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -177,8 +179,18 @@ export interface Parent {
   text: string;
 }
 
+// A conversation the task had before a /clear started the one it has now.
+export interface EarlierConversation {
+  id: string;
+  lastMessage: string | null;
+  until: number;
+}
+
+// A task keeps its id for good; `conversation` is the Claude Code conversation it runs now, which /clear replaces.
 export interface Session {
   id: string;
+  conversation: string;
+  history: EarlierConversation[];
   repoId: number;
   worktree: string;
   cwd: string;
@@ -226,6 +238,8 @@ const toAdvice = (a: Row): Advice => (a.key ? a : { ...a, key: `q:${a.toolUseId}
 
 const toSession = (r: Row): Session => ({
   id: r.id,
+  conversation: r.conversation ?? r.id,
+  history: r.history ? JSON.parse(r.history) : [],
   repoId: r.repo_id,
   worktree: r.worktree,
   cwd: r.cwd,
@@ -311,6 +325,8 @@ const columns: Record<string, string> = {
   parent: 'parent',
   resolution: 'resolution',
   archived: 'archived',
+  conversation: 'conversation',
+  history: 'history',
   pid: 'pid',
   tty: 'tty',
 };
@@ -321,14 +337,18 @@ export const sessions = {
     const r = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
     return r ? toSession(r) : undefined;
   },
+  byConversation: (conversation: string) => {
+    const r = db.prepare('SELECT * FROM sessions WHERE conversation = ?').get(conversation);
+    return r ? toSession(r) : undefined;
+  },
   insert: (s: Pick<Session, 'id' | 'repoId' | 'worktree' | 'cwd' | 'pid' | 'tty' | 'title' | 'firstPrompt' | 'status'>) => {
     const now = Date.now();
-    db.prepare(`INSERT INTO sessions (id, repo_id, worktree, cwd, pid, tty, title, first_prompt, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    db.prepare(`INSERT INTO sessions (id, conversation, repo_id, worktree, cwd, pid, tty, title, first_prompt, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
-      .run(s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
+      .run(s.id, s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'resolution' | 'archived' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'resolution' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

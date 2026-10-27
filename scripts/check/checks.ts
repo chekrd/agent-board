@@ -5084,4 +5084,58 @@ export const checks: Check[] = [
       await until('the task and its subtasks gone', async () => !(await mock.get('/api/state')).sessions.some((s: { id: string }) => s.id.startsWith('s-review')));
     },
   },
+  {
+    name: 'P8.clear /clear in a subtask with a name, a parent, a subtask of its own and an artifact keeps it one task: the Wall gains no tile, the open page stays on it with its name, its task, its subtask and its artifact, the Session fact names the new conversation and Earlier conversations the old one; a /resume into a conversation another task ran brings that task back and merges nothing',
+    scenario: 'findings',
+    async run({ page, mock, shot }) {
+      const wallTiles = () => [...document.querySelectorAll<HTMLElement>('[data-tile]')].map((t) => t.dataset.session).sort();
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      const before = await page.eval(wallTiles);
+      await mock.post('/mock/patch', { id: 's-review-1', patch: { artifacts: [{ id: 'art-guard', title: 'Where the second load starts', at: Date.now() - 60_000 }] } });
+
+      await openSheetOf(page, mock, 's-review-1');
+      await page.until('the subtask list', () => !!document.querySelector('#task-sheet [data-subtask-list]'));
+      await mock.post('/mock/clear', { id: 's-review-1', conversation: 'c-fresh' });
+      await page.until('the new conversation in the facts', () =>
+        [...document.querySelectorAll('#task-sheet dt')].find((d) => d.textContent === 'Session')?.nextElementSibling?.querySelector('code')?.textContent === 'c-fresh');
+      const page1 = await page.eval(() => {
+        const sheet = document.querySelector<HTMLElement>('#task-sheet')!;
+        const label = (name: string) => [...sheet.querySelectorAll('h3')].find((h) => h.textContent?.startsWith(name))?.closest('section');
+        return {
+          path: location.pathname,
+          title: sheet.innerText.includes('#1 Fix · Reviews load twice on a fast scroll'),
+          task: sheet.innerText.includes('Review the lazy reviews branch'),
+          subtasks: sheet.querySelector('[data-subtask-list]')?.textContent?.includes('The guard is not reset on unmount'),
+          artifacts: [...(label('Artifacts')?.querySelectorAll('strong') ?? [])].map((s) => s.textContent),
+          earlier: [...(label('Earlier conversations')?.querySelectorAll('li') ?? [])].map((li) => li.querySelector('code')?.textContent),
+        };
+      });
+      assert.deepEqual(page1, {
+        path: '/s/s-review-1/overview', title: true, task: true, subtasks: true, artifacts: ['Where the second load starts'], earlier: ['s-review-1'],
+      });
+      await shot('cleared-task');
+      const state = await mock.get('/api/state');
+      const ids = state.sessions.map((s: { id: string }) => s.id);
+      assert.ok(!ids.includes('c-fresh'), 'the new conversation became a task of its own');
+      assert.equal(state.sessions.find((s: { id: string }) => s.id === 's-review-1-1').parent.id, 's-review-1');
+
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      assert.deepEqual(await page.eval(wallTiles), before);
+
+      await mock.post('/mock/patch', { id: 's-review-2', patch: { status: 'exited', pid: null, archived: true } });
+      await mock.post('/mock/resume', { id: 's-review-1-1', to: 's-review-2' });
+      const after = await mock.get('/api/state');
+      const pick = (id: string) => {
+        const s = after.sessions.find((x: { id: string }) => x.id === id);
+        return { conversation: s.conversation, history: s.history.length, status: s.status, archived: s.archived };
+      };
+      assert.deepEqual([pick('s-review-2'), pick('s-review-1-1')], [
+        { conversation: 's-review-2', history: 0, status: 'idle', archived: false },
+        { conversation: 's-review-1-1', history: 0, status: 'exited', archived: true },
+      ]);
+      assert.equal(after.sessions.length, state.sessions.length);
+    },
+  },
 ];

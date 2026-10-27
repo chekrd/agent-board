@@ -33,6 +33,7 @@ interface Meta {
   title: string | null;
   firstPrompt: string | null;
   interactive: boolean;
+  cleared: boolean;
   lastMessage: string | null;
   activity: Activity | null;
   // Id and description of each background task still running.
@@ -125,6 +126,12 @@ function promptText(entry: Record<string, any>, max = 500): string | null {
   const text = typeof content === 'string' ? content : Array.isArray(content) ? content.find((c) => c.type === 'text')?.text : null;
   if (!text || text.startsWith('<')) return null;
   return text.trim().slice(0, max);
+}
+
+// /clear writes itself into the conversation it starts, ahead of any prompt.
+function startedByClear(head: Record<string, any>[]) {
+  const content = head.find((e) => e.type === 'user' && !e.isMeta && !e.isSidechain)?.message?.content;
+  return typeof content === 'string' && content.startsWith('<command-name>/clear</command-name>');
 }
 
 const blocks = (entry: Record<string, any>): Record<string, any>[] =>
@@ -291,6 +298,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     title: entries.findLast((e) => e.type === 'custom-title')?.customTitle ?? entries.findLast((e) => e.type === 'ai-title')?.aiTitle ?? null,
     firstPrompt: head.map((e) => promptText(e)).find(Boolean) ?? null,
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
+    cleared: startedByClear(head),
     lastMessage: lastMessage(tail),
     activity: activity(tail),
     background: background(tail, cached?.background),

@@ -7,7 +7,7 @@ import { claim, decisionKey } from './decision.ts';
 import { PartlyTyped, type Keystroke } from './ghostty.ts';
 
 const session = (patch: Partial<Session>): Session => ({
-  id: 's', repoId: 1, worktree: '/w', cwd: '/w', pid: 1, tty: '/dev/ttys001', title: null, firstPrompt: null, status: 'idle',
+  id: 's', conversation: 's', history: [], repoId: 1, worktree: '/w', cwd: '/w', pid: 1, tty: '/dev/ttys001', title: null, firstPrompt: null, status: 'idle',
   question: null, rank: null, rankReason: null, diffstat: null, lastMessage: null, lastTurn: 't2', waitingFor: null,
   dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null,
   archived: false, createdAt: 0, updatedAt: 0, ...patch,

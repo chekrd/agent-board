@@ -221,7 +221,7 @@ function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove, childr
 const label = (c: Conversation) => c.title ?? c.firstPrompt?.split('\n')[0] ?? c.id.slice(0, 8);
 
 function ConversationAction({ conversation: c, sessions, onStart, primary = false }: { conversation: Conversation; sessions: Session[]; onStart: Start; primary?: boolean }) {
-  const managed = sessions.find((s) => s.id === c.id);
+  const managed = sessions.find((s) => s.conversation === c.id);
   const look = primary ? styles.inkSm : styles.tiny;
   const hint = primary ? `: ${label(c)}` : '';
   if (managed && managed.status !== 'exited') {
@@ -232,8 +232,8 @@ function ConversationAction({ conversation: c, sessions, onStart, primary = fals
         title={`Show its terminal${hint}`}
         onClick={() => {
           closeDialog();
-          openSheet(c.id);
-          openTerminal(c.id).catch(reportError);
+          openSheet(managed.id);
+          openTerminal(managed.id).catch(reportError);
         }}
       >
         Terminal
