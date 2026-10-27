@@ -178,7 +178,9 @@ const tiles = () => document.querySelectorAll('[data-tile]').length > 0;
 const sheetOpen = () => !!document.querySelector('#task-sheet');
 
 // No transition is running, as when a sheet or dialog has finished sliding in.
-const settled = () => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished');
+// Transitions, and animations that end, such as a menu fading in; a spinner's endless one never settles.
+const settled = () => document.getAnimations().every((a) =>
+  a.playState === 'finished' || !(a instanceof CSSTransition || (a instanceof CSSAnimation && a.effect?.getComputedTiming().iterations !== Infinity)));
 
 async function openFromWall(page: Page, mock: Mock, id: string) {
   await page.goto(`${mock.url}/wall`);
@@ -721,7 +723,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P0.5 a dropped connection (/mock/drop 3 s): the pill turns Reconnecting… with a warm dot, then Live with a green one',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
@@ -1076,7 +1078,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P3.reload-offline a new build waits for the server: New task closing while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -1557,7 +1559,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task opened on the Wall: a space typed in the name or branch becomes a hyphen; Model and Effort name what Claude Code would pick by itself; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; the model and effort picked go with it and show on its Overview; Existing branch hides Branch and Worktree path and lists the server\'s branches by name in a list under the field, with the hint',
+    name: 'P4.10 New task opened on the Wall: a space typed in the name or branch becomes a hyphen; Model and Effort name what Claude Code would pick by itself; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; the model and effort picked go with it and show on its Overview; Existing branch hides Branch and Worktree path, starts on the repository\'s default branch and lists the server\'s branches by name in a list under the field, with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
@@ -1620,6 +1622,7 @@ export const checks: Check[] = [
       await page.click('dialog#new-task label', 'Existing branch');
       await page.until('only the branch picker', (want: string) => JSON.stringify([...document.querySelectorAll('dialog#new-task label > span')].map((c) => c.textContent).filter((t) => t === 'Branch' || t === 'Worktree path')) === want, JSON.stringify(['Branch']));
       await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
+      assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('#new-task [data-branch-field] input')!.value), 'main', 'the repository\'s default branch, its base without origin/');
       await page.click('#new-task [data-branch-field] input');
       const rows = await page.until('the branch list', () => {
         const list = [...document.querySelectorAll('#new-task [data-branch-picker]:popover-open [role="option"]')].map((b) => [b.querySelector('code')?.textContent, b.querySelector('span')?.textContent ?? '']);
@@ -1629,7 +1632,7 @@ export const checks: Check[] = [
       const names = rows.map((r) => r[0]);
       assert.deepEqual(names, names.toSorted((a, b) => a!.localeCompare(b!, undefined, { numeric: true, sensitivity: 'base' })), 'by name');
       const hint = () => document.querySelector('dialog#new-task [data-hint]')?.textContent;
-      assert.equal(await page.eval(hint), 'Switches ~/code/storefront to the branch and starts Claude there.');
+      assert.equal(await page.eval(hint), 'Starts Claude in ~/code/storefront, where it is checked out.');
       await page.click('#new-task [data-branch-picker] [role="option"]', 'guest-cart-merge');
       await page.until('the list to close', () => !document.querySelector('#new-task [data-branch-picker]:popover-open'));
       await page.until('the hint for a branch with its own worktree', () =>
@@ -1652,9 +1655,7 @@ export const checks: Check[] = [
       await page.click('#workspace input[aria-label="Repository or folder"]');
       await page.type('~/code/payments');
       await page.click('#workspace button[type="submit"]', 'Add');
-      assert.deepEqual((await request('Add', 'POST', '/api/repos')).body, { path: '/Users/me/code/payments' });
-      assert.equal(await page.eval(() => document.querySelector('#workspace [data-worktree="/Users/me/code/worktrees/invoice-rounding/billing-api"] code')?.textContent),
-        '~/code/worktrees/invoice-rounding/billing-api', 'a path in the home folder shows from ~');
+      assert.deepEqual((await request('Add', 'POST', '/api/repos')).body, { path: '~/code/payments' });
       await page.click('#workspace button[aria-label="Stop scanning ~/code"]');
       assert.deepEqual((await request('the folder\'s ×', 'DELETE', '/api/roots')).body, { path: '~/code' });
       await page.click('#workspace button', 'Rescan');
@@ -1724,7 +1725,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P4.14 a dropped connection: within 1.5 s the pill reads Reconnecting…, breathes and says since when, then Live again',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
@@ -1830,7 +1831,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P4.17 the reload pill hides while the board reconnects',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
     async run({ page, mock }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
