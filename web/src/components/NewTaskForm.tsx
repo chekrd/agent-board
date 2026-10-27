@@ -344,7 +344,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         ) : (
           <label className={styles.field} title="Names the worktree folder, and the branch unless you set one">
             <span className={styles.caption}>Name</span>
-            <input value={f.name} onChange={(e) => edit({ name: e.currentTarget.value })} placeholder="fix-login-redirect" spellCheck={false} autoComplete="off" />
+            <input value={f.name} onChange={(e) => edit({ name: e.currentTarget.value.replace(/\s+/g, '-') })} placeholder="fix-login-redirect" spellCheck={false} autoComplete="off" />
           </label>
         )}
         <button type="button" className={styles.more} aria-expanded={f.more} onClick={() => edit({ more: !f.more })}>

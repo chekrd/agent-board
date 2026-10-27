@@ -1527,7 +1527,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task opened on the Wall: ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches by name in a list under the field, with the hint',
+    name: 'P4.10 New task opened on the Wall: a space typed in the name becomes a hyphen; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches by name in a list under the field, with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
@@ -1537,7 +1537,8 @@ export const checks: Check[] = [
       await page.type('Fix the login redirect');
       await pickRepo(page, 'storefront');
       await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
-      await page.type('fix-login');
+      await page.type('fix login');
+      assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('dialog#new-task input[placeholder="fix-login-redirect"]')!.value), 'fix-login', 'a space in the name became a hyphen');
       await shot('new-task-wall');
       await page.eval(submit);
       const [created] = await logged(mock, 'the new task', (e) => e.method === 'POST' && e.path === '/api/worktrees');
