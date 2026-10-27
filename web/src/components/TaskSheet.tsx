@@ -94,15 +94,15 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
           </span>
           <PrChip pr={session.pr} status={session.status} />
         </div>
+        <nav className={styles.tabs} role="tablist" aria-label="Task">
+          {tabs.map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={t.key === current} onClick={() => showTab(t.key)}>
+              {t.label} <kbd>{t.kbd}</kbd>
+            </button>
+          ))}
+        </nav>
         <SessionMenu session={session} worktree={worktree} name={name} />
       </header>
-      <nav className={styles.tabs} role="tablist" aria-label="Task">
-        {tabs.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={t.key === current} onClick={() => showTab(t.key)}>
-            {t.label} <kbd>{t.kbd}</kbd>
-          </button>
-        ))}
-      </nav>
       <div className={styles.panel} role="tabpanel">
         {current === 'overview' && <Overview session={session} name={name} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
