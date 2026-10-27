@@ -96,7 +96,7 @@
       &:hover { color: var(--text); }
       &:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
     }
-    > ol { margin-top: 6px; }
+    > ol, > ul { margin-top: 6px; }
   }
 
   .reject { margin-left: auto; color: var(--danger); }

@@ -5075,6 +5075,7 @@ export const checks: Check[] = [
       assert.match(solved.text, /Solved #1 Explain/);
       assert.deepEqual((await stateOf(mock, 's-review-1-1')).resolution?.state, 'solved');
       await page.until('listed solved', () => !!document.querySelector('#task-sheet [data-subtask-list] li[data-resolution="solved"]'));
+      assert.equal(await page.eval(() => document.querySelector<HTMLDetailsElement>('#task-sheet [data-settled-subtasks]')?.open), false, 'a solved subtask folds away');
       await page.until('the fix\'s finding settled by it', () => document.querySelector('#task-sheet [data-findings] [data-settled-count]')?.textContent === '· all 1 settled');
       assert.equal(await page.eval(() => document.querySelector('#task-sheet [data-finding="1"][data-settled="solved"] [class*="rejected"]')!.textContent), 'Solved in its subtask');
       await page.click('#task-sheet header [data-parent] button');
@@ -5087,7 +5088,9 @@ export const checks: Check[] = [
       await page.until('the review in its place', () => location.pathname === '/s/s-review/overview');
       await page.until('2 open', () => document.querySelector('#task-sheet header [data-open-count]')?.textContent === '2 of 4 subtasks open');
       assert.equal(await text('#task-sheet [data-open-count]:not(header *)'), '· 2 of 4 open');
-      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] li[data-resolution]')].map((l) => l.dataset.resolution)), ['solved', 'dropped']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-settled-subtasks] li')].map((l) => `${l.querySelector<HTMLElement>('[data-subtask]')!.dataset.subtask}:${l.dataset.resolution}:${l.dataset.depth}`)), ['s-review-1-1:solved:0', 's-review-2:dropped:0']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] > ul li')].map((l) => l.dataset.resolution ?? 'open')), ['open', 'open'], 'the open ones stay above');
+      await page.click('#task-sheet [data-settled-subtasks] summary');
       await shot('subtasks-settled');
       const rest = (await mock.get('/api/state')).sessions.filter((s: { parent: unknown; resolution: unknown }) => s.parent && !s.resolution);
       assert.equal(rest.length, 2);

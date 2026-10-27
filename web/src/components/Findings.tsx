@@ -4,7 +4,7 @@ import { openSheet } from '../router.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { Finding, Session, SubtaskKind } from '../types.ts';
-import { ancestorsOf, decisionOf, locate, openSubtasks, sessionLabel, settledAs, shownOf, type Shown } from '../util.ts';
+import { ancestorsOf, decisionOf, locate, sessionLabel, settledAs, shownOf, type Shown } from '../util.ts';
 import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -273,37 +273,53 @@ export function SubtaskOf({ session }: { session: Session }) {
 const URGENCY: Record<string, number> = { decide: 0, focus: 1, idle: 2, sending: 3, working: 4, exited: 5 };
 
 // On a task's page: every subtask under it, a subtask's own subtasks indented under it, and among siblings the ones
-// that want you first. The Wall leaves them to their root task's tile, so this is where they are listed.
+// that want you first. The Wall leaves them to their root task's tile, so this is where they are listed. A solved or
+// dropped one folds away under Settled with everything under it.
 export function Subtasks({ session }: { session: Session }) {
   const { sessions, repos } = useStore();
   const busy = useBusy();
   const stateOf = (o: Session) => (o.archived ? ('archived' as const) : shownOf(o, busy));
-  const tree = (id: string, depth: number): { o: Session; depth: number }[] => sessions
+  type Row = { o: Session; depth: number };
+  const open: Row[] = [];
+  const settled: Row[] = [];
+  const children = (id: string) => sessions
     .filter((o) => o.parent?.id === id)
-    .sort((a, b) => (URGENCY[stateOf(a)] ?? 9) - (URGENCY[stateOf(b)] ?? 9) || a.createdAt - b.createdAt)
-    .flatMap((o) => [{ o, depth }, ...tree(o.id, depth + 1)]);
-  const subtasks = tree(session.id, 0);
-  if (!subtasks.length) return null;
-  const { open } = openSubtasks(sessions, session.id);
+    .sort((a, b) => (URGENCY[stateOf(a)] ?? 9) - (URGENCY[stateOf(b)] ?? 9) || a.createdAt - b.createdAt);
+  const walk = (id: string, depth: number, into: Row[]) => {
+    for (const o of children(id)) {
+      const to = into === open && o.resolution ? settled : into;
+      const at = to === into ? depth : 0;
+      to.push({ o, depth: at });
+      walk(o.id, at + 1, to);
+    }
+  };
+  walk(session.id, 0, open);
+  const total = open.length + settled.length;
+  if (!total) return null;
+  const row = ({ o, depth }: Row) => {
+    const state = stateOf(o);
+    return (
+      <li key={o.id} data-depth={depth} data-resolution={o.resolution?.state} style={{ '--depth': depth } as CSSProperties}>
+        {depth > 0 && <Icon name="subtask" size={14} />}
+        <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
+          <StateMark state={state} size={8} />
+          <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
+          <span className={styles.listState}>{stateLabel(o, shownOf(o, busy))}</span>
+          <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
+        </button>
+      </li>
+    );
+  };
   return (
     <section className={styles.list} aria-label="Subtasks" data-subtask-list>
-      <h3 className={styles.label}>Subtasks <span data-open-count>· {open.length ? `${open.length} of ${subtasks.length} open` : `all ${subtasks.length} solved or dropped`}</span></h3>
-      <ul>
-        {subtasks.map(({ o, depth }) => {
-          const state = stateOf(o);
-          return (
-            <li key={o.id} data-depth={depth} data-resolution={o.resolution?.state} style={{ '--depth': depth } as CSSProperties}>
-              {depth > 0 && <Icon name="subtask" size={14} />}
-              <button type="button" data-subtask={o.id} data-attention={state} onClick={() => openSheet(o.id)}>
-                <StateMark state={state} size={8} />
-                <strong>{sessionLabel(o, locate(repos, o).branch)}</strong>
-                <span className={styles.listState}>{stateLabel(o, shownOf(o, busy))}</span>
-                <span className={styles.listText}>{state === 'working' ? (o.activity?.step ?? 'Starting') : (state === 'decide' ? decisionOf(o)?.problem : o.summary?.text) ?? o.parent!.text}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <h3 className={styles.label}>Subtasks <span data-open-count>· {open.length ? `${open.length} of ${total} open` : `all ${total} solved or dropped`}</span></h3>
+      {open.length > 0 && <ul>{open.map(row)}</ul>}
+      {settled.length > 0 && (
+        <details className={styles.settled} data-settled-subtasks>
+          <summary>Settled · {settled.length}</summary>
+          <ul>{settled.map(row)}</ul>
+        </details>
+      )}
     </section>
   );
 }
