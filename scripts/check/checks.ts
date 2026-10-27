@@ -1297,7 +1297,7 @@ export const checks: Check[] = [
       assert.deepEqual([overview.values.Repository, overview.values.Worktree, overview.values.Path], ['billing-api', 'invoice-rounding', '~/code/worktrees/invoice-rounding/billing-api']);
       assert.deepEqual({ ...overview, status: undefined, values: undefined }, {
         working: true, know: true, composer: true, status: undefined, values: undefined, reply: true,
-        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
+        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Model', 'Effort', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
       assert.match(overview.status ?? '', /^Session summary · updated \d+m ago$/);
       await wait(1100);
@@ -1557,7 +1557,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task opened on the Wall: a space typed in the name becomes a hyphen; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; Existing branch lists the server\'s branches by name in a list under the field, with the hint',
+    name: 'P4.10 New task opened on the Wall: a space typed in the name or branch becomes a hyphen; Model and Effort name what Claude Code would pick by itself; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; the model and effort picked go with it and show on its Overview; Existing branch hides Branch and Worktree path and lists the server\'s branches by name in a list under the field, with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
@@ -1569,15 +1569,34 @@ export const checks: Check[] = [
       await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
       await page.type('fix login');
       assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('dialog#new-task input[placeholder="fix-login-redirect"]')!.value), 'fix-login', 'a space in the name became a hyphen');
+      await page.click('dialog#new-task input[placeholder="fix-login"]');
+      await page.type('fix login');
+      assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('dialog#new-task input[placeholder="fix-login"]')!.value), 'fix-login', 'a space in the branch became a hyphen');
+      assert.deepEqual(await page.until('the real defaults', () => {
+        const shown = [...document.querySelectorAll('dialog#new-task select')].map((s) => s.querySelector('option')?.textContent);
+        return !shown.includes('Default') && shown;
+      }), ['Opus 5.5 (1M context)', 'Medium']);
+      await page.eval(() => {
+        for (const [label, value] of [['Model', 'sonnet'], ['Effort', 'xhigh']]) {
+          const select = [...document.querySelectorAll('dialog#new-task label')].find((l) => l.querySelector('span')?.textContent === label)!.querySelector('select')!;
+          select.value = value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
       await shot('new-task-wall');
       await page.eval(submit);
       const [created] = await logged(mock, 'the new task', (e) => e.method === 'POST' && e.path === '/api/worktrees');
-      const { repoId, name, prompt, startClaude, existingBranch } = created.body;
-      assert.deepEqual({ repoId, name, prompt, startClaude, existingBranch, status: created.status }, {
-        repoId: 1, name: 'fix-login', prompt: 'Fix the login redirect', startClaude: true, existingBranch: false, status: 200,
+      const { repoId, name, prompt, existingBranch, model, effort } = created.body;
+      assert.deepEqual({ repoId, name, prompt, existingBranch, model, effort, status: created.status }, {
+        repoId: 1, name: 'fix-login', prompt: 'Fix the login redirect', existingBranch: false, model: 'sonnet', effort: 'xhigh', status: 200,
       });
       await page.until('its sheet', () => !!document.querySelector('#task-sheet') && /^\/s\/[^/]+\/overview$/.test(location.pathname) &&
         document.querySelector('#task-sheet h2')?.textContent === 'fix-login');
+      const facts = await page.until('its facts', () => {
+        const dl = document.querySelector('#task-sheet dl');
+        return dl && Object.fromEntries([...dl.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));
+      });
+      assert.deepEqual([facts.Model, facts.Effort], ['Sonnet 5.5', 'Extra high']);
       await page.click('#task-sheet button[aria-label^="Back to"]');
       await page.until('the Wall', () => !document.querySelector('#task-sheet') && location.pathname === '/wall');
       await openNewTask(page);
@@ -1588,10 +1607,12 @@ export const checks: Check[] = [
       await page.eval(submit);
       const error = await page.until('the inline error', () => document.querySelector('dialog#new-task [role="alert"]')?.textContent);
       assert.match(error, /cannot be created here/);
-      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('dialog#new-task textarea, dialog#new-task input:not([data-repo-picker] *)')].map((f) => f.value)), ['Try a refused name', 'fail']);
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('dialog#new-task textarea, dialog#new-task input:not([data-repo-picker] *, [type="radio"])')].map((f) => f.value)), ['Try a refused name', 'fail', '', '']);
 
-      await page.click('dialog#new-task button', 'More options');
+      const extra = () => [...document.querySelectorAll('dialog#new-task label > span')].map((c) => c.textContent).filter((t) => t === 'Branch' || t === 'Worktree path');
+      assert.deepEqual(await page.eval(extra), ['Branch', 'Worktree path'], 'New worktree shows its branch and path');
       await page.click('dialog#new-task label', 'Existing branch');
+      await page.until('only the branch picker', (want: string) => JSON.stringify([...document.querySelectorAll('dialog#new-task label > span')].map((c) => c.textContent).filter((t) => t === 'Branch' || t === 'Worktree path')) === want, JSON.stringify(['Branch']));
       await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
       await page.click('#new-task [data-branch-field] input');
       const rows = await page.until('the branch list', () => {
@@ -1601,12 +1622,12 @@ export const checks: Check[] = [
       for (const row of [['main', 'main checkout'], ['guest-cart-merge', 'own worktree'], ['release/2026.10', '']]) assert.deepEqual(rows.find((c) => c[0] === row[0]), row);
       const names = rows.map((r) => r[0]);
       assert.deepEqual(names, names.toSorted((a, b) => a!.localeCompare(b!, undefined, { numeric: true, sensitivity: 'base' })), 'by name');
-      const hint = () => document.querySelector('dialog#new-task form > p:not([role])')?.textContent;
+      const hint = () => document.querySelector('dialog#new-task [data-hint]')?.textContent;
       assert.equal(await page.eval(hint), 'Switches ~/code/storefront to the branch and starts Claude there.');
       await page.click('#new-task [data-branch-picker] [role="option"]', 'guest-cart-merge');
       await page.until('the list to close', () => !document.querySelector('#new-task [data-branch-picker]:popover-open'));
       await page.until('the hint for a branch with its own worktree', () =>
-        document.querySelector('dialog#new-task form > p:not([role])')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
+        document.querySelector('dialog#new-task [data-hint]')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
       await shot('new-task-existing-branch');
     },
   },
@@ -1908,7 +1929,6 @@ export const checks: Check[] = [
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await pickRepo(page, 'storefront');
-      await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
       await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), '#new-task');
       await sleep(300);
@@ -1977,7 +1997,6 @@ export const checks: Check[] = [
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await pickRepo(page, 'storefront');
-      await page.click('dialog#new-task button', 'More options');
       await page.click('dialog#new-task label', 'Existing branch');
       await page.until('the branches', (list: string) => document.querySelectorAll(`${list} [role="option"]`).length > 40, list);
       await page.until('the dialog to settle', still);
@@ -2105,7 +2124,7 @@ export const checks: Check[] = [
     async run({ mock }) {
       const { legacy } = await mock.get('/mock');
       const before = Date.now();
-      const { sessionId } = await mock.post('/api/worktrees', { repoId: 1, name: 'starting-step', prompt: 'Make the cart test stop flaking', startClaude: true });
+      const { sessionId } = await mock.post('/api/worktrees', { repoId: 1, name: 'starting-step', prompt: 'Make the cart test stop flaking' });
       const after = Date.now();
       const s = (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === sessionId);
       assert.deepEqual([s.status, s.activity.step], ['working', legacy ? 'Thinking' : null]);
@@ -4084,7 +4103,6 @@ export const checks: Check[] = [
       await openQueue(page, mock);
       await page.key('n');
       await page.until('New task', () => !!document.querySelector('#new-task:modal'));
-      await page.click('#new-task button', 'More options');
       await page.until('the dialog to settle', settled);
       await sideways('New task');
       assert.equal(await page.eval(inside, '#new-task'), true);
@@ -4254,7 +4272,6 @@ export const checks: Check[] = [
       await page.key('n');
       await page.until('New task', () => !!document.querySelector('#new-task:modal'));
       await page.type('Add retries to the webhook worker');
-      await page.click('#new-task button', 'More options');
       await audit('New task');
       await page.click('#new-task button[aria-haspopup="listbox"]');
       await page.until('the picker', pickerOpen);

@@ -10,6 +10,18 @@ export function locate(repos: RepoView[], session: Session) {
 
 export const tilde = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
 
+// claude-opus-5-5 reads Opus 5.5; an alias or a name of another shape shows as given.
+export function modelName(model: string) {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/.exec(model);
+  if (!m) return model;
+  const [, family, major, minor, long] = m;
+  return `${family[0].toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ''}${long ? ' (1M context)' : ''}`;
+}
+
+export const EFFORTS: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+
+export const effortName = (effort: string) => EFFORTS[effort] ?? effort;
+
 // A worktree is named by its folder under the worktree root, which git-wt makes <name>/<repo>.
 export function worktreeName(path: string, repo: RepoView | undefined) {
   if (repo && (path === repo.path || !repo.worktrees.some((w) => w.path === path))) return 'None';

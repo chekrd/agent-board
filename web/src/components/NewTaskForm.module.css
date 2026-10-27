@@ -100,7 +100,7 @@
     background: var(--raised);
     &:has(:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
     input {
-      width: 180px;
+      width: 150px;
       min-width: 0;
       padding: 0;
       border: 0;
@@ -111,20 +111,29 @@
     }
   }
 
-  .more {
+  .mode {
     display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    height: 32px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: 9px;
-    background: none;
-    color: var(--text-2);
-    font-size: 13px;
-    &:hover { background: var(--hover); color: var(--text); }
-    svg { transition: rotate 0.15s; }
-    &[aria-expanded="true"] svg { rotate: 180deg; }
+    height: 40px;
+    margin: 0;
+    padding: 3px;
+    border: 1px solid var(--line-2);
+    border-radius: 11px;
+    background: var(--raised);
+    legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    label {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 11px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text-2);
+      white-space: nowrap;
+      cursor: pointer;
+      &:hover { color: var(--text); }
+      &:has(:checked) { background: var(--raised-2); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--line-2); }
+      &:has(:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+    }
+    input { position: absolute; opacity: 0; pointer-events: none; }
   }
 
   .create {
@@ -184,10 +193,6 @@
     gap: 12px 16px;
     padding: 12px 0 2px;
     border-top: 1px solid var(--line);
-    fieldset { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding: 0; border: 0; }
-    legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    fieldset label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
-    input[type="radio"], input[type="checkbox"] { accent-color: var(--accent-ink); }
   }
 
   .input {
@@ -199,9 +204,39 @@
     input { height: 38px; padding: 0 12px; font-size: 14px; color: var(--text); }
   }
 
-  .check { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+  .foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+
+  .select {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 4px 0 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 9px;
+    background: var(--raised);
+    &:has(:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+    select {
+      display: inline-flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 2px;
+      border: 0;
+      outline: none;
+      background: none;
+      font-size: 13.5px;
+      font-weight: 650;
+      cursor: pointer;
+      &::picker-icon { display: none; }
+      option { padding: 6px 10px; border-radius: 8px; font-weight: 400; }
+      option:checked { font-weight: 650; }
+      option::checkmark { display: none; }
+    }
+    svg { color: var(--muted); pointer-events: none; }
+  }
 
   .hint {
+    flex: 1 1 280px;
     font-size: 13px;
     line-height: 1.5;
     color: var(--muted);
@@ -215,5 +250,6 @@
     .options { grid-template-columns: minmax(0, 1fr); }
     .field { flex: 1 1 200px; }
     .field input { width: 100%; }
+    .mode { flex: 1 1 100%; label { flex: 1; justify-content: center; } }
   }
 }

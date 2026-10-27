@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, openSubtasks, settledAs, tilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, modelName, openSubtasks, settledAs, tilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -88,4 +88,12 @@ test('a finding settles once rejected or once all its subtasks are solved or dro
   assert.equal(settledAs(finding, [sub('dropped'), sub('solved')]), 'solved');
   assert.equal(settledAs(finding, [sub('dropped')]), 'dropped');
   assert.equal(settledAs({ ...finding, rejected: { reason: '', at: 1 } }, [sub(null)]), 'rejected');
+});
+
+test('a model id reads as its family and version', () => {
+  assert.equal(modelName('claude-opus-5-5'), 'Opus 5.5');
+  assert.equal(modelName('claude-sonnet-5-5[1m]'), 'Sonnet 5.5 (1M context)');
+  assert.equal(modelName('claude-haiku-4-5-20251001'), 'Haiku 4.5');
+  assert.equal(modelName('claude-fable-5'), 'Fable 5');
+  assert.equal(modelName('opus'), 'opus');
 });

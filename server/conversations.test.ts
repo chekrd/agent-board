@@ -181,3 +181,11 @@ test('a conversation that /clear started says so; one that only mentions /clear 
   assert.equal((await meta([caveat, clear, prompt('Now the tests', 1)])).cleared, true);
   assert.equal((await meta([prompt('Fix the login'), clear])).cleared, false);
 });
+
+test('the model and effort come from the last request of the main conversation, not a side query', async () => {
+  const request = (model: string, effort: string, querySource = 'repl_main_thread') => ({ type: 'api-request', querySource, params: { model, output_config: { effort } } });
+  const m = await meta([prompt('x'), request('claude-opus-5-5', 'high'), assistant([text('ok')]), request('claude-haiku-5-5', 'low', 'sdk')]);
+  assert.deepEqual([m.model, m.effort], ['claude-opus-5-5', 'high']);
+  const older = await meta([prompt('x'), { ...assistant([text('ok')]), message: { model: 'claude-sonnet-5-5', content: [text('ok')] } }]);
+  assert.deepEqual([older.model, older.effort], ['claude-sonnet-5-5', null]);
+});

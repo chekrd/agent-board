@@ -43,6 +43,8 @@ interface Meta {
   artifacts: ToolCall[];
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
+  model: string | null;
+  effort: string | null;
 }
 
 export interface MenuQuestion {
@@ -162,6 +164,13 @@ function turns(entries: Record<string, any>[]): Turn[] {
     const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, MAX_MESSAGE) }] : [];
   });
+}
+
+// Claude logs each request it sends, so the model and effort show what it runs on now, after any /model or /effort.
+function settings(entries: Record<string, any>[]) {
+  const request = entries.findLast((e) => e.type === 'api-request' && String(e.querySource ?? '').startsWith('repl_main_thread'))?.params;
+  const model = request?.model ?? entries.findLast((e) => e.type === 'assistant' && !e.isSidechain && e.message?.model && e.message.model !== '<synthetic>')?.message.model;
+  return { model: model ?? null, effort: request?.output_config?.effort ?? null };
 }
 
 function lastMessage(entries: Record<string, any>[]) {
@@ -307,6 +316,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     artifacts: artifactCalls(tail),
     pr: await prFlow(tail),
     turns: turns(tail),
+    ...settings(tail),
   };
   metaCache.delete(file);
   metaCache.set(file, meta);

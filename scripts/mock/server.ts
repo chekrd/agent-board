@@ -408,7 +408,12 @@ function branches(repo: RepoView) {
   return [...new Set([...checkedOut.keys(), ...OTHER_BRANCHES])].map((name) => ({ name, worktree: checkedOut.get(name) ?? null }));
 }
 
-function startSession(repo: RepoView, worktree: string, o: { id?: string; title?: string | null; prompt?: string | null }) {
+const MODELS: { models: Record<string, string>; efforts: Record<string, string | null> } = {
+  models: { '': 'claude-opus-5-5[1m]', fable: 'claude-fable-5-1', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5' },
+  efforts: { '': 'medium', fable: 'high', opus: 'medium', sonnet: 'high', haiku: null },
+};
+
+function startSession(repo: RepoView, worktree: string, o: { id?: string; title?: string | null; prompt?: string | null; model?: string; effort?: string }) {
   const now = Date.now();
   const id = o.id ?? randomUUID();
   const working = !!o.prompt;
@@ -416,7 +421,8 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
     id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
-    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null, archived: false, createdAt: now, updatedAt: now,
+    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null,
+    model: o.model || null, effort: o.effort || null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;
@@ -564,12 +570,12 @@ route('DELETE', '/api/repos/:id', ({ params }) => {
   return NONE;
 });
 route('GET', '/api/repos/:id/branches', ({ params }) => branches(mustRepo(Number(params[0]))));
+route('GET', '/api/repos/:id/models', () => MODELS);
 route('POST', '/api/worktrees', ({ body }) => {
   const repo = mustRepo(body.repoId);
   const path = addWorktree(repo, body);
   push();
-  if (body.startClaude === false) return { path, sessionId: null };
-  return { path, sessionId: startSession(repo, path, { title: String(body.name ?? '').trim(), prompt: body.prompt }) };
+  return { path, sessionId: startSession(repo, path, { title: String(body.name ?? '').trim(), prompt: body.prompt, model: MODELS.models[body.model ?? ''] ?? body.model, effort: body.effort || MODELS.efforts[body.model ?? ''] || undefined }) };
 });
 route('DELETE', '/api/worktrees', ({ body }) => {
   removeWorktree(mustRepo(body.repoId), body.path);

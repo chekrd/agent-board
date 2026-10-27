@@ -41,15 +41,16 @@ async function launch(id: string, cwd: string, args: string[], setup?: string | 
 }
 
 // With a prompt, Claude starts on it at once; until it registers, idle would show a finished turn that never was.
-export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null; parent?: Parent }) {
+export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null; parent?: Parent; model?: string; effort?: string; running?: { model: string | null; effort: string | null } }) {
   const id = randomUUID();
   sessions.insert({
     id, repoId: opts.repoId, worktree: opts.worktree, cwd: opts.worktree, pid: null, tty: null,
     title: opts.title || null, firstPrompt: opts.prompt || null, status: opts.prompt ? 'working' : 'idle',
   });
-  if (opts.parent) sessions.update(id, { parent: opts.parent });
+  sessions.update(id, { parent: opts.parent ?? null, ...opts.running });
+  const chosen = [...(opts.model ? ['--model', opts.model] : []), ...(opts.effort ? ['--effort', opts.effort] : [])];
   try {
-    await launch(id, opts.worktree, ['--session-id', id, ...(opts.prompt ? ['--', opts.prompt] : [])], opts.setup);
+    await launch(id, opts.worktree, [...chosen, '--session-id', id, ...(opts.prompt ? ['--', opts.prompt] : [])], opts.setup);
   } catch (err) {
     sessions.remove(id);
     throw err;
@@ -88,8 +89,8 @@ export async function continueConversation(opts: { repoId: number; worktree: str
   return id;
 }
 
-export async function openShell(worktree: string, setup?: string | null) {
-  await ghostty.newTab(worktree, setup ? `/bin/sh -c ${quote(setup)}` : '');
+export async function openShell(worktree: string) {
+  await ghostty.newTab(worktree, '');
 }
 
 async function ttyOf(pid: number) {
@@ -161,6 +162,9 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
+  // A request names the model without the [1m] of a 1M context, which the model picked keeps.
+  if (meta.model && meta.model !== s.model?.replace('[1m]', '')) patch.model = meta.model;
+  if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;
   const lastTurn = meta.turns.at(-1)?.id ?? null;
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
   const activity = activityOf(p, meta.activity, meta.background.map(([, what]) => what));

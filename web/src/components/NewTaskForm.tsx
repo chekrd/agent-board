@@ -3,6 +3,7 @@ import { api } from '../api.ts';
 import { keepUnderLayer } from '../layers.ts';
 import { openSheet } from '../router.ts';
 import type { RepoView } from '../types.ts';
+import { EFFORTS, effortName, modelName } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import styles from './NewTaskForm.module.css';
 
@@ -13,8 +14,14 @@ interface Fields {
   branch: string;
   path: string;
   existing: boolean;
-  start: boolean;
-  more: boolean;
+  model: string;
+  effort: string;
+}
+
+// What each choice of model comes to, '' being what Claude Code picks by itself, and the effort it starts with.
+interface Models {
+  models: Record<string, string | null>;
+  efforts: Record<string, string | null>;
 }
 
 interface Branch {
@@ -24,7 +31,8 @@ interface Branch {
 
 const DIALOG = 'new-task';
 const STORED = 'agent-board:new-task';
-const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, start: true, more: false };
+const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, model: '', effort: '' };
+
 const NAME = /^[A-Za-z0-9._/-]+$/;
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 
@@ -42,6 +50,8 @@ let fields = stored();
 // They share the branch list too: both are mounted at once, and one read serves them.
 let branches: { repoId: number; list: Branch[] } | null = null;
 let reading: number | null = null;
+let models: { repoId: number; read: Models } | null = null;
+let readingModels: number | null = null;
 const subscribers = new Set<() => void>();
 
 const notify = () => {
@@ -65,6 +75,17 @@ function readBranches(repoId: number) {
     if (reading !== repoId) return;
     reading = null;
     branches = { repoId, list: list.toSorted((a, b) => byName(a.name, b.name)) };
+    notify();
+  });
+}
+
+function readModels(repoId: number) {
+  if (readingModels === repoId || models?.repoId === repoId) return;
+  readingModels = repoId;
+  api<Models>('GET', `/api/repos/${repoId}/models`).catch(() => ({ models: {}, efforts: {} })).then((read) => {
+    if (readingModels !== repoId) return;
+    readingModels = null;
+    models = { repoId, read };
     notify();
   });
 }
@@ -282,11 +303,13 @@ function BranchPicker({ branches, value, pick, where }: { branches: Branch[] | n
 function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
+  const known = useSyncExternalStore(subscribe, () => models);
   const sorted = repos.toSorted((a, b) => byName(a.name, b.name));
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
   useEffect(() => {
     if (f.existing) readBranches(repo.id);
   }, [f.existing, repo.id]);
+  useEffect(() => readModels(repo.id), [repo.id]);
 
   const name = f.name.trim();
   const branch = f.branch.trim();
@@ -304,10 +327,11 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         branch: now.branch.trim(),
         path: now.path.trim(),
         prompt: now.prompt,
-        startClaude: now.start,
         existingBranch: now.existing,
+        model: now.model,
+        effort: now.effort,
       });
-      edit({ ...EMPTY, repoId: repo.id });
+      edit({ ...EMPTY, repoId: repo.id, existing: now.existing, model: now.model, effort: now.effort });
       done?.();
       if (result.sessionId) openSheet(result.sessionId);
       return null;
@@ -323,6 +347,16 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
     }
   };
 
+  const choices = known?.repoId === repo.id ? known.read : null;
+  const real = (value: string) => choices?.models[value] ?? null;
+  const modelOptions = [
+    ['', real('') ? modelName(real('')!) : 'Default'],
+    ...['fable', 'opus', 'sonnet', 'haiku']
+      .filter((a) => !real(a) || real(a)?.replace('[1m]', '') !== real('')?.replace('[1m]', ''))
+      .map((a) => [a, real(a) ? modelName(real(a)!) : `${a[0].toUpperCase()}${a.slice(1)}`]),
+  ];
+  const usual = choices?.efforts[f.model] ?? null;
+  const effortOptions = [['', usual ? effortName(usual) : 'Default'], ...Object.entries(EFFORTS).filter(([e]) => e !== usual)];
   const where = (b: Branch) => (!b.worktree ? '' : b.worktree === main?.path ? 'main checkout' : 'own worktree');
   const folder = repo.path.split('/').at(-1);
 
@@ -347,45 +381,51 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
             <input value={f.name} onChange={(e) => edit({ name: e.currentTarget.value.replace(/\s+/g, '-') })} placeholder="fix-login-redirect" spellCheck={false} autoComplete="off" />
           </label>
         )}
-        <button type="button" className={styles.more} aria-expanded={f.more} onClick={() => edit({ more: !f.more })}>
-          More options <Icon name="chevron-down" size={14} />
-        </button>
+        <fieldset className={styles.mode}>
+          <legend>Where Claude runs</legend>
+          <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
+          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: '' })} />Existing branch, no worktree</label>
+        </fieldset>
         <button type="submit" className={styles.create} disabled={!valid || pending}>
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
         </button>
       </div>
-      {f.more && (
+      {!f.existing && (
         <div className={styles.options}>
-          <fieldset>
-            <legend>Where Claude runs</legend>
-            <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} /> New worktree</label>
-            <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: '' })} /> Existing branch, no worktree</label>
-          </fieldset>
-          {!f.existing && (
-            <>
-              <label className={styles.input} title="The new branch; defaults to the name">
-                <span>Branch</span>
-                <input value={f.branch} onChange={(e) => edit({ branch: e.currentTarget.value })} placeholder={name || 'same as name'} spellCheck={false} />
-              </label>
-              <label className={styles.input} title="Where the worktree is created; defaults to the repository's worktree folder">
-                <span>Worktree path</span>
-                <input value={f.path} onChange={(e) => edit({ path: e.currentTarget.value })} placeholder={`${repo.worktreeRoot ?? repo.defaultWorktreeRoot}/${name || '<name>'}/${folder}`} spellCheck={false} />
-              </label>
-            </>
-          )}
-          <label className={styles.check}><input type="checkbox" checked={f.start} onChange={(e) => edit({ start: e.currentTarget.checked })} /> Start a Claude session</label>
+          <label className={styles.input} title="The new branch; defaults to the name">
+            <span>Branch</span>
+            <input value={f.branch} onChange={(e) => edit({ branch: e.currentTarget.value.replace(/\s+/g, '-') })} placeholder={name || 'same as name'} spellCheck={false} />
+          </label>
+          <label className={styles.input} title="Where the worktree is created; defaults to the repository's worktree folder">
+            <span>Worktree path</span>
+            <input value={f.path} onChange={(e) => edit({ path: e.currentTarget.value })} placeholder={`${repo.worktreeRoot ?? repo.defaultWorktreeRoot}/${name || '<name>'}/${folder}`} spellCheck={false} />
+          </label>
         </div>
       )}
-      <p className={styles.hint}>
-        {f.existing ? (
-          picked?.worktree ? <>Starts Claude in <code>{picked.worktree}</code>, where it is checked out.</>
-            : <>Switches <code>{main?.path ?? repo.path}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
-        ) : !f.start ? (
-          'Off: only the worktree and a shell tab are created.'
-        ) : (
-          <>Branches from <code>{repo.base}</code> and starts Claude there.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
-        )}
-      </p>
+      <div className={styles.foot}>
+        <p className={styles.hint} data-hint>
+          {f.existing ? (
+            picked?.worktree ? <>Starts Claude in <code>{picked.worktree}</code>, where it is checked out.</>
+              : <>Switches <code>{main?.path ?? repo.path}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
+          ) : (
+            <>Branches from <code>{repo.base}</code> and starts Claude there.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
+          )}
+        </p>
+        <label className={styles.select} title="The model Claude starts with; the first is the one your Claude Code settings pick">
+          <span className={styles.caption}>Model</span>
+          <select value={f.model} onChange={(e) => edit({ model: e.currentTarget.value })}>
+            {modelOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <Icon name="chevron-down" size={14} />
+        </label>
+        <label className={styles.select} title="How hard Claude thinks; the first is the one your Claude Code settings give that model">
+          <span className={styles.caption}>Effort</span>
+          <select value={f.effort} onChange={(e) => edit({ effort: e.currentTarget.value })}>
+            {effortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <Icon name="chevron-down" size={14} />
+        </label>
+      </div>
       {error && <p className={styles.error} role="alert">{error}</p>}
     </form>
   );

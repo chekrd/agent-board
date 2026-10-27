@@ -17,6 +17,7 @@ import { elaborate } from './explain.ts';
 import { respond } from './findings.ts';
 import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
+import { ALIASES, EFFORTS, resolver, settingsFor } from './models.ts';
 import * as S from './sessions.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
@@ -101,10 +102,27 @@ app.get('/api/repos/:id/branches', async (c) => {
   return c.json((await listBranches(repo.path)).map((name) => ({ name, worktree: checkedOut.get(name) ?? null })));
 });
 
+const MODEL = /^[A-Za-z0-9._-]+(\[1m\])?$/;
+
+const resolve = async (repoPath: string) =>
+  resolver(await settingsFor(repoPath), sessions.all().toSorted((a, b) => b.updatedAt - a.updatedAt));
+
+app.get('/api/repos/:id/models', async (c) => {
+  const repo = repoView(Number(c.req.param('id')));
+  if (!repo) throw new Error('unknown repo');
+  const { model, real, effortOf } = await resolve(repo.path);
+  const models: Record<string, string | null> = Object.fromEntries([['', model], ...ALIASES.map((a) => [a, real(a)])]);
+  return c.json({ models, efforts: Object.fromEntries(Object.entries(models).map(([k, m]) => [k, effortOf(m)])) });
+});
+
 app.post('/api/worktrees', async (c) => {
-  const body = await c.req.json<{ repoId: number; name: string; branch?: string; path?: string; prompt?: string; startClaude?: boolean; existingBranch?: boolean }>();
+  const body = await c.req.json<{ repoId: number; name: string; branch?: string; path?: string; prompt?: string; existingBranch?: boolean; model?: string; effort?: string }>();
   const repo = repoView(body.repoId);
   if (!repo) throw new Error('unknown repo');
+  const model = body.model?.trim() || undefined;
+  const effort = body.effort || undefined;
+  if (model && !MODEL.test(model)) throw new Error(`unknown model ${model}`);
+  if (effort && !EFFORTS.includes(effort)) throw new Error(`unknown effort ${effort}`);
   const name = body.name.trim();
   const branch = body.branch?.trim();
   let path: string;
@@ -121,11 +139,11 @@ app.post('/api/worktrees', async (c) => {
   }
   await refreshWorkspace();
   const setup = body.existingBranch ? null : repo.setupCommand;
-  if (body.startClaude === false) {
-    if (setup) await S.openShell(path, setup);
-    return c.json({ path, sessionId: null });
-  }
-  const sessionId = await S.startClaude({ repoId: repo.id, worktree: path, prompt: body.prompt, title: name, setup });
+  const { model: fallback, real, effortOf } = await resolve(repo.path);
+  const running = model ? real(model) : fallback;
+  const sessionId = await S.startClaude({
+    repoId: repo.id, worktree: path, prompt: body.prompt, title: name, setup, model, effort, running: { model: running, effort: effort ?? effortOf(running) },
+  });
   return c.json({ path, sessionId });
 });
 
