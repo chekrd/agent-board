@@ -108,6 +108,26 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
       socket.send(JSON.stringify({ id, method, params, ...(sessionId && { sessionId }) }));
     });
 
+  // Runs in the page. Ids stay the real timers', so clearTimeout and clearInterval need no change.
+  function fastClock(speed: number) {
+    const RealDate = Date;
+    const realNow = RealDate.now.bind(RealDate);
+    const realPerf = performance.now.bind(performance);
+    const start = realNow();
+    const perfStart = realPerf();
+    const now = () => Math.floor(start + (realNow() - start) * speed);
+    const { setTimeout: later, setInterval: every } = window;
+    window.setTimeout = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => later(fn, (Number(ms) || 0) / speed, ...args)) as typeof setTimeout;
+    window.setInterval = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => every(fn, (Number(ms) || 0) / speed, ...args)) as typeof setInterval;
+    performance.now = () => perfStart + (realPerf() - perfStart) * speed;
+    const FastDate = new Proxy(RealDate, {
+      construct: (target, args) => (args.length ? new target(...(args as [])) : new target(now())),
+      apply: () => new RealDate(now()).toString(),
+    });
+    RealDate.now = now;
+    window.Date = FastDate;
+  }
+
   async function newPage(look: Look) {
     const { browserContextId } = await send('Target.createBrowserContext', { disposeOnDetach: true });
     const { targetId } = await send('Target.createTarget', { url: 'about:blank', browserContextId });
@@ -248,6 +268,11 @@ export async function launch(binary = process.env.BROWSER || BRAVE) {
         await cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
       },
       type: (text: string) => cdp('Input.insertText', { text }),
+      // Follows the system's colour scheme as it changes, as the app does when you switch macOS to dark.
+      scheme: (scheme: Look['scheme']) =>
+        cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }, { name: 'prefers-reduced-motion', value: look.motion }] }),
+      // Before the first goto: every page loaded after runs its clock `speed` times faster, timers and dates alike.
+      fastClock: (speed: number) => cdp('Page.addScriptToEvaluateOnNewDocument', { source: `(${fastClock})(${speed})` }),
       // Freezes the page, as a browser does to a tab in the background, or lets it run again.
       lifecycle: (state: 'frozen' | 'active') => cdp('Page.setWebLifecycleState', { state }),
       async shot(file: string) {

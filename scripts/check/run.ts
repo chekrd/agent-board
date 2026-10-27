@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { LIVE_PORT, refuseLive } from '../isolate.ts';
@@ -6,14 +7,19 @@ import { launch, lookName, sleep, type Browser, type Look } from './cdp.ts';
 import { checks, type Check } from './checks.ts';
 import { startMock, type Mock } from './mock.ts';
 
-// pnpm e2e [--only <pattern>] [--matrix] [--port <mock port>] [--shots <dir>] [--dist <dir>]
-// Runs the checks in checks.ts against the mock in a headless Brave of its own. Without --port it starts a mock
-// on a free port. --shots saves each check's screenshots under <dir>/<look>/; failures always land in .e2e/. A check
-// fails on an error in the page and on a request to any host but 127.0.0.1, where the mocks are.
+// pnpm e2e [--only <pattern>] [--matrix] [--workers <n>] [--port <mock port>] [--shots <dir>] [--dist <dir>]
+// Runs the checks in checks.ts against the mock in a headless Brave of its own. While changing something, run the
+// checks it touches with --only and the whole suite once before committing. Each worker has a mock on a free port
+// and a browser of its own (--workers, default half the cores, at most 6); with --port, one worker uses that mock.
+// Each check runs once, in dark: a check switches the system to light and back for its colour assertions (themes())
+// and its screenshots, so both schemes are covered; --matrix instead runs every check in each scheme, at 1100×900
+// and with reduced motion too. --shots saves each check's screenshots under <dir>/<look>/; failures always land in
+// .e2e/. A check fails on an error in the page and on a request to any host but 127.0.0.1, where the mocks are.
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const FAILURES = join(ROOT, '.e2e');
 const CHECK_TIMEOUT_MS = 60_000;
+const FAST_CLOCK = 4;
 
 const { values: args } = parseArgs({
   options: {
@@ -21,6 +27,7 @@ const { values: args } = parseArgs({
     matrix: { type: 'boolean', default: false },
     port: { type: 'string' },
     shots: { type: 'string' },
+    workers: { type: 'string' },
     dist: { type: 'string', default: join(ROOT, 'web', 'dist') },
   },
 });
@@ -47,7 +54,9 @@ const looksOf = (c: Check, look: Look): Look[] => {
 };
 const runsIn = (all: Look[], narrowOnes: boolean) =>
   all.flatMap((look) => chosen.filter((c) => !!c.narrow === narrowOnes).flatMap((c) => looksOf(c, look).map((l): [Check, Look] => [c, l])));
-const runs: [Check, Look][] = [...runsIn(looks(wide), false), ...runsIn(looks(narrow, args.matrix ? schemes : ['dark']), true)];
+const perScheme: readonly Look['scheme'][] = args.matrix ? schemes : ['dark'];
+const runs: [Check, Look][] = [...runsIn(looks(wide, perScheme), false), ...runsIn(looks(narrow, perScheme), true)];
+const workers = args.port ? 1 : Math.max(1, Math.min(runs.length, Number(args.workers ?? Math.min(6, Math.floor(availableParallelism() / 2)))));
 if (!runs.length) {
   console.error(`no check matches ${args.only}`);
   process.exit(2);
@@ -55,29 +64,63 @@ if (!runs.length) {
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 
-let mock: Mock | undefined;
-let browser: Browser | undefined;
+const mocks: Mock[] = [];
+const browsers: Browser[] = [];
 const stop = async () => {
-  await browser?.close().catch(() => {});
-  await mock?.stop().catch(() => {});
+  await Promise.all(browsers.map((b) => b.close().catch(() => {})));
+  await Promise.all(mocks.map((m) => m.stop().catch(() => {})));
 };
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => void stop().then(() => process.exit(130)));
 }
 
+const other = (scheme: Look['scheme']): Look['scheme'] => (scheme === 'dark' ? 'light' : 'dark');
+
 async function runOne(mock: Mock, browser: Browser, check: Check, look: Look) {
   await mock.reset(check.scenario ?? 'queue');
   const page = await browser.newPage(look);
-  const shots = args.shots ? resolve(args.shots, lookName(look)) : null;
+  const speed = check.clock === 'fast' ? FAST_CLOCK : 1;
+  if (speed !== 1) await page.fastClock(speed);
+  const settled = () => page.until('the transitions to end', () => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished'));
+  let current = look.scheme;
+  // Inside themes() a screenshot is of the scheme being checked only.
+  let inside = false;
+  const themes = async (fn: (scheme: Look['scheme']) => Promise<void>) => {
+    inside = true;
+    try {
+      await fn(look.scheme);
+      if (args.matrix) return;
+      current = other(look.scheme);
+      await page.scheme(current);
+      try {
+        await settled();
+        await fn(current);
+      } finally {
+        current = look.scheme;
+        await page.scheme(current);
+      }
+      await settled();
+    } finally {
+      inside = false;
+    }
+  };
+  const save = async (scheme: Look['scheme'], name: string) => {
+    await settled();
+    await page.shot(join(resolve(args.shots!, lookName({ ...look, scheme })), `${name}.png`));
+  };
   const shot = async (name: string) => {
-    if (!shots) return;
-    await page.until('the transitions to end', () => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState === 'finished'));
-    await page.shot(join(shots, `${name}.png`));
+    if (!args.shots) return;
+    if (inside) return save(current, name);
+    await themes((scheme) => save(scheme, name));
+  };
+  // What the page times shrinks; the half second the check allows for delivery and rendering does not.
+  const wait = async (ms: number) => {
+    await sleep(speed === 1 ? ms : ms / speed + 500);
   };
   try {
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([
-      check.run({ page, mock, look, shot }),
+      check.run({ page, mock, look, shot, themes, wait }),
       new Promise((_, fail) => (timer = setTimeout(() => fail(new Error(`no result after ${CHECK_TIMEOUT_MS / 1000} s`)), CHECK_TIMEOUT_MS))),
     ]).finally(() => clearTimeout(timer));
     await sleep(100);
@@ -99,24 +142,42 @@ async function runOne(mock: Mock, browser: Browser, check: Check, look: Look) {
   }
 }
 
+// Results print in the order of the runs, each as soon as it and every run before it are done.
+const results: (string | undefined)[] = [];
+let printed = 0;
 let failed = 0;
-try {
-  mock = await startMock({ port: args.port ? Number(args.port) : undefined, dist: resolve(args.dist) });
-  browser = await launch();
-  console.log(`e2e: ${runs.length} runs against the mock on ${mock.url}`);
-  for (const [check, look] of runs) {
+const report = (i: number, line: string) => {
+  results[i] = line;
+  while (results[printed] !== undefined) console.log(results[printed++]);
+};
+
+async function work(next: () => number | undefined) {
+  const mock = await startMock({ port: args.port ? Number(args.port) : undefined, dist: resolve(args.dist) });
+  mocks.push(mock);
+  const browser = await launch();
+  browsers.push(browser);
+  for (let i = next(); i !== undefined; i = next()) {
+    const [check, look] = runs[i];
     const started = Date.now();
     const failure = await runOne(mock, browser, check, look);
     const took = `${((Date.now() - started) / 1000).toFixed(1)} s`;
     if (!failure) {
-      console.log(`ok    ${check.name} [${lookName(look)}] ${took}`);
+      report(i, `ok    ${check.name} [${lookName(look)}] ${took}`);
       continue;
     }
     failed++;
     const message = failure.err instanceof Error ? (failure.err.stack ?? failure.err.message) : String(failure.err);
-    console.log(`FAIL  ${check.name} [${lookName(look)}] ${took}\n      ${message.split('\n').join('\n      ')}\n      screenshot: ${relative(process.cwd(), failure.file)}`);
+    report(i, `FAIL  ${check.name} [${lookName(look)}] ${took}\n      ${message.split('\n').join('\n      ')}\n      screenshot: ${relative(process.cwd(), failure.file)}`);
   }
-  console.log(`${runs.length - failed} passed, ${failed} failed`);
+}
+
+const began = Date.now();
+try {
+  console.log(`e2e: ${runs.length} runs, ${workers} ${workers === 1 ? 'worker' : 'workers'}${args.port ? ` against the mock on port ${args.port}` : ''}`);
+  let taken = 0;
+  const next = () => (taken < runs.length ? taken++ : undefined);
+  await Promise.all(Array.from({ length: workers }, () => work(next)));
+  console.log(`${runs.length - failed} passed, ${failed} failed in ${Math.round((Date.now() - began) / 1000)} s`);
 } finally {
   await stop();
 }

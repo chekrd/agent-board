@@ -17,8 +17,13 @@ export interface Context {
   page: Page;
   mock: Mock;
   look: Look;
-  // Saves a screenshot when the run collects them (--shots).
+  // Saves a screenshot when the run collects them (--shots), in both colour schemes unless the run has a look per scheme.
   shot: (name: string) => Promise<void>;
+  // Runs `fn` in the look's colour scheme and, unless the run has a look per scheme, again with the system switched to
+  // the other one, then switches back.
+  themes: (fn: (scheme: Look['scheme']) => Promise<void>) => Promise<void>;
+  // Waits `ms` on the page's clock: real time, or a share of it under a fast clock.
+  wait: (ms: number) => Promise<void>;
 }
 
 export interface Check {
@@ -30,6 +35,9 @@ export interface Check {
   scenario?: string;
   // Console errors the check provokes on purpose.
   expectedErrors?: RegExp[];
+  // The page's timers and dates run faster (FAST_CLOCK times), so the 5 s hold, the 0.9 s guard and the like pass
+  // quickly. The check waits with wait(), not sleep(), for anything timed by the page.
+  clock?: 'fast';
   run: (t: Context) => Promise<void>;
 }
 
@@ -615,6 +623,7 @@ const lowContrast = (min: number) => {
 export const checks: Check[] = [
   {
     name: 'P0.2 board: 11 tiles, Archived (1) collapsed, title (3); an option on the card answers once and the tile turns working',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
@@ -645,6 +654,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P0.3 a refused answer (/mock/fail, stale) says why in a toast: Not sent to Retry failed webhooks: this question is no longer open',
+    clock: 'fast',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
@@ -665,7 +675,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P0.4 diff: the fixture patch (12 files from ff30c77) renders split and dark; a file in the tree opens whole',
-    async run({ page, mock, shot }) {
+    async run({ themes, page, mock, shot }) {
       await page.goto(`${mock.url}/s/s-cart/diff`);
       const files = await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length);
       assert.equal(files, 12);
@@ -678,12 +688,14 @@ export const checks: Check[] = [
         const modified = [...document.querySelectorAll('nav[aria-label="Changed files"] a:has([data-type="change"])')].map((a) => a.getAttribute('title'));
         return rendered.length === 12 && rendered.every((r) => r.type) && { modified: modified.toSorted(), split: rendered.filter((r) => r.type === 'split').map((r) => r.file).toSorted() };
       });
-      const view = await page.eval(() => ({
-        toolbar: document.querySelector('[data-theme="dark"] > div')?.textContent ?? '',
-        background: getComputedStyle(document.querySelector('[data-theme="dark"]')!).backgroundColor,
-      }));
-      assert.match(view.toolbar, /12 files · \+368 −55 against origin\/main/);
-      assert.ok(luminance(view.background) < 0.05, `the diff background ${view.background} is not dark`);
+      await themes(async (scheme) => {
+        const view = await page.eval(() => ({
+          toolbar: document.querySelector('[data-theme="dark"] > div')?.textContent ?? '',
+          background: getComputedStyle(document.querySelector('[data-theme="dark"]')!).backgroundColor,
+        }));
+        assert.match(view.toolbar, /12 files · \+368 −55 against origin\/main/);
+        assert.ok(luminance(view.background) < 0.05, `the diff background ${view.background} is not dark in ${scheme}`);
+      });
       assert.equal(layout.modified.length, 7);
       assert.deepEqual(layout.split, layout.modified);
       await shot('diff');
@@ -764,25 +776,29 @@ export const checks: Check[] = [
   },
   {
     name: "P2.2 the page background is C's ground: #110f0c in dark, #eeeae1 in light",
-    async run({ page, mock, look, shot }) {
+    async run({ themes, page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
-      const background = await page.eval(() => [getComputedStyle(document.documentElement).backgroundColor, getComputedStyle(document.body).backgroundColor]);
-      assert.deepEqual(background, ['rgba(0, 0, 0, 0)', look.scheme === 'dark' ? 'rgb(17, 15, 12)' : 'rgb(238, 234, 225)']);
+      await themes(async (scheme) => {
+        const background = await page.eval(() => [getComputedStyle(document.documentElement).backgroundColor, getComputedStyle(document.body).backgroundColor]);
+        assert.deepEqual(background, ['rgba(0, 0, 0, 0)', scheme === 'dark' ? 'rgb(17, 15, 12)' : 'rgb(238, 234, 225)']);
+      });
       await shot('board');
     },
   },
   {
     name: 'P2.3 the Diff tab stays dark in the light theme too',
-    async run({ page, mock, shot }) {
+    async run({ themes, page, mock, shot }) {
       await page.goto(`${mock.url}/s/s-cart/diff`);
       await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
-      const view = await page.eval(() => {
-        const { backgroundColor, color } = getComputedStyle(document.querySelector('[data-theme="dark"]')!);
-        return { backgroundColor, color };
+      await themes(async (scheme) => {
+        const view = await page.eval(() => {
+          const { backgroundColor, color } = getComputedStyle(document.querySelector('[data-theme="dark"]')!);
+          return { backgroundColor, color };
+        });
+        assert.ok(luminance(view.backgroundColor) < 0.05, `the diff background ${view.backgroundColor} is not dark in ${scheme}`);
+        assert.ok(luminance(view.color) > 0.5, `the diff text ${view.color} is not light in ${scheme}`);
       });
-      assert.ok(luminance(view.backgroundColor) < 0.05, `the diff background ${view.backgroundColor} is not dark`);
-      assert.ok(luminance(view.color) > 0.5, `the diff text ${view.color} is not light`);
       await shot('diff');
     },
   },
@@ -843,6 +859,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P1a.compat-accept the card accepts the second opinion on a question and on a menu; the snapshot names what was sent',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       const { legacy } = await mock.get('/mock');
       const sessionOf = async (id: string) => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === id);
@@ -869,6 +886,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P1a.compat-dismiss the card dismisses a question: it closes, the tile leaves Decide, and nothing counts as answered',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       const { legacy } = await mock.get('/mock');
       await openQueue(page, mock);
@@ -1245,7 +1263,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, Worth knowing, the composer, Status · updated, the latest reply, Facts whose Worktree and Session copy on a click and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
-    async run({ page, mock, shot }) {
+    clock: 'fast',
+    async run({ wait, page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
       await page.click('[data-tile][data-session="s-invoice"] p');
@@ -1274,7 +1293,7 @@ export const checks: Check[] = [
         facts: ['Task', 'Worktree', 'Pull request', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
       assert.match(overview.status ?? '', /^Status · updated \d+m ago$/);
-      await sleep(1100);
+      await wait(1100);
       assert.notEqual((await page.eval(clock))?.text, first.text, 'the clock did not tick');
       await page.until('the sheet to settle', settled);
       await shot('sheet-overview');
@@ -2462,7 +2481,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.1.19 a second opinion still running shows a spinner, a ticking clock, the step and Stop, which stops it at once; Retry asks again; on a menu the band shows running and failed too, and so does the task\'s page',
-    async run({ page, mock, shot }) {
+    clock: 'fast',
+    async run({ wait, page, mock, shot }) {
       await openQueue(page, mock);
       await page.click('[data-peek="2"] > span');
       await page.until('s-group at the front', frontIs, 's-group');
@@ -2473,7 +2493,7 @@ export const checks: Check[] = [
       const first = await page.until('the running second opinion', running);
       assert.match(first.text, /^Second opinion in progress\s+\d+:\d\d\s+Stop\s+Read web\/src\/order\.ts$/);
       assert.equal(first.spinner, true);
-      await sleep(1100);
+      await wait(1100);
       assert.notEqual((await page.eval(running))?.clock, first.clock, 'the clock did not tick');
       await page.until('the card to settle', still);
       await shot('queue-advice-running');
@@ -2779,7 +2799,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.2 Undo gives back what the send took: option 2 with a note and a pasted picture held, Z within 3 s brings s-cart back with both in the reply box and nothing goes out; sent again, the answer carries the choice, the note and the picture',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.key('w');
@@ -2796,7 +2817,7 @@ export const checks: Check[] = [
       assert.ok(Date.now() - pressed < 3000, `back ${Date.now() - pressed} ms after the press`);
       assert.deepEqual({ ...(await page.eval(replyIn, '[data-card]')), focused: undefined }, { value: 'only if stock allows', files: ['ready shot.png'], focused: undefined });
       assert.equal(await page.eval(() => document.querySelector('[data-toast][data-kind="undo"]')), null, 'the undo toast stayed');
-      await sleep(6000);
+      await wait(6000);
       assert.deepEqual(await actions(mock), []);
 
       await page.until('the guard to end', unguarded);
@@ -2814,8 +2835,9 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.3 the choice frozen while the second opinion runs stays: with Send “Merge both carts” shown, advice that finishes on Ask the shopper shows on option 3, option 1 keeps the highlight, and ⏎ answers Merge both carts, not the advice',
+    clock: 'fast',
     scenario: 'freeze',
-    async run({ page, mock, shot }) {
+    async run({ wait, page, mock, shot }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       assert.equal((await page.eval(card))!.primary, 'Send “Merge both carts”');
@@ -2830,21 +2852,22 @@ export const checks: Check[] = [
       await shot('queue-freeze');
       await page.until('the guard to end', unguarded);
       await page.key('Enter');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['answer', { key: 'q:toolu_01Cart', choice: 'Merge both carts' }]]);
     },
   },
   {
     name: 'P5.2.4 a second opinion that came in after the freeze is accepted by its own digit: 3 sends accept-advice with the new advice\'s at',
+    clock: 'fast',
     scenario: 'freeze',
-    async run({ page, mock }) {
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       const advice = await mock.post('/mock/advice', { id: 's-cart', state: 'done', choice: 'Ask the shopper', confidence: 71 });
       await page.until('the late second opinion on option 3', () => !!document.querySelector('[data-card] [data-option="3"]')?.parentElement?.innerText.includes('Second opinion · 71%'));
       await page.until('the guard to end', unguarded);
       await page.key('3');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['accept-advice', { key: 'q:toolu_01Cart', adviceAt: advice.at }]]);
     },
   },
@@ -2870,6 +2893,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.6 the server refuses an accept whose advice changed during the hold: 400 advice-changed, the toast Not sent to Merge guest cart on login: the second opinion changed; read it again, s-cart back as peek 1 marked Not sent, and Show brings it to the front with the banner',
+    clock: 'fast',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
@@ -2925,19 +2949,21 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.8 Space on a focused option shows or hides the details and holds nothing',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.eval(() => document.querySelector<HTMLElement>('[data-card] [data-option="2"]')!.focus());
       await page.key(' ');
       await page.until('the details hidden', () => document.querySelector('[data-card] section[aria-label="Claude\'s details"] button')?.getAttribute('aria-expanded') === 'false');
       assert.deepEqual([(await page.eval(card))!.session, await page.eval(toastsOf, 'undo')], ['s-cart', null]);
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
   {
     name: 'P5.2.9 the menu: its picks start as the second opinion\'s, Accept suggestion; 4 unpicks Email the account owner, Send answer; Use the suggestion picks them again; an empty question 2 reads Answer both questions, off; picked again, ⏎ sends answer-menu with the picks on screen',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await page.key('ArrowRight');
@@ -2968,6 +2994,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.10 a menu of one single-choice question: its digit holds answer-menu with that pick',
+    clock: 'fast',
     scenario: 'lone-menu',
     async run({ page, mock }) {
       await openQueue(page, mock, 's-lone');
@@ -2980,6 +3007,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.11 your own answer: W, "Use the cache" and Enter hold answer with the key and the text, and the card deals out',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -2998,7 +3026,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.12 a command: /compact and Enter hold it with a toast Sending /compact …, the card stays and its reply box is empty and says the question stays open; it goes out 5 s on; Z puts it back in the box instead',
-    async run({ page, mock, shot }) {
+    clock: 'fast',
+    async run({ wait, page, mock, shot }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.key('w');
@@ -3024,12 +3053,13 @@ export const checks: Check[] = [
       await page.key('z');
       await page.until('the command back in the box', () => document.querySelector<HTMLTextAreaElement>('[data-card] textarea')?.value === '/compact');
       assert.equal((await page.eval(card))!.session, 's-cart');
-      await sleep(6000);
+      await wait(6000);
       assert.equal((await actions(mock)).length, 1, 'the command taken back went out');
     },
   },
   {
     name: 'P5.2.13 Dismiss deals s-cart sideways with the toast Dismissing “…” and Undo, and 5 s on dismiss goes out with its key',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -3044,6 +3074,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.14 Your turn: ⏎ (Reply) focuses the reply box and Enter holds a message whose raw body has "key":null; X archives Fix broken doc anchors at once, its card goes sideways, and the toast\'s Undo unarchives it',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.click('[data-segment][data-session="s-reviews"]');
@@ -3079,6 +3110,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.15 a refused send: with /mock/fail stale, ⏎ on s-cart with a note gets a 400 at 5 s, an error toast, and s-cart comes back as peek 1 marked Not sent; Show brings it to the front with the banner and the note back in its reply box',
+    clock: 'fast',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       await mock.post('/mock/fail', { error: 'this question is no longer open', code: 'stale' });
@@ -3109,7 +3141,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.16 the early check: an answer held on s-group whose turn moves on (lastTurn t9) fails with Not sent to Group board tiles by repo: this question is no longer open, and nothing is posted',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await page.click('[data-peek="2"] > span');
       await ready(page, 's-group');
@@ -3118,13 +3151,14 @@ export const checks: Check[] = [
       await mock.post('/mock/patch', { id: 's-group', patch: { lastTurn: 't9' } });
       const [error] = await page.until('the error toast', toastsOf, 'error');
       assert.equal(error.text, 'Not sent to Group board tiles by repo: this question is no longer open\nShow');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
   {
     name: 'P5.2.16-working the early check when the session went on working: Show opens its sheet on Overview, and the answer it held is back in the sheet\'s reply box',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await page.click('[data-peek="2"] > span');
       await ready(page, 's-group');
@@ -3139,13 +3173,14 @@ export const checks: Check[] = [
       await page.click('[data-toast][data-kind="error"] button', 'Show');
       await page.until('the sheet of s-group', () => location.pathname === '/s/s-group/overview' && !!document.querySelector('#task-sheet'));
       assert.deepEqual({ ...(await page.eval(replyIn, '#task-sheet')), focused: undefined }, { value: 'Group by repo, attention inside', files: [], focused: undefined });
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
   {
     name: 'P5.2.17 answered elsewhere: a send held on s-cart whose decision another window answers is dropped with word that it was already answered, and nothing is posted',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.key('Enter');
@@ -3154,7 +3189,7 @@ export const checks: Check[] = [
       const [info] = await page.until('the toast', toastsOf, 'info');
       assert.equal(info.text, 'Already answered elsewhere; nothing was sent to Merge guest cart on login');
       assert.equal(await page.eval(toastsOf, 'undo'), null);
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
@@ -3204,14 +3239,15 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.20 the reload gate: a new build announced while a send is held does not reload the page until it went out, and then it does',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.eval(() => void ((window as unknown as { e2eProbe?: number }).e2eProbe = 1));
       await page.key('1');
       const pressed = Date.now();
       await mock.post('/mock/ui-entry', { src: '/assets/next.js' });
-      await sleep(2000);
+      await wait(2000);
       assert.equal(await page.eval(() => (window as unknown as { e2eProbe?: number }).e2eProbe), 1, 'reloaded with a send held');
       const loadedAt = await until('the page to reload', async () => {
         try {
@@ -3227,6 +3263,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.21 In your queue: O on s-cart opens Overview with In your queue · Decision, the problem, its options with the second opinion on Merge both carts, a reply box, Dismiss and Open its card; Open its card closes the sheet with s-cart at the front, also from over the Wall; an option pressed on the page is held with Undo and goes out with its key',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -3278,6 +3315,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.22 the sheet\'s reply box: a message typed in Fix invoice PDF rounding and Enter shows a toast with Undo in the sheet, which stays open, and 5 s on answer goes out with "key":null and the text',
+    clock: 'fast',
     async run({ page, mock, shot }) {
       await openFromWall(page, mock, 's-invoice');
       await page.click('#task-sheet textarea');
@@ -3314,6 +3352,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.24 Enter in a menu\'s own answer, with every question answered, holds answer-menu with that answer',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.key('ArrowRight');
@@ -3370,6 +3409,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.n16 commands skip the early check: /compact held on s-cart goes out although a new question replaced the card\'s decision meanwhile',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -3390,7 +3430,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P5.2.undo-sheet the toast\'s Undo takes back a message sent from a sheet over the queue: the text is back in its reply box, nothing goes out, and the card being read stays, with no word that anything stopped waiting',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await page.goto(`${mock.url}/s/s-invoice/overview`);
       await page.until('the sheet over the queue', () => !!document.querySelector('#task-sheet') && document.documentElement.dataset.view === 'queue');
@@ -3400,17 +3441,18 @@ export const checks: Check[] = [
       await page.until('the undo toast', toastsOf, 'undo');
       await page.click('[data-toast][data-kind="undo"] button', 'Undo');
       await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
-      await sleep(1000);
+      await wait(1000);
       assert.deepEqual([await page.eval(toastsOf, 'info'), await page.eval(toastsOf, 'undo')], [null, null]);
       await page.click('#task-sheet button[aria-label^="Back to"]');
       await page.until('the card of s-cart', frontIs, 's-cart');
-      await sleep(HELD_MS - 1000);
+      await wait(HELD_MS - 1000);
       assert.deepEqual(await actions(mock), []);
     },
   },
   {
     name: 'P5.2.esc-undo Esc takes back a held send: an option sent from the card brings s-cart back, and a message sent from the sheet goes back into its empty reply box; nothing goes out',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.click('[data-card] [data-option="2"]');
@@ -3427,7 +3469,7 @@ export const checks: Check[] = [
       await page.key('Escape');
       await page.until('the message back in the reply box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')?.value === 'Also round the tax lines');
       assert.equal(await page.eval(() => !!document.querySelector('#task-sheet')), true, 'the sheet stayed');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
@@ -3511,7 +3553,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P6.1 the dock under the queue: "3 working", then the three working agents in board order, each with its name, a mono step and a clock that ticks; Fix invoice PDF rounding has a breathing PR dot and a Worth-knowing dot, Typo-tolerant search a Worth-knowing dot; "2 ended" names them and opens the Wall',
-    async run({ page, mock, shot }) {
+    clock: 'fast',
+    async run({ wait, page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the dock', docked, 3);
       const dock = (await page.eval(dockState))!;
@@ -3526,7 +3569,7 @@ export const checks: Check[] = [
       assert.equal(dock.box!.bottom, await page.eval(() => innerHeight), 'the dock is not at the bottom of the window');
       assert.ok(dock.capsules.every((c) => c.box!.top === dock.capsules[0].box!.top && c.box!.height === 50), 'the capsules are not one row of 50 px');
       for (const c of dock.capsules) assert.match(c.clock ?? '', /^\d+:\d\d$/, c.session);
-      await sleep(1100);
+      await wait(1100);
       const ticked = (await page.eval(dockState))!.capsules;
       for (const [i, c] of ticked.entries()) assert.notEqual(c.clock, dock.capsules[i].clock, `the clock of ${c.session} did not tick`);
       await shot('dock');
@@ -3718,12 +3761,13 @@ export const checks: Check[] = [
   },
   {
     name: 'P6.resting with nothing in the queue / shows the empty queue with the dock of working agents under it, and it stays; the first card that arrives keeps it',
+    clock: 'fast',
     scenario: 'zero',
-    async run({ page, mock }) {
+    async run({ wait, page, mock }) {
       await page.goto(`${mock.url}/`);
       await page.until('the empty queue', () => document.querySelector('main h1')?.textContent === 'Nothing needs you.');
       await page.until('the dock', docked, 3);
-      await sleep(2000);
+      await wait(2000);
       assert.equal(await page.eval(docked, 3), true, 'the dock stayed');
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 1 });
       await page.until('the new card at the front', frontIs, 's-new');
@@ -4016,8 +4060,9 @@ export const checks: Check[] = [
   },
   {
     name: 'P7.reduced-motion with reduced motion a card change runs no animation longer than 10 ms: skip, previous, a peek, an answer, its Undo and the answer again until its capsule rings',
+    clock: 'fast',
     motion: 'reduce',
-    async run({ page, mock }) {
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.eval(noteAnimations);
@@ -4034,7 +4079,7 @@ export const checks: Check[] = [
       await page.key('z');
       await ready(page, 's-cart');
       await page.key('Enter');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       await page.until('the answered capsule ringing', () => !!document.querySelector('[data-capsule][data-session="s-cart"][data-fresh]'));
       await sleep(300);
       const all = await page.eval(animations);
@@ -4045,11 +4090,13 @@ export const checks: Check[] = [
   {
     name: 'P7.contrast-queue every text on the queue, its dock, hover card, peeks, meter chips and toasts reads at 4.5:1 or more: an ask with its reply box, command list and Elaborate, a menu, an end-of-turn choice with its failed Elaborate and a running and a failed second opinion, Needs focus, Your turn, a send held, a refusal and a card that no longer waits',
     expectedErrors: [/status of 400/],
-    async run({ page, mock }) {
+    async run({ themes, page, mock }) {
       const fails: string[] = [];
       const audit = async (where: string) => {
         await page.until('the page to settle', still);
-        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+        await themes(async (scheme) => {
+          fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where} (${scheme}): ${f}`));
+        });
       };
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -4111,11 +4158,13 @@ export const checks: Check[] = [
   },
   {
     name: 'P7.contrast-wall-sheet every text on the Wall, archived tiles included, and in the sheet\'s Overview (working, decision, Needs focus), Diff and Artifacts tabs and its ⋯ menu reads at 4.5:1 or more',
-    async run({ page, mock }) {
+    async run({ themes, page, mock }) {
       const fails: string[] = [];
       const audit = async (where: string) => {
         await page.until('the page to settle', settled);
-        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+        await themes(async (scheme) => {
+          fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where} (${scheme}): ${f}`));
+        });
       };
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -4143,11 +4192,13 @@ export const checks: Check[] = [
   {
     name: 'P7.contrast-dialogs every text in New task (its options and picker open), Repos (settings, a conversation list and a removal open), Keys, Delete worktree, the toasts in a sheet and the top bar\'s pills reads at 4.5:1 or more',
     expectedErrors: [/status of 400/, /Finder is not available/, /WebSocket/, /ERR_CONNECTION/],
-    async run({ page, mock }) {
+    async run({ themes, page, mock }) {
       const fails: string[] = [];
       const audit = async (where: string) => {
         await page.until('the page to settle', settled);
-        fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where}: ${f}`));
+        await themes(async (scheme) => {
+          fails.push(...(await page.eval(lowContrast, 4.5)).map((f) => `${where} (${scheme}): ${f}`));
+        });
       };
       await openQueue(page, mock);
       await page.key('n');
@@ -4264,7 +4315,8 @@ export const checks: Check[] = [
   },
   {
     name: 'P7.keyboard with no pointer at all: ⏎ answers and Z takes it back, → skips and ← goes back; O opens Overview, 2 the Diff, J a file, Esc all files and Esc the queue; V the Wall, N New task, typing and Esc; ? Keys and Esc',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await page.goto(`${mock.url}/`);
       await page.eval(() => {
         const w = window as unknown as { e2ePointer: number };
@@ -4307,24 +4359,25 @@ export const checks: Check[] = [
       await page.key('Escape');
       await page.until('Keys to close', () => !document.querySelector('#keys[open]'));
       assert.equal(await page.eval(() => (window as unknown as { e2ePointer: number }).e2ePointer), 0);
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), [], 'the answer taken back went out');
     },
   },
   {
     name: 'P7.contrast-volume with 45 cards waiting every text on the queue reads at 4.5:1 or more too: the meter\'s bars with their counts, and a dock of sixteen capsules',
     scenario: 'volume45',
-    async run({ page, mock }) {
+    async run({ themes, page, mock }) {
       await page.goto(`${mock.url}/`);
       await page.until('the bars', () => document.querySelectorAll('[data-bar]').length === 3);
       await page.until('the dock', docked, 16);
       await page.until('the page to settle', still);
-      assert.deepEqual(await page.eval(lowContrast, 4.5), []);
+      await themes(async (scheme) => assert.deepEqual(await page.eval(lowContrast, 4.5), [], scheme));
     },
   },
   {
     name: 'client-1 the paperclip keeps the keys in the reply box: after a file is picked or one is removed the field has focus and takes 2 and e as text, and with focus on the paperclip itself 2 and x do nothing',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       const png = pngOnDisk();
       try {
         await openQueue(page, mock);
@@ -4350,7 +4403,7 @@ export const checks: Check[] = [
         await sleep(300);
         assert.equal(await page.eval(toastsOf, 'undo'), null, 'a key on the paperclip held a send');
         assert.equal(await page.eval(frontIs, 's-cart'), true);
-        await sleep(HELD_MS);
+        await wait(HELD_MS);
         assert.deepEqual(await actions(mock), []);
       } finally {
         png.remove();
@@ -4454,8 +4507,9 @@ export const checks: Check[] = [
   },
   {
     name: 'client-2.freeze a reply waiting for an unreachable board when the page is frozen and resumes still goes out once the board is back',
+    clock: 'fast',
     expectedErrors: [/WebSocket/, /ERR_/],
-    async run({ page, mock }) {
+    async run({ wait, page, mock }) {
       await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
       await mock.post('/mock/drop', { ms: 7000 });
       try {
@@ -4468,7 +4522,7 @@ export const checks: Check[] = [
       }
       const [sent] = await logged(mock, 'the reply, once the board is back', (e) => e.action === 'answer', 10_000);
       assert.deepEqual([sent.sessionId, sent.status, sent.body.text], ['s-cart', 204, 'Merge them, but keep the account cart quantities']);
-      await sleep(1000);
+      await wait(1000);
       assert.equal((await actions(mock)).length, 1);
     },
   },
@@ -4506,6 +4560,7 @@ export const checks: Check[] = [
   },
   {
     name: 'client-3 an option pressed while the open reply box still uploads its picture sends nothing and says so; once the picture is up the same option sends it along',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -4582,7 +4637,8 @@ export const checks: Check[] = [
   },
   {
     name: 'client-4 Z pressed in the same moment as an answer takes back that answer, not the send before it, and an Undo takes its send back at once, before its card comes back',
-    async run({ page, mock }) {
+    clock: 'fast',
+    async run({ wait, page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.key('Enter');
@@ -4592,9 +4648,8 @@ export const checks: Check[] = [
       await page.eval(() => {
         for (const [key, code] of [['1', 'Digit1'], ['z', 'KeyZ']]) document.body.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }));
       });
-      const pressed = Date.now();
       await page.until('s-group back at the front', frontIs, 's-group');
-      await sleep(HELD_MS - (Date.now() - pressed));
+      await wait(HELD_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
 
       await ready(page, 's-group');
@@ -4606,12 +4661,13 @@ export const checks: Check[] = [
       });
       assert.deepEqual(kept.filter((id) => id === 's-group'), [], 'the send was still held when its Undo had run');
       await page.until('s-group back at the front', frontIs, 's-group');
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
     },
   },
   {
     name: 'client-4.late-file a file that finishes uploading between a press and its hold stays in the reply box, as the send does not carry it',
+    clock: 'fast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
@@ -4639,6 +4695,7 @@ export const checks: Check[] = [
   },
   {
     name: 'client-5 a second opinion that finishes on the choice ⏎ was frozen on guards the card again, so 1 pressed at once sends nothing; after the guard 1 accepts it',
+    clock: 'fast',
     scenario: 'freeze',
     async run({ page, mock }) {
       await openQueue(page, mock);
@@ -4704,8 +4761,9 @@ export const checks: Check[] = [
   },
   {
     name: 'shell-6 with reduced motion a double click on a toast\'s Undo brings the card back and stays on it, as the second click does not press the peek that came under it',
+    clock: 'fast',
     motion: 'reduce',
-    async run({ page, mock, look }) {
+    async run({ wait, page, mock, look }) {
       await openQueue(page, mock);
       await ready(page, 's-cart');
       await page.click('[data-card] [data-option]', 'Keep the account cart');
@@ -4723,7 +4781,7 @@ export const checks: Check[] = [
       await page.pointAt(undo.x, undo.y, true, 2);
       await sleep(400);
       assert.equal(await page.eval(frontIs, 's-cart'), true);
-      await sleep(HELD_MS);
+      await wait(HELD_MS);
       assert.deepEqual(await actions(mock), []);
     },
   },
@@ -4861,7 +4919,7 @@ export const checks: Check[] = [
   },
   {
     name: 'theme the top bar\'s theme menu offers System, Light and Dark: each recolours the page at once against what the system prefers, the choice outlasts a reload, and System follows the system again',
-    async run({ page, mock, look, shot }) {
+    async run({ page, mock, themes, shot }) {
       const now = () => ({
         theme: document.documentElement.dataset.theme ?? 'system',
         scheme: getComputedStyle(document.documentElement).colorScheme,
@@ -4875,26 +4933,29 @@ export const checks: Check[] = [
         await page.click(`[data-theme-option="${theme}"]`);
         await page.until('the menu to close', () => !document.querySelector('#theme-menu:popover-open'));
       };
-      await openQueue(page, mock);
-      const system = await page.eval(now);
-      assert.deepEqual({ ...system, ground: undefined }, { theme: 'system', scheme: 'light dark', ground: undefined, checked: 'system', label: 'Theme: System' });
-      const other = look.scheme === 'dark' ? 'light' : 'dark';
+      // Once with the system in each scheme.
+      await themes(async (prefers) => {
+        await openQueue(page, mock);
+        const system = await page.eval(now);
+        assert.deepEqual({ ...system, ground: undefined }, { theme: 'system', scheme: 'light dark', ground: undefined, checked: 'system', label: 'Theme: System' });
+        const other = prefers === 'dark' ? 'light' : 'dark';
 
-      await pick(other);
-      const forced = await page.eval(now);
-      assert.deepEqual({ theme: forced.theme, scheme: forced.scheme, checked: forced.checked, label: forced.label }, { theme: other, scheme: other, checked: other, label: `Theme: ${other[0].toUpperCase()}${other.slice(1)}` });
-      assert.notEqual(forced.ground, system.ground, 'the page did not recolour');
-      await shot(`theme-${other}`);
+        await pick(other);
+        const forced = await page.eval(now);
+        assert.deepEqual({ theme: forced.theme, scheme: forced.scheme, checked: forced.checked, label: forced.label }, { theme: other, scheme: other, checked: other, label: `Theme: ${other[0].toUpperCase()}${other.slice(1)}` });
+        assert.notEqual(forced.ground, system.ground, 'the page did not recolour');
+        await shot(`theme-${other}`);
 
-      await page.goto(`${mock.url}/wall`);
-      await page.until('the tiles', tiles);
-      assert.deepEqual((await page.eval(now)).theme, other, 'the theme did not outlast a reload');
+        await page.goto(`${mock.url}/wall`);
+        await page.until('the tiles', tiles);
+        assert.deepEqual((await page.eval(now)).theme, other, 'the theme did not outlast a reload');
 
-      await pick(look.scheme);
-      assert.equal((await page.eval(now)).scheme, look.scheme);
-      await pick('system');
-      const back = await page.eval(now);
-      assert.deepEqual({ theme: back.theme, ground: back.ground }, { theme: 'system', ground: system.ground });
+        await pick(prefers);
+        assert.equal((await page.eval(now)).scheme, prefers);
+        await pick('system');
+        const back = await page.eval(now);
+        assert.deepEqual({ theme: back.theme, ground: back.ground }, { theme: 'system', ground: system.ground });
+      });
     },
   },
   {
