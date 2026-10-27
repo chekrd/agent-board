@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { api, upload } from '../api.ts';
 import { typed } from '../deck.ts';
 import type { Request } from '../outbox.ts';
@@ -149,6 +149,14 @@ function detach(id: string, a: Attachment) {
   editDraft(id, (d) => ({ ...d, files: d.files.filter((f) => f.id !== a.id) }));
 }
 
+// The session whose reply box had focus when it went: a change of state swaps a task's box for another one (Message
+// Claude for the decision's own answer), and the box that comes takes focus over, so a paste or dictation that follows
+// lands in it. Leaving the window keeps the claim; the field gets focus back with the window.
+let focusedBox: string | null = null;
+addEventListener('focusin', (e) => {
+  if (!(e.target instanceof HTMLTextAreaElement && e.target.dataset.draft)) focusedBox = null;
+});
+
 const files = (e: { dataTransfer?: DataTransfer | null; clipboardData?: DataTransfer | null }) => [...((e.dataTransfer ?? e.clipboardData)?.files ?? [])];
 
 export interface ComposerProps {
@@ -186,6 +194,14 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
     field.current?.focus();
     section.current?.scrollIntoView({ block: 'nearest' });
   }, [focus]);
+
+  useLayoutEffect(() => {
+    const active = document.activeElement;
+    const box = field.current;
+    if (!box || focusedBox !== id || (active && active !== document.body)) return;
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(box.value.length, box.value.length);
+  }, [id]);
 
   useEffect(() => {
     if (listed) section.current?.scrollIntoView({ block: 'nearest' });
@@ -306,7 +322,18 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
           onChange={(e) => onInput(e.currentTarget.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          onFocus={() => setFocused(true)}
+          data-draft={id}
+          onFocus={() => {
+            focusedBox = id;
+            setFocused(true);
+          }}
+          onBlur={(e) => {
+            const left = e.currentTarget;
+            if (e.relatedTarget || !document.hasFocus()) return;
+            queueMicrotask(() => {
+              if (left.isConnected && focusedBox === id) focusedBox = null;
+            });
+          }}
         />
         <label className={styles.attach} title="Attach files; pasting or dropping them works too">
           {/* The chooser leaves focus on the input, picked or cancelled; React has no onCancel for an input. */}

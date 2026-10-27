@@ -3342,6 +3342,22 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P5.2.27 the sheet\'s reply box stays where you write: a task that starts asking while you are in its box swaps the box for the decision\'s, and focus moves into that one, so a paste or dictation that comes next lands there',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet textarea');
+      await page.type('Round');
+      await mock.post('/mock/patch', {
+        id: 's-invoice',
+        patch: { status: 'idle', activity: null, question: { toolUseId: 'toolu_inv', category: 'plan-problem', askedAt: Date.now(), title: 'Round half cents to even?', details: '', options: [{ label: 'Yes' }, { label: 'No' }] } },
+      });
+      await page.until('the decision\'s box', () => !!document.querySelector('#task-sheet [data-queued] textarea'));
+      await page.type(' half up');
+      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet [data-queued] textarea')), true, 'focus moved into the new box');
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet [data-queued] textarea')!.value), 'Round half up');
+    },
+  },
+  {
     name: 'P5.2.23 Terminal posts a send held on its session at once, before it asks for the terminal',
     async run({ page, mock }) {
       await openQueue(page, mock);
