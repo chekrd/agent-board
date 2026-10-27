@@ -3409,7 +3409,7 @@ export const checks: Check[] = [
       await shot('sheet-after-menu-outside');
 
       await menu();
-      await page.click('#task-sheet [role="tablist"]');
+      await page.click('#task-sheet header [data-attention]');
       await page.until('the menu to close', () => !document.querySelector('[popover="auto"]:popover-open'));
       await sleep(100);
       assert.deepEqual(await page.eval(layers), { menu: false, sheet: true, path: '/s/s-invoice/overview' });
