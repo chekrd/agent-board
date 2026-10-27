@@ -3,7 +3,9 @@ import { api, upload } from '../api.ts';
 import { typed } from '../deck.ts';
 import type { Request } from '../outbox.ts';
 import { holding, undo } from '../sends.ts';
+import { useStore } from '../store.ts';
 import type { Command, Session } from '../types.ts';
+import { tilde } from '../util.ts';
 import styles from './Composer.module.css';
 import { Icon } from './Icon.tsx';
 
@@ -184,6 +186,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
   const [closed, setClosed] = useState(false);
   const [focused, setFocused] = useState(false);
   const commands = useCommands(session.worktree, focused || draft.text.startsWith('/'));
+  const { home } = useStore();
   const query = /^\/\S*$/.test(draft.text) && !closed ? draft.text.slice(1).toLowerCase() : null;
   const matches = query === null || !commands ? [] : rank(commands, query);
   const listed = matches.length > 0;
@@ -292,7 +295,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
               key={f.id}
               className={styles.file}
               data-state={f.error ? 'failed' : f.path ? 'ready' : 'uploading'}
-              title={f.error ? `Could not upload: ${f.error}` : f.path ? `Sent to Claude as ${f.path}` : 'Uploading…'}
+              title={f.error ? `Could not upload: ${f.error}` : f.path ? `Sent to Claude as ${tilde(f.path, home)}` : 'Uploading…'}
             >
               {f.preview ? <span className={styles.thumb} style={{ backgroundImage: `url("${f.preview}")` }} aria-hidden /> : <span className={styles.ext}>{f.name.split('.').at(-1)?.slice(0, 4) || 'file'}</span>}
               <span className={styles.name}>{f.name}</span>

@@ -3,7 +3,8 @@ import { api } from '../api.ts';
 import { keepUnderLayer } from '../layers.ts';
 import { openSheet } from '../router.ts';
 import type { RepoView } from '../types.ts';
-import { EFFORTS, effortName, modelName } from '../util.ts';
+import { useStore } from '../store.ts';
+import { EFFORTS, effortName, modelName, tilde, untilde } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import styles from './NewTaskForm.module.css';
 
@@ -112,10 +113,11 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
   const list = useRef<HTMLDivElement>(null);
   const filter = useRef<HTMLInputElement>(null);
   const seed = useRef('');
+  const { home } = useStore();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const q = query.trim().toLowerCase();
-  const shown = q ? repos.filter((r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)) : repos;
+  const shown = q ? repos.filter((r) => r.name.toLowerCase().includes(q) || tilde(r.path, home).toLowerCase().includes(q)) : repos;
   const at = Math.min(active, shown.length - 1);
   const activeId = shown[at] && `${id}-${shown[at].id}`;
 
@@ -194,7 +196,7 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
               onClick={() => choose(r)}
             >
               <strong>{r.name}</strong>
-              <code>{r.path}</code>
+              <code>{tilde(r.path, home)}</code>
             </button>
           ))}
           {shown.length === 0 && <p className={styles.none}>No repository matches “{query.trim()}”</p>}
@@ -307,6 +309,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
   const known = useSyncExternalStore(subscribe, () => models);
+  const { home } = useStore();
   const sorted = repos.toSorted((a, b) => byName(a.name, b.name));
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
   useEffect(() => {
@@ -328,7 +331,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         repoId: repo.id,
         name: now.existing ? '' : now.name.trim(),
         branch: now.branch.trim(),
-        path: now.path.trim(),
+        path: untilde(now.path.trim(), home),
         prompt: now.prompt,
         existingBranch: now.existing,
         model: now.model,
@@ -401,15 +404,15 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
           </label>
           <label className={styles.input} title="Where the worktree is created; defaults to the repository's worktree folder">
             <span>Worktree path</span>
-            <input value={f.path} onChange={(e) => edit({ path: e.currentTarget.value })} placeholder={`${repo.worktreeRoot ?? repo.defaultWorktreeRoot}/${name || '<name>'}/${folder}`} spellCheck={false} />
+            <input value={f.path} onChange={(e) => edit({ path: e.currentTarget.value })} placeholder={`${tilde(repo.worktreeRoot ?? repo.defaultWorktreeRoot, home)}/${name || '<name>'}/${folder}`} spellCheck={false} />
           </label>
         </div>
       )}
       <div className={styles.foot}>
         <p className={styles.hint} data-hint>
           {f.existing ? (
-            picked?.worktree ? <>Starts Claude in <code>{picked.worktree}</code>, where it is checked out.</>
-              : <>Switches <code>{main?.path ?? repo.path}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
+            picked?.worktree ? <>Starts Claude in <code>{tilde(picked.worktree, home)}</code>, where it is checked out.</>
+              : <>Switches <code>{tilde(main?.path ?? repo.path, home)}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
           ) : (
             <>Branches from <code>{repo.base}</code> and starts Claude there.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
           )}

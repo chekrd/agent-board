@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, modelName, openSubtasks, settledAs, tilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, modelName, openSubtasks, settledAs, tilde, tildeIn, untilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -50,6 +50,19 @@ test('a path under the home folder starts with ~, any other stays whole', () => 
   assert.equal(tilde('/Users/me', '/Users/me'), '~');
   assert.equal(tilde('/Users/meg/git', '/Users/me'), '/Users/meg/git');
   assert.equal(tilde('/opt/x', ''), '/opt/x');
+});
+
+test('a typed path starting with ~ means the home folder', () => {
+  assert.equal(untilde('~/code/x', '/Users/me'), '/Users/me/code/x');
+  assert.equal(untilde('~', '/Users/me'), '/Users/me');
+  assert.equal(untilde('~me/x', '/Users/me'), '~me/x');
+  assert.equal(untilde('/opt/x', '/Users/me'), '/opt/x');
+});
+
+test('text names the home folder as ~ wherever a path starts there', () => {
+  assert.equal(tildeIn('Read /Users/me/git/a.ts and /Users/me', '/Users/me'), 'Read ~/git/a.ts and ~');
+  assert.equal(tildeIn('cd "/Users/me/x" && ls /Users/meg /Data/Users/me/y', '/Users/me'), 'cd "~/x" && ls /Users/meg /Data/Users/me/y');
+  assert.equal(tildeIn('/Users/me/x', ''), '/Users/me/x');
 });
 
 test('a worktree is named by its folder, without the repository folder git-wt puts in it; the main checkout and a removed worktree are none', () => {

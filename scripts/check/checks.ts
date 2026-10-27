@@ -721,7 +721,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P0.5 a dropped connection (/mock/drop 3 s): the pill turns Reconnecting… with a warm dot, then Live with a green one',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
@@ -1076,7 +1076,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P3.reload-offline a new build waits for the server: New task closing while the server cannot be reached does not reload the board, and it reloads once the server is back and names that build',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -1652,7 +1652,9 @@ export const checks: Check[] = [
       await page.click('#workspace input[aria-label="Repository or folder"]');
       await page.type('~/code/payments');
       await page.click('#workspace button[type="submit"]', 'Add');
-      assert.deepEqual((await request('Add', 'POST', '/api/repos')).body, { path: '~/code/payments' });
+      assert.deepEqual((await request('Add', 'POST', '/api/repos')).body, { path: '/Users/me/code/payments' });
+      assert.equal(await page.eval(() => document.querySelector('#workspace [data-worktree="/Users/me/code/worktrees/invoice-rounding/billing-api"] code')?.textContent),
+        '~/code/worktrees/invoice-rounding/billing-api', 'a path in the home folder shows from ~');
       await page.click('#workspace button[aria-label="Stop scanning ~/code"]');
       assert.deepEqual((await request('the folder\'s ×', 'DELETE', '/api/roots')).body, { path: '~/code' });
       await page.click('#workspace button', 'Rescan');
@@ -1722,7 +1724,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P4.14 a dropped connection: within 1.5 s the pill reads Reconnecting…, breathes and says since when, then Live again',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/`);
       await page.until('the live pill', () => document.querySelector('[data-link="live"]') !== null);
@@ -1828,7 +1830,7 @@ export const checks: Check[] = [
   },
   {
     name: 'P4.17 the reload pill hides while the board reconnects',
-    expectedErrors: [/WebSocket/, /ERR_CONNECTION/],
+    expectedErrors: [/WebSocket/, /ERR_CONNECTION/, /ERR_EMPTY_RESPONSE/],
     async run({ page, mock }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);

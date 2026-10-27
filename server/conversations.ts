@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
+import { tildeIn } from './home.ts';
 
 const run = promisify(execFile);
 const CLAUDE_DIR = join(homedir(), '.claude');
@@ -209,7 +210,7 @@ function activity(entries: Record<string, any>[]): Activity | null {
   const start = entries.findLastIndex((e) => promptText(e));
   if (start < 0) return null;
   const block = entries.slice(start + 1).map((e) => blocks(e).at(-1)).findLast(Boolean);
-  const step = !block ? null : block.type === 'tool_use' ? describeTool(block) : block.type === 'thinking' ? 'Thinking' : 'Writing';
+  const step = !block ? null : block.type === 'tool_use' ? tildeIn(describeTool(block), homedir()) : block.type === 'thinking' ? 'Thinking' : 'Writing';
   return { step: step && step.split('\n')[0].slice(0, 140), since: Date.parse(entries[start].timestamp) || Date.now() };
 }
 
@@ -219,7 +220,7 @@ function background(entries: Record<string, any>[], carried: readonly [string, s
   const calls = new Map<string, string>();
   const open = new Map(carried);
   for (const entry of entries) {
-    for (const b of blocks(entry)) if (b.type === 'tool_use') calls.set(b.id, describeTool(b));
+    for (const b of blocks(entry)) if (b.type === 'tool_use') calls.set(b.id, tildeIn(describeTool(b), homedir()));
     const r = entry.type === 'user' && !entry.isSidechain ? entry.toolUseResult : null;
     if (r && typeof r === 'object') {
       const id = r.backgroundTaskId ?? (r.status === 'async_launched' ? r.agentId : null);

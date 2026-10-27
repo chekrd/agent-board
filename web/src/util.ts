@@ -1,4 +1,5 @@
 import { decisionKey, turnDecision } from '../../server/decision.ts';
+export { tildeIn } from '../../server/home.ts';
 import type { Finding, QuestionOption, RepoView, Session } from './types.ts';
 
 export function locate(repos: RepoView[], session: Session) {
@@ -9,6 +10,7 @@ export function locate(repos: RepoView[], session: Session) {
 }
 
 export const tilde = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
+export const untilde = (path: string, home: string) => (home && (path === '~' || path.startsWith('~/')) ? `${home}${path.slice(1)}` : path);
 
 // claude-opus-5-5 reads Opus 5.5; an alias or a name of another shape shows as given.
 export function modelName(model: string) {

@@ -3,7 +3,7 @@ import { api } from '../api.ts';
 import { openSheet } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { Conversation, RepoView, Session, WorktreeView } from '../types.ts';
-import { ago } from '../util.ts';
+import { ago, tilde, untilde } from '../util.ts';
 import { Icon } from './Icon.tsx';
 import { openTerminal } from './SessionMenu.tsx';
 import sheet from './TaskSheet.module.css';
@@ -18,11 +18,11 @@ export function openRepos() {
 }
 
 export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; repos: RepoView[]; sessions: Session[] }) {
-  const { link } = useStore();
+  const { link, home } = useStore();
   const [path, setPath] = useState('');
   const [error, addPath, adding] = useActionState(async () => {
     try {
-      await api('POST', '/api/repos', { path });
+      await api('POST', '/api/repos', { path: untilde(path.trim(), home) });
       setPath('');
       return null;
     } catch (err) {
@@ -32,7 +32,7 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
 
   const pick = async () => {
     const result = await api<{ path: string }>('POST', '/api/pick-folder').catch(() => null);
-    if (result?.path) setPath(result.path);
+    if (result?.path) setPath(tilde(result.path, home));
   };
 
   return (
@@ -58,8 +58,8 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
               <span>Scanned folders:</span>
               {roots.map((root) => (
                 <span key={root} className={styles.root}>
-                  <code>{root}</code>
-                  <button type="button" aria-label={`Stop scanning ${root}`} title="Stop scanning this folder; repositories already found stay" onClick={() => api('DELETE', '/api/roots', { path: root }).catch(reportError)}>
+                  <code>{tilde(root, home)}</code>
+                  <button type="button" aria-label={`Stop scanning ${tilde(root, home)}`} title="Stop scanning this folder; repositories already found stay" onClick={() => api('DELETE', '/api/roots', { path: root }).catch(reportError)}>
                     <Icon name="close" size={12} />
                   </button>
                 </span>
@@ -82,6 +82,7 @@ export function WorkspaceDialog({ roots, repos, sessions }: { roots: string[]; r
 }
 
 function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }) {
+  const { home } = useStore();
   const [settings, setSettings] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +93,7 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
     await run(() => api('PATCH', `/api/repos/${repo.id}`, {
       baseBranch: form.get('baseBranch'),
       setupCommand: form.get('setupCommand'),
-      worktreeRoot: form.get('worktreeRoot'),
+      worktreeRoot: untilde(String(form.get('worktreeRoot') ?? '').trim(), home),
     }));
   };
 
@@ -118,7 +119,7 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
     <section className={styles.repo}>
       <div className={styles.repoHead}>
         <h3>{repo.name}</h3>
-        <code>{repo.path}</code>
+        <code>{tilde(repo.path, home)}</code>
         <button type="button" className={styles.tiny} aria-expanded={settings} onClick={() => setSettings(!settings)}>Settings</button>
         <button type="button" className={styles.tiny} data-danger onClick={() => run(() => api('DELETE', `/api/repos/${repo.id}`))} title="Hides it and drops its tiles; running Claudes, files and worktrees are left alone">
           Remove
@@ -132,7 +133,7 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
           </label>
           <label>
             <span>Worktree folder</span>
-            <input name="worktreeRoot" defaultValue={repo.worktreeRoot ?? ''} placeholder={repo.defaultWorktreeRoot} spellCheck={false} />
+            <input name="worktreeRoot" defaultValue={repo.worktreeRoot ? tilde(repo.worktreeRoot, home) : ''} placeholder={tilde(repo.defaultWorktreeRoot, home)} spellCheck={false} />
           </label>
           <label title="Runs in each new worktree before Claude starts">
             <span>Setup command after create</span>
@@ -153,7 +154,7 @@ function RepoSection({ repo, sessions }: { repo: RepoView; sessions: Session[] }
         >
           {removing === w.path && (
             <form action={remove} className={styles.confirm}>
-              <p>Remove worktree <code>{removing}</code>? Its sessions are stopped.</p>
+              <p>Remove worktree <code>{tilde(removing, home)}</code>? Its sessions are stopped.</p>
               <div className={styles.checks}>
                 <label><input type="checkbox" name="deleteBranch" /> Also delete the branch</label>
                 <label><input type="checkbox" name="force" /> Force (discard uncommitted changes)</label>
@@ -183,13 +184,14 @@ interface RowProps {
 }
 
 function WorktreeRow({ worktree: w, sessions, onStart, onShell, onRemove, children }: RowProps) {
+  const { home } = useStore();
   const latest = w.conversations[0];
   return (
     <div className={styles.worktree} data-worktree={w.path}>
       <div className={styles.wtRow}>
-        <span className={styles.wtName} title={w.path}>
+        <span className={styles.wtName} title={tilde(w.path, home)}>
           <strong>{w.branch ?? `detached ${w.head.slice(0, 8)}`}</strong>
-          <code>{w.path}</code>
+          <code>{tilde(w.path, home)}</code>
         </span>
         {latest && <ConversationAction conversation={latest} sessions={sessions} onStart={onStart} primary />}
         <button type="button" className={styles.tiny} onClick={() => onStart()} title="New Claude session">New Claude</button>
