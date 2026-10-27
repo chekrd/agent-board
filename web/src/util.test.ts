@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
-import { attentionChangesAt, attentionOf, clock, decisionOf, menuStuck } from './util.ts';
+import type { RepoView } from './types.ts';
+import { attentionChangesAt, attentionOf, clock, decisionOf, menuStuck, tilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -42,4 +43,19 @@ test('clock shows a time on the 24-hour clock, with the weekday when asked', () 
   assert.equal(clock(at), '14:05');
   assert.equal(clock(new Date(2026, 9, 26, 0, 7).getTime()), '00:07');
   assert.match(clock(at, true), /^Mon,? 14:05$/);
+});
+
+test('a path under the home folder starts with ~, any other stays whole', () => {
+  assert.equal(tilde('/Users/me/git/board', '/Users/me'), '~/git/board');
+  assert.equal(tilde('/Users/me', '/Users/me'), '~');
+  assert.equal(tilde('/Users/meg/git', '/Users/me'), '/Users/meg/git');
+  assert.equal(tilde('/opt/x', ''), '/opt/x');
+});
+
+test('a worktree is named by its folder, without the repository folder git-wt puts in it; the repository is the main checkout', () => {
+  const repo = { path: '/g/board', name: 'board' } as RepoView;
+  assert.equal(worktreeName('/g/worktrees/review/board', repo), 'review');
+  assert.equal(worktreeName('/g/worktrees/spike', repo), 'spike');
+  assert.equal(worktreeName('/g/board', repo), 'main checkout');
+  assert.equal(worktreeName('/g/worktrees/x/board', undefined), 'board');
 });

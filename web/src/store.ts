@@ -12,6 +12,7 @@ import { attentionChangesAt } from './util.ts';
 export type Link = 'connecting' | 'live' | 'reconnecting';
 
 interface State {
+  home: string;
   roots: string[];
   repos: RepoView[];
   sessions: Session[];
@@ -25,7 +26,7 @@ interface State {
 const RELOAD_CAP_MS = 15_000;
 const RELOADED_FOR = 'agent-board:reloaded-for';
 
-let state: State = { roots: [], repos: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
+let state: State = { home: '', roots: [], repos: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();
 let order = '';
 

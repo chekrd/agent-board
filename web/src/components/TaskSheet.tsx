@@ -69,7 +69,7 @@ interface BodyProps {
 }
 
 function Body({ session, name, repos, tab, item, back }: BodyProps) {
-  const { worktree, branch } = locate(repos, session);
+  const { repo, worktree, branch } = locate(repos, session);
   const attention = shownOf(session, useBusy());
   const tabs: { key: Tab; label: string; kbd: string }[] = [
     { key: 'overview', label: 'Overview', kbd: '1' },
@@ -106,7 +106,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
         <SessionMenu session={session} worktree={worktree} name={name} />
       </header>
       <div className={styles.panel} role="tabpanel">
-        {current === 'overview' && <Overview session={session} name={name} branch={worktree?.branch ?? undefined} />}
+        {current === 'overview' && <Overview session={session} name={name} branch={worktree?.branch ?? undefined} repo={repo} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
         {current === 'artifacts' && <Artifacts session={session} item={item} />}
       </div>

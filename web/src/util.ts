@@ -8,6 +8,16 @@ export function locate(repos: RepoView[], session: Session) {
   return { repo, worktree, branch: worktree?.branch ?? folder };
 }
 
+export const tilde = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
+
+// A worktree is named by its folder under the worktree root, which git-wt makes <name>/<repo>.
+export function worktreeName(path: string, repo: RepoView | undefined) {
+  if (repo && path === repo.path) return 'main checkout';
+  const parts = path.split('/');
+  if (repo && parts.length > 1 && parts.at(-1) === repo.name) parts.pop();
+  return parts.at(-1) || path;
+}
+
 export const sessionLabel = (session: Session, branch: string) => session.title || branch;
 
 export function ago(ms: number, now = Date.now()) {

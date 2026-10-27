@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { api, sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
-import { patchSession, unpatch } from '../store.ts';
+import { patchSession, unpatch, useStore } from '../store.ts';
 import type { Session } from '../types.ts';
+import { tilde } from '../util.ts';
 import styles from './DeleteWorktreeDialog.module.css';
 
 interface Loss {
@@ -25,6 +26,7 @@ export const askDeleteWorktree = (session: Session) => ask?.(session);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export function DeleteWorktreeDialog() {
+  const { home } = useStore();
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [target, setTarget] = useState<{ session: Session; check: Check } | null>(null);
@@ -81,7 +83,7 @@ export function DeleteWorktreeDialog() {
           <h2 id="delete-worktree-title">
             {loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
           </h2>
-          <code className={styles.path}>{target.session.worktree}</code>
+          <code className={styles.path}>{tilde(target.session.worktree, home)}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
           {loss?.checkout ? (

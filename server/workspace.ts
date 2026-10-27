@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { liveConversations, listConversations, type Conversation } from './conversations.ts';
 import { repos, roots, sessions, type Repo } from './db.ts';
@@ -76,4 +77,4 @@ export const workspace = () => cache;
 
 export const repoView = (id: number) => cache.find((r) => r.id === id);
 
-export const snapshot = () => ({ roots: roots.all(), repos: cache, sessions: sessions.all() });
+export const snapshot = () => ({ home: homedir(), roots: roots.all(), repos: cache, sessions: sessions.all() });

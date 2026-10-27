@@ -5,8 +5,9 @@ import type { Request } from '../outbox.ts';
 import { queue, useQueue } from '../queue.ts';
 import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
 import { hold, useBusy } from '../sends.ts';
-import type { MenuAnswer, Session } from '../types.ts';
-import { adviceFor, ago, attentionOf, decisionOf } from '../util.ts';
+import { useStore } from '../store.ts';
+import type { MenuAnswer, RepoView, Session } from '../types.ts';
+import { adviceFor, ago, attentionOf, decisionOf, tilde, worktreeName } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { Findings, Subtasks, SubtaskOf } from './Findings.tsx';
@@ -21,7 +22,7 @@ import { toast } from './Toasts.tsx';
 
 const COPIED_MS = 1500;
 
-function Copy({ value, what, title }: { value: string; what: string; title?: string }) {
+function Copy({ value, what, title, shown = value }: { value: string; what: string; title?: string; shown?: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -34,7 +35,7 @@ function Copy({ value, what, title }: { value: string; what: string; title?: str
   );
   return (
     <button type="button" className={styles.copy} data-copied={copied || undefined} title={title} aria-label={`Copy ${what.toLowerCase()} ${value}`} onClick={copy}>
-      <code>{value}</code>
+      <code>{shown}</code>
       <span className={styles.copyMark} aria-live="polite">
         <Icon name={copied ? 'check' : 'copy'} size={13} />
         {copied && 'Copied'}
@@ -149,7 +150,8 @@ function Queued({ session, name }: { session: Session; name: string }) {
   );
 }
 
-export function Overview({ session, name, branch }: { session: Session; name: string; branch?: string }) {
+export function Overview({ session, name, branch, repo }: { session: Session; name: string; branch?: string; repo?: RepoView }) {
+  const { home } = useStore();
   const busy = useBusy();
   const { summary, activity } = session;
   const attention = attentionOf(session);
@@ -225,8 +227,16 @@ export function Overview({ session, name, branch }: { session: Session; name: st
                   <dd>{session.firstPrompt ?? '—'}</dd>
                 </>
               )}
+              {repo && (
+                <>
+                  <dt>Repository</dt>
+                  <dd>{repo.name}</dd>
+                </>
+              )}
               <dt>Worktree</dt>
-              <dd><Copy value={session.worktree} what="Worktree path" /></dd>
+              <dd>{worktreeName(session.worktree, repo)}</dd>
+              <dt>Path</dt>
+              <dd><Copy value={session.worktree} shown={tilde(session.worktree, home)} what="Worktree path" /></dd>
               {branch && (
                 <>
                   <dt>Branch</dt>

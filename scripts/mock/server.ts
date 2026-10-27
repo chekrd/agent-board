@@ -104,7 +104,7 @@ function shown(s: Session) {
 }
 
 const snapshot = () => ({
-  roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
+  home: '/Users/me', roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
   ...(!args.legacy && { usage: state.usage }),
 });
 

@@ -3,8 +3,9 @@ import { sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
 import { closeSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
-import { patchSession, unpatch } from '../store.ts';
+import { patchSession, unpatch, useStore } from '../store.ts';
 import type { Session, WorktreeView } from '../types.ts';
+import { tilde } from '../util.ts';
 import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
 import { Icon } from './Icon.tsx';
 import styles from './SessionMenu.module.css';
@@ -53,6 +54,7 @@ function quit(session: Session) {
 export function SessionMenu({ session, worktree, name }: { session: Session; worktree: WorktreeView | undefined; name: string }) {
   const id = useId();
   const exited = session.status === 'exited';
+  const path = tilde(session.worktree, useStore().home);
   const pick = (run: () => unknown) => () => {
     document.getElementById(id)?.hidePopover();
     run();
@@ -70,8 +72,8 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
         ) : (
           <Item label="Terminal" note="Show its terminal in Ghostty" onClick={pick(() => openTerminal(session.id).catch(reportError))} />
         )}
-        <Item label="Open in Finder" note={session.worktree} onClick={act('finder')} />
-        <Item label="Open in VS Code" note={session.worktree} onClick={act('vscode')} />
+        <Item label="Open in Finder" note={path} onClick={act('finder')} />
+        <Item label="Open in VS Code" note={path} onClick={act('vscode')} />
         {!exited && (
           <Item
             label="Quit Claude"

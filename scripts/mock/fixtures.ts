@@ -42,7 +42,7 @@ export function repos(now: number): RepoView[] {
     repo(2, '~/code/billing-api', { baseBranch: 'develop', setupCommand: 'pnpm install && pnpm db:migrate' }, [
       worktree('~/code/billing-api', 'develop', [], true),
       worktree('~/code/worktrees/webhook-retries/billing-api', 'webhook-retries', [conversation('s-hooks', 'Retry failed webhooks', null, now - 9 * MIN, 78120)]),
-      worktree('~/code/worktrees/invoice-rounding/billing-api', 'invoice-rounding', [conversation('s-invoice', 'Fix invoice PDF rounding', null, now - MIN, 77031)]),
+      worktree('/Users/me/code/worktrees/invoice-rounding/billing-api', 'invoice-rounding', [conversation('s-invoice', 'Fix invoice PDF rounding', null, now - MIN, 77031)]),
       worktree('~/code/worktrees/stripe-18/billing-api', 'stripe-18', [conversation('s-stripe', 'Upgrade Stripe SDK to v18', null, now - 3 * HOUR)]),
     ]),
     repo(3, '~/git/github/agent-board', {}, [
@@ -218,7 +218,7 @@ export function queue(now: number): Session[] {
       lastTurn: 't-anchors-4', diffstat: { files: 9, insertions: 41, deletions: 41 },
     }),
     session({
-      id: 's-invoice', repoId: 2, worktree: '~/code/worktrees/invoice-rounding/billing-api', tty: '/dev/ttys006', pid: 77031,
+      id: 's-invoice', repoId: 2, worktree: '/Users/me/code/worktrees/invoice-rounding/billing-api', tty: '/dev/ttys006', pid: 77031,
       title: 'Fix invoice PDF rounding',
       firstPrompt: 'Invoice PDFs are sometimes off by a cent (BILL-91). Find out why, fix it, and get the PR green.',
       status: 'working', createdAt: now - 80 * MIN, updatedAt: now - MIN,

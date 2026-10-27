@@ -28,13 +28,12 @@
     min-height: 46px;
     padding: 8px 8px 8px 16px;
     border-radius: 14px;
-    border: 1px solid light-dark(transparent, rgb(255 255 255 / 0.14));
     background: var(--toast);
     color: var(--toast-ink);
     font-size: 14px;
     font-weight: 550;
     line-height: 1.4;
-    box-shadow: var(--shadow);
+    box-shadow: 0 0 0 1px light-dark(transparent, rgb(255 255 255 / 0.14)), var(--shadow);
     animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
     :focus-visible { outline-color: var(--toast-ink); }
   }
