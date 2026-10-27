@@ -249,10 +249,8 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
                   <dd><code>{session.pr.result}</code></dd>
                 </>
               )}
-              <dt title="The model Claude runs on now, as its last request named it">Model</dt>
-              <dd>{session.model ? modelName(session.model) : '—'}</dd>
-              <dt title="How hard Claude thinks, as its last request set it; /effort changes it">Effort</dt>
-              <dd>{session.effort ? effortName(session.effort) : '—'}</dd>
+              <dt title="The model Claude runs on now and its effort, as its last request named them; /model and /effort change them">Model</dt>
+              <dd>{session.model ? modelName(session.model) : '—'}{session.effort && ` @ ${effortName(session.effort).toLowerCase()}`}</dd>
               <dt title="The terminal device Claude runs on">Terminal</dt>
               <dd title="The terminal device Claude runs on">{session.tty ? <code>{session.tty}</code> : '—'}</dd>
               <dt title="Claude Code's session id; claude --resume takes it">Session</dt>

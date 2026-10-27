@@ -1297,7 +1297,7 @@ export const checks: Check[] = [
       assert.deepEqual([overview.values.Repository, overview.values.Worktree, overview.values.Path], ['billing-api', 'invoice-rounding', '~/code/worktrees/invoice-rounding/billing-api']);
       assert.deepEqual({ ...overview, status: undefined, values: undefined }, {
         working: true, know: true, composer: true, status: undefined, values: undefined, reply: true,
-        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Model', 'Effort', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
+        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Model', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
       assert.match(overview.status ?? '', /^Session summary · updated \d+m ago$/);
       await wait(1100);
@@ -1596,7 +1596,7 @@ export const checks: Check[] = [
         const dl = document.querySelector('#task-sheet dl');
         return dl && Object.fromEntries([...dl.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));
       });
-      assert.deepEqual([facts.Model, facts.Effort], ['Sonnet 5.5', 'Extra high']);
+      assert.equal(facts.Model, 'Sonnet 5.5 @ extra high');
       await page.click('#task-sheet button[aria-label^="Back to"]');
       await page.until('the Wall', () => !document.querySelector('#task-sheet') && location.pathname === '/wall');
       await openNewTask(page);
