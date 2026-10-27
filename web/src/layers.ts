@@ -13,6 +13,7 @@ export const menuOpen = () => openPopovers().includes('auto');
 // the toasts above it, a press works as usual. Its mousedown goes through: a cancelled one makes the light dismiss of a
 // dialog around the layer uncancellable, so keepUnderLayer could not keep the dialog open.
 let caught = false;
+let presses = 0;
 
 function beside(target: EventTarget | null) {
   if (!menuOpen()) return false;
@@ -26,10 +27,16 @@ const swallow = (e: Event) => {
   e.preventDefault();
   e.stopPropagation();
 };
-// Once the press's click has run.
-const release = () => setTimeout(() => (caught = false));
+// Once the press's click has run. A busy page can run this after the next press began; that press keeps its own.
+const release = () => {
+  const press = presses;
+  setTimeout(() => press === presses && (caught = false));
+};
 
-addEventListener('pointerdown', (e) => (caught = beside(e.target)), true);
+addEventListener('pointerdown', (e) => {
+  presses++;
+  caught = beside(e.target);
+}, true);
 for (const type of ['click', 'auxclick']) addEventListener(type, swallow, true);
 addEventListener('pointerup', release, true);
 addEventListener('pointercancel', release, true);
