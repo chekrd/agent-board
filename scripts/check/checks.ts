@@ -707,11 +707,29 @@ export const checks: Check[] = [
       assert.deepEqual(sideways, [], 'a line too long for its side wraps rather than scrolling sideways');
       await shot('diff');
 
+      // Every frame from the click on, the one file as shown: its lines and where the pane is scrolled to.
+      await page.eval(() => {
+        const seen: string[] = [];
+        (window as unknown as { seen: string[] }).seen = seen;
+        const record = () => {
+          const pane = document.querySelector<HTMLElement>('section[data-file]')?.parentElement;
+          const sections = document.querySelectorAll('section[data-file]');
+          if (pane && sections.length === 1 && !pane.hasAttribute('data-seeking')) {
+            const lines = sections[0].querySelector('diffs-container')?.shadowRoot?.querySelectorAll('[data-line]').length ?? 0;
+            const frame = `${lines} lines at ${pane.scrollTop}`;
+            if (seen.at(-1) !== frame) seen.push(frame);
+          }
+          if (seen.length < 5) requestAnimationFrame(record);
+        };
+        record();
+      });
       await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
-      await page.until('server/git.ts alone, as a whole file', () =>
-        document.querySelector('[data-theme="dark"] code')?.textContent === 'server/git.ts' && document.querySelectorAll('section[data-file]').length === 1 &&
-        !!document.querySelector('[data-theme="dark"] > div')?.textContent?.includes('← All files'));
+      await page.until('server/git.ts alone, as a whole file', wholeFile, 'server/git.ts');
       await page.until('its first change in view', () => !!document.querySelector('section[data-file] diffs-container')?.shadowRoot?.querySelector('[data-line-type^="change-"]'));
+      await sleep(300);
+      const frames = await page.eval(() => (window as unknown as { seen: string[] }).seen);
+      assert.equal(frames.length, 1, `the file changed after it showed, as its hunks alone or scrolled elsewhere: ${frames.join(' → ')}`);
+      assert.equal(await page.eval(() => document.querySelector('nav[aria-label="Changed files"] button')?.getAttribute('aria-pressed')), 'false');
       await shot('diff-whole-file');
       // The file opens at its first change and renders only the lines near the viewport, so look at both ends.
       await page.until('line 1 at the top of server/git.ts', edgeLine, 'top', 1);
@@ -1350,7 +1368,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.5 Diff: 2 replaces the entry; the tree resizes by key and resets on a double click, kept in localStorage; a file opens whole, J and K step; Esc goes back to all files, a second Esc closes the sheet and focus returns to the tile\'s name',
+    name: 'P4.5 Diff: 2 replaces the entry; the tree resizes by key and resets on a double click, kept in localStorage; a file opens whole, J and K step, All files in the tree goes back; Esc goes back to all files, a second Esc closes the sheet and focus returns to the tile\'s name',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', tiles);
@@ -1384,6 +1402,12 @@ export const checks: Check[] = [
       await page.key('k');
       await page.until('the file before whole', wholeFile, 'server/git.ts');
       await shot('sheet-diff-file');
+
+      await page.click('nav[aria-label="Changed files"] button[aria-pressed="false"]');
+      await page.until('all files from the tree', () => document.querySelectorAll('section[data-file]').length === 12 &&
+        document.querySelector('nav[aria-label="Changed files"] button')?.getAttribute('aria-pressed') === 'true');
+      await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
+      await page.until('server/git.ts whole again', wholeFile, 'server/git.ts');
 
       await page.key('Escape');
       await page.until('all files again', () => document.querySelectorAll('section[data-file]').length === 12);

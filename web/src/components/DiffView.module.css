@@ -63,6 +63,7 @@
   }
 
   .diffs { min-width: 0; overflow: auto; padding-bottom: 45vh; }
+  .diffs[data-seeking] > section { visibility: hidden; }
 
   .file {
     content-visibility: auto;

@@ -54,6 +54,27 @@
     }
   }
 
+  .all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 28px;
+    margin-bottom: 4px;
+    padding: 0 8px 0 10px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: #d0d0d0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    span { margin-left: auto; color: #9d9d9d; font-variant-numeric: tabular-nums; }
+    &:hover { background: #2e2e2e; }
+    &[aria-pressed="true"] { color: #ffffff; font-weight: 600; }
+    &:focus-visible { outline-color: #e6e6e6; outline-offset: -2px; }
+  }
+
   .name { overflow: hidden; text-overflow: ellipsis; margin-right: auto; }
   .add, .del { flex: none; font-variant-numeric: tabular-nums; }
   .add { color: #87d394; }

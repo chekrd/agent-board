@@ -55,9 +55,10 @@ export function DiffView({ worktree }: { worktree: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [whole, setWhole] = useState<FileDiffMetadata | null>(null);
+  const [seeking, setSeeking] = useState<string | null>(null);
   const diffsRef = useRef<HTMLDivElement>(null);
   const returnTo = useRef<string | null>(null);
-  const seekTo = useRef<string | null>(null);
+  const opening = useRef<string | null>(null);
 
   const loadWhole = async (file: FileDiffMetadata) => {
     const paths = [file.name, ...(file.prevName ? [file.prevName] : [])].map((p) => `&path=${encodeURIComponent(p)}`).join('');
@@ -84,17 +85,22 @@ export function DiffView({ worktree }: { worktree: string }) {
 
   useEffect(load, [worktree]);
 
+  // The file swaps in only once it is whole, so its hunks alone never flash first.
   const focus = (name: string) => {
     const file = files.find((f) => f.name === name);
     if (!file) return;
-    setFocused(name);
     setSelected(name);
-    seekTo.current = name;
-    diffsRef.current?.scrollTo({ top: 0 });
+    opening.current = name;
     startLoading(async () => {
       try {
         const next = await loadWhole(file);
-        startLoading(() => setWhole(next));
+        if (opening.current !== name) return;
+        opening.current = null;
+        startLoading(() => {
+          setFocused(name);
+          setWhole(next);
+          setSeeking(name);
+        });
       } catch (err) {
         setError((err as Error).message);
       }
@@ -102,14 +108,17 @@ export function DiffView({ worktree }: { worktree: string }) {
   };
 
   const showAll = () => {
+    opening.current = null;
+    setSeeking(null);
     returnTo.current = focused;
     setFocused(null);
     setWhole(null);
   };
 
-  // The diff renders into a shadow root after highlighting, so wait for its first changed line.
+  // The diff renders into a shadow root after highlighting, so it stays hidden until its first changed line is in view.
   useEffect(() => {
-    if (!whole || whole.name !== seekTo.current) return;
+    if (!seeking || whole?.name !== seeking) return;
+    diffsRef.current?.scrollTo({ top: 0 });
     let frame = 0;
     const started = performance.now();
     const seek = () => {
@@ -117,12 +126,12 @@ export function DiffView({ worktree }: { worktree: string }) {
       if (!line && performance.now() - started < 2000) frame = requestAnimationFrame(seek);
       else {
         line?.scrollIntoView({ block: 'center' });
-        seekTo.current = null;
+        setSeeking(null);
       }
     };
     seek();
     return () => cancelAnimationFrame(frame);
-  }, [whole]);
+  }, [whole, seeking]);
 
   useEffect(() => {
     if (focused || !returnTo.current) return;
@@ -166,10 +175,11 @@ export function DiffView({ worktree }: { worktree: string }) {
   useEffect(() => {
     stepper = (by) => {
       const order = files.map((f) => f.name);
-      const from = order.indexOf(focused ?? selected ?? order[0]);
-      const to = focused ? from + by : by === 1 ? from : from - 1;
+      const current = opening.current ?? focused;
+      const from = order.indexOf(current ?? selected ?? order[0]);
+      const to = current ? from + by : by === 1 ? from : from - 1;
       const name = order[Math.max(0, Math.min(order.length - 1, to))];
-      if (name && name !== focused) focus(name);
+      if (name && name !== current) focus(name);
     };
     return () => {
       stepper = null;
@@ -207,7 +217,7 @@ export function DiffView({ worktree }: { worktree: string }) {
         <div className={styles.toolbar}>
           {focused && (
             <>
-              <button type="button" className={styles.tool} onClick={showAll}>← All files</button>
+              <button type="button" className={styles.tool} title="Esc" onClick={showAll}>← All files</button>
               <code className={styles.path}>{focused}</code>
             </>
           )}
@@ -229,7 +239,7 @@ export function DiffView({ worktree }: { worktree: string }) {
         <div className={styles.content} style={{ '--tree-width': `${treeWidth}px` } as CSSProperties}>
           {files.length > 0 && (
             <>
-              <FileTree files={files} selected={focused ?? selected} onSelect={focus} />
+              <FileTree files={files} selected={focused ?? selected} whole={!!focused} onSelect={focus} onAll={showAll} />
               <div
                 className={styles.resizer}
                 role="separator"
@@ -246,7 +256,7 @@ export function DiffView({ worktree }: { worktree: string }) {
               />
             </>
           )}
-          <div className={styles.diffs} ref={diffsRef}>
+          <div className={styles.diffs} ref={diffsRef} data-seeking={seeking ?? undefined}>
             {diff && !files.length && <p className={styles.empty}>No changes against {diff.base}.</p>}
             {shown.map((f) => (
               <section key={f.name} id={fileAnchor(f.name)} data-file={f.name} className={styles.file}>

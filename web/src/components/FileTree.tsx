@@ -82,9 +82,18 @@ function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null
   );
 }
 
-export function FileTree(props: { files: FileDiffMetadata[]; selected: string | null; onSelect: (name: string) => void }) {
+export function FileTree(props: {
+  files: FileDiffMetadata[];
+  selected: string | null;
+  whole: boolean;
+  onSelect: (name: string) => void;
+  onAll: () => void;
+}) {
   return (
     <nav className={styles.tree} aria-label="Changed files">
+      <button type="button" className={styles.all} aria-pressed={!props.whole} onClick={props.onAll}>
+        All files <span>{props.files.length}</span>
+      </button>
       <Folder dir={build(props.files)} selected={props.selected} onSelect={props.onSelect} />
     </nav>
   );
