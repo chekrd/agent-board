@@ -62,9 +62,9 @@ async function pane(t: TestContext) {
   return { tmux, received };
 }
 
-test('a paste reaches the pane whole, inside its markers: a leading -, a trailing ; and 36 KB of text in Czech', { skip: missing }, async (t) => {
+test('a paste reaches the pane whole, inside its markers: a leading -, a trailing ; and 36 KB of multibyte text', { skip: missing }, async (t) => {
   const { tmux, received } = await pane(t);
-  const long = `${'ž'.repeat(18_000)};`;
+  const long = `${'é'.repeat(18_000)};`;
   await paste(tmux, 'T', '--force is fine;');
   await paste(tmux, 'T', long);
   const expected = `\x1b[200~--force is fine;\x1b[201~\x1b[200~${long}\x1b[201~`;

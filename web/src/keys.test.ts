@@ -12,10 +12,10 @@ const ctx = (patch: Partial<KeyContext> = {}): KeyContext =>
 const CODES: Record<string, string> = { Enter: 'Enter', Escape: 'Escape', ' ': 'Space', '?': 'Slash', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
 const key = (k: string, patch: Partial<Key> = {}): Key => ({ key: k, code: CODES[k] ?? (/^\d$/.test(k) ? `Digit${k}` : `Key${k.toUpperCase()}`), ...patch });
 
-test('digits match the physical key: ě on the 2 key sends option 2 on an ask card, and the keypad works too', () => {
-  assert.deepEqual(keyAction(ctx(), { key: 'ě', code: 'Digit2' }), { type: 'option', index: 1 });
+test('digits match the physical key: é on the 2 key sends option 2 on an ask card, and the keypad works too', () => {
+  assert.deepEqual(keyAction(ctx(), { key: 'é', code: 'Digit2' }), { type: 'option', index: 1 });
   assert.deepEqual(keyAction(ctx({ card: card('turn') }), { key: '3', code: 'Numpad3' }), { type: 'option', index: 2 });
-  assert.equal(keyAction(ctx(), { key: 'č', code: 'Digit4' }), null, 'no fourth option');
+  assert.equal(keyAction(ctx(), { key: "'", code: 'Digit4' }), null, 'no fourth option');
   assert.equal(keyAction(ctx(), { key: '2', code: 'KeyQ' }), null, 'a 2 typed elsewhere on some layout');
 });
 

@@ -107,8 +107,8 @@ test('commits another branch also has are not counted as lost', async () => {
 test('pull request links for Azure DevOps and GitHub remotes', () => {
   assert.equal(pullRequestUrlOf('git@ssh.dev.azure.com:v3/org/Proj/repo', 7), 'https://dev.azure.com/org/Proj/_git/repo/pullrequest/7');
   assert.equal(pullRequestUrlOf('https://org@dev.azure.com/org/Proj/_git/repo', 7), 'https://dev.azure.com/org/Proj/_git/repo/pullrequest/7');
-  assert.equal(pullRequestUrlOf('git@github.com:chekrd/agent-board.git', 3), 'https://github.com/chekrd/agent-board/pull/3');
-  assert.equal(pullRequestUrlOf('ssh://git@github.com:22/chekrd/agent-board.git', 3), 'https://github.com/chekrd/agent-board/pull/3');
+  assert.equal(pullRequestUrlOf('git@github.com:owner/repo.git', 3), 'https://github.com/owner/repo/pull/3');
+  assert.equal(pullRequestUrlOf('ssh://git@github.com:22/owner/repo.git', 3), 'https://github.com/owner/repo/pull/3');
   assert.equal(pullRequestUrlOf('https://gitlab.com/a/b.git', 3), null);
   assert.equal(pullRequestUrlOf('', 3), null);
 });

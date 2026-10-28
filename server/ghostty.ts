@@ -38,7 +38,7 @@ export type Keystroke = { key: string } | { text: string };
 export class PartlyTyped extends Error {}
 
 // Named keys rather than characters: `send key` goes through the keyboard layout, so a digit
-// would arrive as ě or š on a Czech one. One script types them all, so one that fails may have typed some.
+// would arrive as a letter or symbol on many non-US ones. One script types them all, so one that fails may have typed some.
 export async function keys(tty: string, strokes: Keystroke[]) {
   const args = strokes.map((k) => ('key' in k ? `k:${k.key}` : `t:${k.text}`));
   await onTerminal(tty, `repeat with i from 2 to count of argv

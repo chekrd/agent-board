@@ -94,7 +94,7 @@ interface Row {
   act: (ctx: KeyContext, e: Key) => Action | null;
 }
 
-// Digits by the physical key: on a Czech layout the number row types ě, š, č… without Shift.
+// Digits by the physical key: on many non-US layouts the number row types letters or symbols without Shift.
 const digit = (e: Key) => Number(/^(?:Digit|Numpad)([1-9])$/.exec(e.code)?.[1] ?? 0);
 const named = (...keys: string[]) => (e: Key) => keys.includes(e.key) || keys.includes(e.key.toLowerCase());
 const deciding = (card: Card | null) => card?.kind === 'ask' || card?.kind === 'turn';
