@@ -117,10 +117,18 @@ async function copyIndex(from: string, to: string) {
   if (times) await copyFile(from, to).then(() => utimes(to, times.atime, times.mtime)).catch(() => {});
 }
 
+// The base as origin has it, as a pull request would compare: a local base branch can be behind origin or carry
+// commits of its own.
+async function remoteBase(worktree: string, base: string) {
+  if (base.startsWith('origin/')) return base;
+  return (await ok(git(worktree, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${base}`]))) ? `origin/${base}` : base;
+}
+
 // Everything on disk (committed, staged, unstaged, untracked minus ignored) against
-// the merge-base, staged into a throwaway index so the real one is never touched.
+// the merge-base with origin's base, staged into a throwaway index so the real one is never touched.
 // With `paths`, every unchanged line is context, so those files read in full.
-export async function fullDiff(worktree: string, base: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
+export async function fullDiff(worktree: string, localBase: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
+  const base = await remoteBase(worktree, localBase);
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
   const dir = await mkdtemp(join(tmpdir(), 'agent-board-index-'));
   const index = join(dir, 'index');

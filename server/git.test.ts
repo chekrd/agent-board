@@ -52,6 +52,22 @@ test('the diff merges committed, staged, unstaged and untracked changes and leav
   assert.match(one.patch, / one\n-two\n\+TWO\n three/);
 });
 
+test('the diff compares against origin\'s base, not a local base branch with commits origin lacks', async () => {
+  const { main } = repo();
+  git(main, 'update-ref', 'refs/remotes/origin/master', 'HEAD');
+  write(main, 'local.txt', 'only on the local master\n');
+  git(main, 'add', 'local.txt');
+  git(main, 'commit', '-qm', 'local');
+  git(main, 'switch', '-qc', 'feature');
+  write(main, 'b.txt', 'feature\n');
+
+  const diff = await fullDiff(main, 'master');
+  assert.equal(diff.base, 'origin/master');
+  assert.equal(diff.mergeBase, git(main, 'rev-parse', 'origin/master'));
+  assert.deepEqual(diff.stat, { files: 2, insertions: 2, deletions: 0 });
+  assert.equal((await fullDiff(main, 'origin/master')).base, 'origin/master');
+});
+
 // The edit keeps the size and the mtime of a.txt, and the index looks written in that same second, so only a
 // re-read of the file shows the change.
 test('a same-size edit made in the second the index was written is in the diff', async () => {
