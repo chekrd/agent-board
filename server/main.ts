@@ -181,6 +181,7 @@ app.get('/api/sessions/:id/artifacts/:artifact', async (c) => {
   return c.html(html);
 });
 
+app.get('/api/sessions/:id/conversation', async (c) => c.json(await S.conversation(c.req.param('id'))));
 app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));
 
 // These act on the decision the page showed and name it in `key`; answer and answer-menu check their own.

@@ -1,7 +1,9 @@
 import { execFile } from 'node:child_process';
+import { createReadStream } from 'node:fs';
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
@@ -15,6 +17,7 @@ const TAIL_BYTES = 512 << 10;
 const MAX_TAIL_BYTES = 8 << 20;
 const MAX_LINE = 256 << 10;
 const MAX_MESSAGE = 12_000;
+const MAX_EXCHANGE_TEXT = 40_000;
 
 export interface Conversation {
   id: string;
@@ -72,6 +75,18 @@ export interface Activity {
   background?: string[];
   // Claude's turn has ended and only the background work runs.
   between?: true;
+}
+
+export interface Exchange {
+  id: string;
+  at: number;
+  prompt: string;
+  reply: string | null;
+}
+
+export interface ConversationLog {
+  id: string;
+  exchanges: Exchange[];
 }
 
 export interface Turn {
@@ -189,22 +204,49 @@ function settings(entries: Record<string, any>[]) {
   return { model: model ?? null, effort: request?.output_config?.effort ?? null };
 }
 
-// What Claude wrote after its last tool call in the latest turn that has such text, so the narration between tool
-// calls stays out; a question or menu does not count as a tool call, as the text before it is for the developer.
-function lastMessage(entries: Record<string, any>[]) {
-  const replies: string[][] = [[]];
+// Each prompt with what Claude wrote after its last tool call in answer to it, so the narration between tool calls
+// stays out; a question or menu does not count as a tool call, as the text before it is for the developer. What comes
+// before the first prompt has no prompt.
+function replies(entries: Record<string, any>[], max?: number) {
+  const out: { entry: Record<string, any> | null; prompt: string | null; reply: string[] }[] = [{ entry: null, prompt: null, reply: [] }];
   for (const e of entries) {
-    if (promptText(e)) replies.push([]);
+    const prompt = e.isCompactSummary ? null : promptText(e, max);
+    if (prompt) out.push({ entry: e, prompt, reply: [] });
     else if (e.message?.model !== '<synthetic>' && !e.isApiErrorMessage) {
       for (const b of blocks(e)) {
-        if (b.type === 'text' && String(b.text ?? '').trim()) replies.at(-1)!.push(String(b.text).trim());
-        else if (b.type === 'tool_use' && !ASK_TOOL_NAMES.has(b.name) && b.name !== MENU_TOOL_NAME) replies.at(-1)!.length = 0;
+        if (b.type === 'text' && String(b.text ?? '').trim()) out.at(-1)!.reply.push(String(b.text).trim());
+        else if (b.type === 'tool_use' && !ASK_TOOL_NAMES.has(b.name) && b.name !== MENU_TOOL_NAME) out.at(-1)!.reply.length = 0;
       }
     }
   }
-  const text = replies.findLast((r) => r.length)?.join('\n\n');
-  if (!text) return null;
-  return text.length > MAX_MESSAGE ? `…${text.slice(-MAX_MESSAGE)}` : text;
+  return out;
+}
+
+const lastChars = (text: string, max: number) => (text.length > max ? `…${text.slice(-max)}` : text);
+
+// The latest turn's reply, or the turn before while the current one has none.
+function lastMessage(entries: Record<string, any>[]) {
+  const text = replies(entries).findLast((r) => r.reply.length)?.reply.join('\n\n');
+  return text ? lastChars(text, MAX_MESSAGE) : null;
+}
+
+// The whole conversation, read only when asked for, as it can run to many megabytes.
+export async function exchanges(file: string): Promise<Exchange[]> {
+  if (!(await stat(file).catch(() => null))) return [];
+  const entries: Record<string, any>[] = [];
+  for await (const line of createInterface({ input: createReadStream(file), crlfDelay: Infinity })) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {
+      // a partly written last line
+    }
+  }
+  return replies(entries, MAX_EXCHANGE_TEXT).flatMap(({ entry, prompt, reply }) => entry && prompt ? [{
+    id: String(entry.uuid),
+    at: Date.parse(entry.timestamp) || 0,
+    prompt,
+    reply: reply.length ? lastChars(reply.join('\n\n'), MAX_EXCHANGE_TEXT) : null,
+  }] : []);
 }
 
 export function describeTool(tool: Record<string, any>) {

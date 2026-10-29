@@ -8,6 +8,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { answering, closeQuestion, liveTty, type Reply } from '../../server/answering.ts';
+import type { ConversationLog } from '../../server/conversations.ts';
 import type { FullDiff } from '../../server/git.ts';
 import type { Session, SubtaskKind } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
@@ -607,6 +608,23 @@ route('GET', '/api/sessions/:id/artifacts/:artifact', ({ params }) => {
   const artifact = find(params[0])?.artifacts.find((a) => a.id === params[1]);
   if (!artifact) throw new HttpError(404, 'artifact not found');
   return new Page(artifactPage(artifact.title), { 'content-security-policy': ARTIFACT_CSP });
+});
+// Each earlier conversation ends on the reply it was cleared after; the current one has the first prompt, a reply that
+// asked for more, a prompt left without a reply, and the latest reply.
+route('GET', '/api/sessions/:id/conversation', ({ params }): ConversationLog[] => {
+  const s = must(params[0]);
+  const start = s.history.at(-1)?.until ?? s.createdAt;
+  return [
+    ...s.history.map((h) => ({ id: h.id, exchanges: [{ id: `${h.id}-1`, at: h.until - 600_000, prompt: 'Start with the failing test.', reply: h.lastMessage }] })),
+    {
+      id: s.conversation,
+      exchanges: s.firstPrompt ? [
+        { id: `${s.id}-1`, at: start, prompt: s.firstPrompt, reply: 'I read the code around it. Should I **keep the change small**, or also clean up what it touches?' },
+        { id: `${s.id}-2`, at: start + 60_000, prompt: 'Keep it small.', reply: null },
+        { id: `${s.id}-3`, at: start + 120_000, prompt: 'Go on, and tell me when it is done.', reply: s.lastMessage },
+      ] : [],
+    },
+  ];
 });
 route('GET', '/api/sessions/:id/delete-worktree', ({ params }) => deleteLoss(must(params[0])));
 route('POST', '/api/sessions/:id/:action', async ({ params, body }) => {

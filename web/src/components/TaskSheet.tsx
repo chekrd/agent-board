@@ -6,6 +6,7 @@ import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
 import { locate, openSubtasks, sessionLabel, shownOf } from '../util.ts';
 import { Artifacts } from './Artifacts.tsx';
+import { Conversation } from './Conversation.tsx';
 import { DiffView } from './DiffView.tsx';
 import { ParentCrumb, stateLabel } from './Findings.tsx';
 import { Icon } from './Icon.tsx';
@@ -76,6 +77,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
     { key: 'overview', label: 'Overview', kbd: '1' },
     { key: 'diff', label: 'Diff', kbd: '2' },
     ...(session.artifacts.length ? [{ key: 'artifacts' as const, label: `Artifacts (${session.artifacts.length})`, kbd: '3' }] : []),
+    ...(tab === 'conversation' ? [{ key: 'conversation' as const, label: 'Conversation', kbd: '4' }] : []),
   ];
   const current = tabs.some((t) => t.key === tab) ? tab : 'overview';
 
@@ -115,6 +117,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
         {current === 'overview' && <Overview session={session} name={name} branch={worktree?.branch ?? undefined} repo={repo} />}
         {current === 'diff' && <DiffView worktree={session.worktree} />}
         {current === 'artifacts' && <Artifacts session={session} item={item} />}
+        {current === 'conversation' && <Conversation session={session} />}
       </div>
     </>
   );

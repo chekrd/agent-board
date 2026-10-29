@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileMeta } from './conversations.ts';
+import { exchanges, fileMeta } from './conversations.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'pitwall-test-'));
 let n = 0;
@@ -89,6 +89,29 @@ test('the text before a question or a menu stays in the last message', async () 
   const m = await meta([prompt('Fix it'), assistant([text('Two ways to fix it.'), toolUse('m1', 'AskUserQuestion', { questions: [] })])]);
   assert.equal(m.lastMessage, 'Two ways to fix it.');
   assert.equal((await meta([prompt('Fix it'), assistant([text('Found two ways.'), ask('q1')])])).lastMessage, 'Found two ways.');
+});
+
+test('the conversation pairs each prompt with what Claude wrote after its last tool call, skipping commands, notifications and compaction', async () => {
+  const file = join(dir, `${n++}.jsonl`);
+  writeFileSync(file, [
+    prompt('Fix the login', 0),
+    assistant([text('Reading.'), toolUse('t1', 'Read', { file_path: '/repo/a.ts' })], 1),
+    toolResult('t1', 'file'),
+    assistant([text('The redirect was wrong.'), text('Fixed it.')], 2),
+    prompt('<command-name>/rename</command-name>', 3),
+    { ...prompt('This session is being continued from a previous conversation…', 3), isCompactSummary: true },
+    prompt('<task-notification>done</task-notification>', 3),
+    prompt('Now the tests', 4),
+    assistant([text('Running them.'), toolUse('t2', 'Bash', { command: 'pnpm test' })], 5),
+    prompt('Which way?', 6),
+    assistant([text('Two ways.'), toolUse('m1', 'AskUserQuestion', { questions: [] })], 7),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n{"type":"user","mess');
+  assert.deepEqual((await exchanges(file)).map((e) => [e.prompt, e.reply, e.at]), [
+    ['Fix the login', 'The redirect was wrong.\n\nFixed it.', Date.parse(at(0))],
+    ['Now the tests', null, Date.parse(at(4))],
+    ['Which way?', 'Two ways.', Date.parse(at(6))],
+  ]);
+  assert.deepEqual(await exchanges(join(dir, 'gone.jsonl')), []);
 });
 
 test('turns and the last message skip synthetic and API error messages', async () => {

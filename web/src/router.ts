@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 export type View = 'queue' | 'wall';
-export type Tab = 'overview' | 'diff' | 'artifacts';
+export type Tab = 'overview' | 'diff' | 'artifacts' | 'conversation';
 
 export interface Sheet {
   id: string;
@@ -14,7 +14,7 @@ export interface Route {
   sheet: Sheet | null;
 }
 
-const TABS: readonly string[] = ['overview', 'diff', 'artifacts'];
+const TABS: readonly string[] = ['overview', 'diff', 'artifacts', 'conversation'];
 
 const TASK_PATH = /^\/s\/([^/]+)(?:\/([^/]+)(?:\/([^/]+))?)?/;
 

@@ -1562,10 +1562,10 @@ export const checks: Check[] = [
         await page.click(`[data-tile][data-session="${id}"] button[aria-label="Session actions"]`);
         return page.until(`the menu of ${id}`, menuItems);
       };
-      assert.deepEqual(await open('s-stripe'), ['Continue', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Clear task…']);
+      assert.deepEqual(await open('s-stripe'), ['Continue', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Clear task…']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
-      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Clear task…']);
+      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Clear task…']);
       await shot('session-menu');
 
       const asked = () => {
@@ -1649,6 +1649,38 @@ export const checks: Check[] = [
       const [cleared] = await logged(mock, 'the clearing', (e) => e.method === 'POST' && e.action === 'delete-worktree');
       assert.deepEqual([cleared.sessionId, cleared.status], ['s-edge', 204]);
       assert.equal((await mock.get('/api/state')).sessions.some((x: { id: string }) => x.id === 's-edge'), false);
+    },
+  },
+  {
+    name: 'P4.9.conversation Conversation in the ⋯ menu opens a tab of the task page with each prompt and Claude\'s reply to it, oldest first, earlier conversations before a /clear line; it reads the transcript again after a new reply; Overview and 4 switch away and back',
+    async run({ page, mock, shot }) {
+      const log = () => {
+        const tab = document.querySelector('#task-sheet [role="tab"][aria-selected="true"]')?.textContent;
+        const items = [...document.querySelectorAll<HTMLElement>('#task-sheet article')].map((a) => [a.querySelector<HTMLElement>('[data-prompt] p')!.innerText, a.querySelector<HTMLElement>('[data-reply]:is(p), [data-reply] > :not(h3)')!.innerText.trim()]);
+        return items.length ? { tab, items, cleared: document.querySelectorAll('#task-sheet section[data-conversation]').length } : null;
+      };
+      await mock.post('/mock/clear', { id: 's-invoice', conversation: 'c-fresh' });
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet button[aria-label="Session actions"]');
+      await page.until('the menu', menuItems);
+      await page.click(':popover-open button', 'Conversation');
+      const shown = await page.until('the conversation', log);
+      assert.equal(shown.tab, 'Conversation 4');
+      assert.equal(shown.cleared, 2);
+      assert.deepEqual(shown.items.map(([prompt]) => prompt), ['Start with the failing test.', 'Invoice PDFs are sometimes off by a cent (BILL-91). Find out why, fix it, and get the PR green.', 'Keep it small.', 'Go on, and tell me when it is done.']);
+      assert.match(shown.items[0][1], /^The cent goes missing in LineItem\.total\(\)/);
+      assert.deepEqual(shown.items.slice(2).map(([, reply]) => reply), Array(2).fill('No reply from Claude: still working, or stopped.'));
+      assert.equal(await page.eval(() => location.pathname), '/s/s-invoice/conversation');
+      await shot('conversation');
+
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { lastMessage: 'Checks are green.' } });
+      await page.until('the new reply', () => [...document.querySelectorAll<HTMLElement>('#task-sheet article')].at(-1)?.innerText.includes('Checks are green.'));
+
+      await page.click('#task-sheet [role="tab"]', 'Overview');
+      await page.until('Overview without the Conversation tab', () => document.querySelector('#task-sheet [role="tab"][aria-selected="true"]')?.textContent === 'Overview 1'
+        && ![...document.querySelectorAll('#task-sheet [role="tab"]')].some((t) => t.textContent?.startsWith('Conversation')));
+      await page.key('4');
+      await page.until('the conversation again', () => location.pathname === '/s/s-invoice/conversation' && !!document.querySelector('#task-sheet article'));
     },
   },
   {
@@ -5339,7 +5371,7 @@ export const checks: Check[] = [
       await page.until('the subtask page', () => location.pathname === '/s/s-review-1/overview' && !!document.querySelector('#task-sheet [aria-label="Subtask of"]'));
       await shot('subtask');
       await page.click('#task-sheet header button[aria-label="Session actions"]');
-      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Mark solved', 'Drop']);
+      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Mark solved', 'Drop']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
       const text = (sel: string) => page.eval((q) => document.querySelector<HTMLElement>(q)!.innerText.replace(/\s+/g, ' ').trim(), sel);
