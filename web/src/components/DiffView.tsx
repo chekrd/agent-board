@@ -1,7 +1,7 @@
 import { parsePatchFiles, registerCustomTheme, type FileDiffMetadata } from '@pierre/diffs';
 import type { ThemeRegistration } from 'shiki';
 import { FileDiff } from '@pierre/diffs/react';
-import { useEffect, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { api } from '../api.ts';
 import { SHEET_DIALOG } from '../keys.ts';
 import type { FullDiff } from '../types.ts';
@@ -194,7 +194,7 @@ export function DiffView({ worktree }: { worktree: string }) {
   const dirStat = listed.map(counts).reduce((sum, c) => ({ add: sum.add + c.add, del: sum.del + c.del }), { add: 0, del: 0 });
 
   // From all files, J opens the file in view and K the one before it.
-  useEffect(() => {
+  useLayoutEffect(() => {
     stepper = (by) => {
       const order = listed.map((f) => f.name);
       const current = opening.current ?? focused;
@@ -211,7 +211,7 @@ export function DiffView({ worktree }: { worktree: string }) {
   // Esc steps back from one file to its folder or all files, and from a folder to all files, keeping the task open,
   // so it runs before the board's keys, which would leave the task. A dialog or the ⋯ menu over the task takes the Esc
   // first: cancelling it here would keep that layer open.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!focused && !dir) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector(COVERS_SHEET)) return;
