@@ -1311,7 +1311,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, the composer, Session summary · updated, Worth knowing, the latest reply, Facts with the repository, the worktree\'s name and its path under ~, whose Path, Branch and Session copy on a click (the path whole) and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
+    name: 'P4.4 a tile opens its sheet on Overview, which takes focus itself: the working banner with a 30 px clock that ticks, the composer, Session summary · updated, Worth knowing, the latest reply with its code in colour, Facts with the repository, the worktree\'s name and its path under ~, whose Path, Branch and Session copy on a click (the path whole) and say Copied in place, and the Artifacts links; Esc in the composer\'s command list closes only the list',
     clock: 'fast',
     async run({ wait, page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
@@ -1324,6 +1324,8 @@ export const checks: Check[] = [
         return c && { text: c.textContent, size: getComputedStyle(c).fontSize };
       };
       const first = await page.until('the working banner', clock);
+      await page.until('the code in the reply in colour', () =>
+        [...document.querySelectorAll<HTMLElement>('#task-sheet pre code span')].find((s) => s.textContent === 'const')?.style.color.startsWith('light-dark('));
       const overview = await page.eval(() => {
         const sheet = document.querySelector<HTMLElement>('#task-sheet')!;
         return {

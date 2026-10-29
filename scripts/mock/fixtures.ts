@@ -234,7 +234,7 @@ export function queue(now: number): Session[] {
         decision: null, question: null, basis: 't-invoice-9', at: now - 4 * MIN,
       },
       pr: { id: 1842, url: 'https://github.com/acme/billing-api/pull/1842', result: 'RUNNING 9 checks', watching: true, at: now - 6 * MIN },
-      lastMessage: 'The cent goes missing in `LineItem.total()`, which multiplies floats before rounding. I switched every amount to integer cents and pushed PR 1842; checks are running.',
+      lastMessage: 'The cent goes missing in `LineItem.total()`, which multiplies floats before rounding. I switched every amount to integer cents and pushed PR 1842; checks are running.\n\n```ts\nconst total = (cents: number, qty: number) => Math.round(cents * qty);\n```',
       lastTurn: 't-invoice-9', diffstat: { files: 7, insertions: 88, deletions: 31 },
       artifacts: [{ id: 'art-invoice-1', title: 'Where the cent goes missing', at: now - 25 * MIN }],
     }),
