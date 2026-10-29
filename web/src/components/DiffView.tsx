@@ -1,6 +1,6 @@
 import { parsePatchFiles, registerCustomTheme, type FileDiffMetadata } from '@pierre/diffs';
 import type { ThemeRegistration } from 'shiki';
-import { FileDiff } from '@pierre/diffs/react';
+import { FileDiff, useWorkerPool, WorkerPoolContextProvider } from '@pierre/diffs/react';
 import { useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { api } from '../api.ts';
 import { SHEET_DIALOG } from '../keys.ts';
@@ -15,6 +15,12 @@ registerCustomTheme('darcula', async () => (await import('../themes/darcula.json
 const FILE_OPTIONS = {
   diffStyle: 'split', theme: 'darcula', themeType: 'dark', overflow: 'wrap', lineDiffType: 'word', stickyHeader: true,
   unsafeCSS: '[data-diffs-header][data-diffs-header] { background-color: #2f2f2f; border-bottom: 1px solid #383838; }',
+} as const;
+
+// Highlighting runs in workers, so a large diff never holds the page.
+const POOL = {
+  poolOptions: { workerFactory: () => new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), { type: 'module' }), poolSize: 4 },
+  highlighterOptions: { theme: 'darcula', lineDiffType: 'word' },
 } as const;
 
 const COVERS_SHEET = `dialog:modal:not(#${SHEET_DIALOG}), [popover="auto"]:popover-open`;
@@ -48,6 +54,15 @@ function storeTreeWidth(w: number) {
 }
 
 export function DiffView({ worktree }: { worktree: string }) {
+  return (
+    <WorkerPoolContextProvider {...POOL}>
+      <Diffs worktree={worktree} />
+    </WorkerPoolContextProvider>
+  );
+}
+
+function Diffs({ worktree }: { worktree: string }) {
+  const pool = useWorkerPool();
   const [diff, setDiff] = useState<FullDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [treeWidth, setTreeWidth] = useState(storedTreeWidth);
@@ -64,7 +79,10 @@ export function DiffView({ worktree }: { worktree: string }) {
   const loadWhole = async (file: FileDiffMetadata) => {
     const paths = [file.name, ...(file.prevName ? [file.prevName] : [])].map((p) => `&path=${encodeURIComponent(p)}`).join('');
     const next = await api<FullDiff>('GET', `/api/diff/file?worktree=${encodeURIComponent(worktree)}${paths}`);
-    return parsePatchFiles(next.patch).flatMap((p) => p.files).find((f) => f.name === file.name) ?? null;
+    // Highlighted before it swaps in, so it never shows plain first; a fresh cache key keeps a refresh from showing the file as it was.
+    const whole = parsePatchFiles(next.patch, crypto.randomUUID()).flatMap((p) => p.files).find((f) => f.name === file.name) ?? null;
+    if (whole) await pool?.primeDiffHighlightCache(whole).catch(() => {});
+    return whole;
   };
 
   const load = () =>
