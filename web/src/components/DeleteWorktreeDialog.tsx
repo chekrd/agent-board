@@ -17,6 +17,8 @@ interface Loss {
   // Its worktree was removed already, outside the board.
   gone?: boolean;
   subtasks?: number;
+  // A task across a folder of repos: what each of its worktrees would lose.
+  repos?: { name: string; branch: string | null; deletesBranch: boolean; files: number; commits: number }[];
 }
 
 type Check = { state: 'checking' } | { state: 'done'; loss: Loss } | { state: 'failed'; error: string };
@@ -71,7 +73,14 @@ export function DeleteWorktreeDialog() {
   const check = target?.check;
   const loss = check?.state === 'done' ? check.loss : null;
   const keeps = !!loss?.checkout;
-  const lost = loss
+  const folder = loss?.repos;
+  const lostIn = (l: { files: number; commits: number }) => [
+    l.files && plural(l.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
+    l.commits && `${plural(l.commits, 'commit', 'commits')} that no other branch or remote has`,
+  ].filter((x) => !!x).join(' and ');
+  const lost = folder
+    ? folder.flatMap((r) => (lostIn(r) ? [`${r.name}: ${lostIn(r)}`] : []))
+    : loss
     ? [
       loss.files && plural(loss.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
       loss.commits && `${plural(loss.commits, 'commit', 'commits')} that no other branch or remote has`,
@@ -83,13 +92,19 @@ export function DeleteWorktreeDialog() {
       {target && (
         <>
           <h2 id="delete-worktree-title">
-            {loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
+            {folder ? `Clear the task and its task folder${folder.length ? `, with ${plural(folder.length, 'worktree', 'worktrees')}` : ''}?` : loss?.checkout ? 'Clear the task?' : loss?.deletesBranch ? `Clear the task, its worktree and its local branch ${loss.branch}?` : 'Clear the task and its worktree?'}
           </h2>
           <code className={styles.path}>{tilde(target.session.worktree, home)}</code>
           {check?.state === 'checking' && <p className={styles.muted}>Checking what would be lost…</p>}
           {check?.state === 'failed' && <p>Could not check what would be lost ({check.error}); uncommitted changes and unpushed commits may be lost.</p>}
+          {folder && folder.length > 0 && (
+            <p>
+              Removes the worktree{folder.length > 1 ? 's' : ''} in {folder.map((r) => r.name).join(', ')}
+              {folder.some((r) => r.deletesBranch) && <> and {folder.length > 1 ? 'their' : 'its'} local branch <code>{loss!.branch}</code></>}.
+            </p>
+          )}
           {loss?.gone ? (
-            <p>Its worktree is already gone.</p>
+            <p>{folder ? 'Its task folder is already gone.' : 'Its worktree is already gone.'}</p>
           ) : loss?.checkout ? (
             <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
           ) : loss && (lost.length ? (
@@ -101,7 +116,7 @@ export function DeleteWorktreeDialog() {
             <p>Nothing is lost: there are no uncommitted changes, and every commit is on a remote or another branch.</p>
           ))}
           <p className={styles.muted}>
-            {keeps ? "This task's Claude quits, its terminal closes and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
+            {keeps ? "This task's Claude quits, its terminal closes and the task leaves the board." : folder ? "Claude quits, the task folder's terminals close and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
             {!!loss?.subtasks && ` ${loss.subtasks === 1 ? 'Its subtask goes' : `Its ${loss.subtasks} subtasks go`} with it, ${loss.subtasks === 1 ? 'its Claude' : 'their Claudes'} too.`}
           </p>
           <footer>

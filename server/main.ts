@@ -22,7 +22,8 @@ import * as S from './sessions.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { watchUsage } from './usage.ts';
-import { notify, onChange, refreshWorkspace, repoView, snapshot, workspace } from './workspace.ts';
+import { folders, notify, onChange, refreshWorkspace, repoView, snapshot, taskFolderOf, workspace } from './workspace.ts';
+import { folderDiff, makeTaskFolder } from './folderTasks.ts';
 
 const run = promisify(execFile);
 const app = new Hono();
@@ -114,22 +115,52 @@ const MODEL = /^[A-Za-z0-9._-]+(\[1m\])?$/;
 const resolve = async (repoPath: string) =>
   resolver(await settingsFor(repoPath), sessions.all().toSorted((a, b) => b.updatedAt - a.updatedAt));
 
+async function modelChoices(path: string) {
+  const { model, real, effortOf } = await resolve(path);
+  const models: Record<string, string | null> = Object.fromEntries([['', model], ...ALIASES.map((a) => [a, real(a)])]);
+  return { models, efforts: Object.fromEntries(Object.entries(models).map(([k, m]) => [k, effortOf(m)])) };
+}
+
 app.get('/api/repos/:id/models', async (c) => {
   const repo = repoView(Number(c.req.param('id')));
   if (!repo) throw new Error('unknown repo');
-  const { model, real, effortOf } = await resolve(repo.path);
-  const models: Record<string, string | null> = Object.fromEntries([['', model], ...ALIASES.map((a) => [a, real(a)])]);
-  return c.json({ models, efforts: Object.fromEntries(Object.entries(models).map(([k, m]) => [k, effortOf(m)])) });
+  return c.json(await modelChoices(repo.path));
+});
+
+app.get('/api/folders/models', async (c) => {
+  const folder = folders().find((f) => f.path === c.req.query('path'));
+  if (!folder) throw new Error('unknown folder');
+  return c.json(await modelChoices(folder.path));
+});
+
+const chosenModel = (body: { model?: string; effort?: string }) => {
+  const model = body.model?.trim() || undefined;
+  const effort = body.effort || undefined;
+  if (model && !MODEL.test(model)) throw new Error(`unknown model ${model}`);
+  if (effort && !EFFORTS.includes(effort)) throw new Error(`unknown effort ${effort}`);
+  return { model, effort };
+};
+
+// A task across a folder of repos starts in an empty task folder; Claude opens a worktree in each repo it changes.
+app.post('/api/folder-tasks', async (c) => {
+  const body = await c.req.json<{ folder: string; name: string; prompt?: string; model?: string; effort?: string }>();
+  const { model, effort } = chosenModel(body);
+  const name = body.name.trim();
+  if (!name) throw new Error('name is required');
+  const path = await makeTaskFolder(body.folder, name);
+  const { model: fallback, real, effortOf } = await resolve(body.folder);
+  const running = model ? real(model) : fallback;
+  const sessionId = await S.startClaude({
+    repoId: null, worktree: path, prompt: body.prompt, title: name, model, effort, running: { model: running, effort: effort ?? effortOf(running) },
+  });
+  return c.json({ path, sessionId });
 });
 
 app.post('/api/worktrees', async (c) => {
   const body = await c.req.json<{ repoId: number; name: string; branch?: string; path?: string; prompt?: string; existingBranch?: boolean; model?: string; effort?: string }>();
   const repo = repoView(body.repoId);
   if (!repo) throw new Error('unknown repo');
-  const model = body.model?.trim() || undefined;
-  const effort = body.effort || undefined;
-  if (model && !MODEL.test(model)) throw new Error(`unknown model ${model}`);
-  if (effort && !EFFORTS.includes(effort)) throw new Error(`unknown effort ${effort}`);
+  const { model, effort } = chosenModel(body);
   const name = body.name.trim();
   const branch = body.branch?.trim();
   let path: string;
@@ -239,16 +270,20 @@ const repoOfWorktree = (worktree: string) => {
   return repo;
 };
 
+const diffOf = (worktree: string, opts: { paths?: string[] } = {}) =>
+  taskFolderOf(worktree) ? folderDiff(worktree, opts)
+    : fullDiff(worktree, repoOfWorktree(worktree).base, opts);
+
 app.get('/api/diff/file', async (c) => {
   const worktree = c.req.query('worktree') ?? '';
   const paths = c.req.queries('path') ?? [];
   if (!paths.length || paths.some((p) => isAbsolute(p) || p.split('/').includes('..'))) throw new Error('bad path');
-  return c.json(await fullDiff(worktree, repoOfWorktree(worktree).base, { paths }));
+  return c.json(await diffOf(worktree, { paths }));
 });
 
 app.get('/api/diff', async (c) => {
   const worktree = c.req.query('worktree') ?? '';
-  const diff = await fullDiff(worktree, repoOfWorktree(worktree).base);
+  const diff = await diffOf(worktree);
   for (const s of sessions.all().filter((s) => s.worktree === worktree)) sessions.update(s.id, { diffstat: diff.stat });
   notify();
   return c.json(diff);

@@ -33,7 +33,7 @@ function adviceTag(s: Session) {
 // The whole tile opens the task's page, also for one waiting in the queue, whose page leads to its card; through a
 // click on the article rather than a link stretched over it, which would sit above every label and hide its tooltip.
 export function WallTile({ session, repos }: { session: Session; repos: RepoView[] }) {
-  const { repo, worktree, branch } = locate(repos, session);
+  const { place, worktree, branch } = locate(repos, session);
   const name = sessionLabel(session, branch);
   const attention = attentionOf(session);
   const archived = session.archived;
@@ -94,7 +94,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       )}
       {!archived && (
         <footer className={styles.foot}>
-          <span className={styles.where}>{repo?.name} · {branch}</span>
+          <span className={styles.where}>{place} · {branch}</span>
           {tag && <span className={styles.tag}>{tag}</span>}
           {!!session.summary?.learnings?.length && <span className={styles.know} title="Claude found something notable; open the task to read it">Worth knowing</span>}
           <PrChip pr={session.pr} status={session.status} />

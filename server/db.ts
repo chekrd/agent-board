@@ -28,7 +28,7 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
-    repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    repo_id INTEGER REFERENCES repos(id) ON DELETE CASCADE,
     worktree TEXT NOT NULL,
     cwd TEXT NOT NULL,
     pid INTEGER,
@@ -56,6 +56,17 @@ const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) =
 for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links', 'priority', 'last_prompt']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
+
+// A task across a folder of repos has no repository of its own, which the first sessions table did not allow.
+if (db.prepare('PRAGMA table_info(sessions)').all().some((c) => c.name === 'repo_id' && c.notnull)) {
+  const create = String(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()!.sql);
+  db.exec(`BEGIN;
+    ${create.replace(/CREATE TABLE "?sessions"?/, 'CREATE TABLE sessions_nullable').replace(/repo_id INTEGER NOT NULL/, 'repo_id INTEGER')};
+    INSERT INTO sessions_nullable SELECT * FROM sessions;
+    DROP TABLE sessions;
+    ALTER TABLE sessions_nullable RENAME TO sessions;
+    COMMIT;`);
+}
 
 const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
 if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
@@ -205,7 +216,8 @@ export interface Session {
   id: string;
   conversation: string;
   history: EarlierConversation[];
-  repoId: number;
+  // null for a task across a folder of repos, whose `worktree` is its task folder.
+  repoId: number | null;
   worktree: string;
   cwd: string;
   pid: number | null;

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, readdir, rm, stat, utimes } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, readdir, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -68,6 +69,8 @@ export async function addWorktree(repo: string, opts: { branch: string; task: st
   return gitWt(repo, ['add', opts.branch, '--task', opts.task, '--base', opts.base, '--root', opts.root, ...(opts.path ? ['--path', opts.path] : [])]);
 }
 
+export const validBranch = (name: string) => ok(run('git', ['check-ref-format', '--branch', name]));
+
 // Each branch by name, with whether it is local and whether origin has it: git wt add reuses a local branch, else
 // tracks origin's.
 export async function listBranches(repo: string) {
@@ -133,8 +136,8 @@ async function remoteBase(worktree: string, base: string) {
 
 // Everything on disk (committed, staged, unstaged, untracked minus ignored) against
 // the merge-base with origin's base, staged into a throwaway index so the real one is never touched.
-// With `paths`, every unchanged line is context, so those files read in full.
-export async function fullDiff(worktree: string, localBase: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
+// With `paths`, every unchanged line is context, so those files read in full. `prefix` puts every path under that folder.
+export async function fullDiff(worktree: string, localBase: string, opts: { statOnly?: boolean; paths?: string[]; prefix?: string } = {}): Promise<FullDiff> {
   const base = await remoteBase(worktree, localBase);
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
   const dir = await mkdtemp(join(tmpdir(), 'pitwall-index-'));
@@ -145,8 +148,9 @@ export async function fullDiff(worktree: string, localBase: string, opts: { stat
     await copyIndex(realIndex, index);
     const env = { GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: '1' };
     await git(worktree, ['add', '-A'], env);
+    const prefixes = opts.prefix ? [`--src-prefix=a/${opts.prefix}/`, `--dst-prefix=b/${opts.prefix}/`] : [];
     const diff = (format: string[]) => git(worktree, [
-      'diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', ...format, mergeBase, '--', ...(opts.paths ?? []),
+      'diff', '--cached', '--find-renames', '--no-color', '--no-ext-diff', ...prefixes, ...format, mergeBase, '--', ...(opts.paths ?? []),
     ], env);
     const [numstat, patch] = await Promise.all([
       diff(['--numstat']),
@@ -159,11 +163,15 @@ export async function fullDiff(worktree: string, localBase: string, opts: { stat
       stat.insertions += Number(add) || 0;
       stat.deletions += Number(del) || 0;
     }
-    return { base, mergeBase, patch, stat };
+    return { base, mergeBase, patch: opts.prefix ? prefixRenames(patch, opts.prefix) : patch, stat };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+// --src-prefix and --dst-prefix leave the paths of rename and copy lines bare.
+export const prefixRenames = (patch: string, prefix: string) =>
+  patch.replace(/^((?:rename|copy) (?:from|to) )("?)/gm, `$1$2${prefix}/`);
 
 const remotes = new Map<string, Promise<string>>();
 
@@ -196,8 +204,15 @@ export async function addScratchCopy(worktree: string, dest: string) {
   await git(dest, ['reset', '--quiet']);
 }
 
+// A task folder's copy is a folder of such copies, one per worktree.
+export async function addScratchCopies(worktrees: { path: string; name: string }[], dest: string) {
+  await mkdir(dest, { recursive: true });
+  await Promise.all(worktrees.map((w) => addScratchCopy(w.path, join(dest, w.name))));
+}
+
 export async function removeScratchCopy(dir: string) {
-  const common = await git(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']).then((s) => s.trim(), () => null);
+  const copies = existsSync(join(dir, '.git')) ? [dir] : (await readdir(dir).catch(() => [])).map((e) => join(dir, e));
+  const commons = await Promise.all(copies.map((c) => git(c, ['rev-parse', '--path-format=absolute', '--git-common-dir']).then((s) => s.trim(), () => null)));
   await rm(dir, { recursive: true, force: true });
-  if (common) await git(dirname(common), ['worktree', 'prune']).catch(() => {});
+  for (const common of commons) if (common) await git(dirname(common), ['worktree', 'prune']).catch(() => {});
 }

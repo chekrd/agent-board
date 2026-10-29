@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
-import { ARTIFACT_TOOL, ASK_TOOL, MCP_SERVER_NAME } from './config.ts';
+import { ARTIFACT_TOOL, ASK_TOOL, MCP_SERVER_NAME, OPEN_WORKTREE_TOOL } from './config.ts';
+import { openWorktree } from './folderTasks.ts';
 
 export const CATEGORIES = ['feature', 'bug', 'plan-problem', 'ci-failure', 'research', 'update', 'review-ready'] as const;
 
@@ -31,8 +32,8 @@ const artifactSchema = {
 
 export const artifactInput = z.object(artifactSchema);
 
-// The dashboard reads calls to these tools from the session transcript, so the tools
-// themselves only have to exist and acknowledge.
+// The dashboard reads calls to ask_human and create_artifact from the session transcript, so those tools only have to
+// exist and acknowledge; open_worktree does its work here.
 function server() {
   const mcp = new McpServer({ name: MCP_SERVER_NAME, version: '1.0.0' });
   mcp.registerTool(ASK_TOOL, {
@@ -62,6 +63,27 @@ function server() {
   }, async ({ title }) => ({
     content: [{ type: 'text', text: `Artifact "${title}" is on the task page of the user's dashboard.` }],
   }));
+  mcp.registerTool(OPEN_WORKTREE_TOOL, {
+    title: 'Open a worktree for this task',
+    description:
+      'Only for a Pitwall task that spans several repositories, whose working directory is a task folder ' +
+      '<folder>/worktrees/<task> beside the repositories\' main checkouts. Call it before you change anything in one of ' +
+      'those repositories: it creates the worktree <task folder>/<repository> on the branch named after the task, or returns ' +
+      'the one that exists, and you make that repository\'s changes only there. Open worktrees only in the repositories the ' +
+      'task needs to change.',
+    inputSchema: {
+      repo: z.string().describe('The repository\'s folder name, e.g. "api".'),
+      task_folder: z.string().describe('Your working directory, the task folder.'),
+    },
+  }, async (input) => {
+    try {
+      const w = await openWorktree(input);
+      const setup = w.setup ? `\nRun its setup command there before building or testing: cd ${w.path} && ${w.setup}` : '';
+      return { content: [{ type: 'text', text: `Worktree ready: ${w.path} on branch ${w.branch} (from ${w.base}). Make this repository's changes there.${setup}` }] };
+    } catch (err) {
+      return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };
+    }
+  });
   return mcp;
 }
 

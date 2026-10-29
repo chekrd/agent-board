@@ -79,6 +79,38 @@ export async function refreshWorkspace({ scan = false } = {}) {
 
 export const workspace = () => cache;
 
-export const repoView = (id: number) => cache.find((r) => r.id === id);
+export const repoView = (id: number | null) => (id === null ? undefined : cache.find((r) => r.id === id));
 
-export const snapshot = () => ({ home: homedir(), roots: roots.all(), repos: cache, sessions: sessions.all() });
+// A folder holding two or more of the repositories; one task can work across them, from a task folder
+// <folder>/worktrees/<task> with a worktree <task folder>/<repo folder> in each repository it changes.
+export interface FolderView {
+  path: string;
+  name: string;
+  repos: number[];
+}
+
+export function folders(): FolderView[] {
+  const by = Map.groupBy(cache.filter((r) => !r.error), (r) => dirname(r.path));
+  return [...by].filter(([, rs]) => rs.length > 1).map(([path, rs]) => ({ path, name: basename(path), repos: rs.map((r) => r.id) }));
+}
+
+export function taskFolderOf(path: string) {
+  const parent = dirname(path);
+  if (basename(parent) !== 'worktrees') return undefined;
+  const folder = folders().find((f) => f.path === dirname(parent));
+  return folder && { path, name: basename(path), folder, repos: cache.filter((r) => folder.repos.includes(r.id)) };
+}
+
+export const taskWorktrees = (taskFolder: string) =>
+  cache.flatMap((repo) => repo.worktrees.filter((w) => !w.isMain && dirname(w.path) === taskFolder).map((worktree) => ({ repo, worktree })));
+
+// Where a task works, for the prompts of the models that read about it.
+export function placeOf(s: { repoId: number | null; worktree: string }) {
+  if (s.repoId !== null) return `the git worktree ${s.worktree} (repository ${repoView(s.repoId)?.name ?? 'unknown'}, base branch ${repoView(s.repoId)?.base ?? 'unknown'})`;
+  const opened = taskWorktrees(s.worktree).map(({ repo, worktree }) => `${repo.name} at ${worktree.path} (base branch ${repo.base})`);
+  return `the task folder ${s.worktree}, which holds a git worktree for each repository the task changes (${opened.join('; ') || 'none yet'}), beside the main checkouts in ${dirname(dirname(s.worktree))}`;
+}
+
+export const taskRepoNames = (taskFolder: string) => taskWorktrees(taskFolder).map(({ repo }) => repo.name).join(', ') || 'no repository yet';
+
+export const snapshot = () => ({ home: homedir(), roots: roots.all(), repos: cache, folders: folders(), sessions: sessions.all() });

@@ -2199,7 +2199,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.repo-filter New task\'s repository picker lists by name and filters by typing: by name or path, arrows and Enter pick, a letter on the closed button opens it already filtered, and no match says so',
+    name: 'P4.repo-filter New task\'s repository picker lists folders of repositories first, then repositories, by name, and filters by typing: by name or path, arrows and Enter pick, a letter on the closed button opens it already filtered, and no match says so',
     async run({ page, mock, shot }) {
       const picker = '#new-task [data-repo-picker]';
       const shown = (picker: string) => [...document.querySelectorAll(`${picker} [role="option"]`)].map((o) => o.querySelector('strong')?.textContent);
@@ -2209,7 +2209,7 @@ export const checks: Check[] = [
       await openNewTask(page);
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the filter focused', (picker: string) => document.activeElement === document.querySelector(`${picker} input`), picker);
-      assert.deepEqual(await page.eval(shown, picker), ['billing-api', 'docs-site', 'pitwall', 'storefront']);
+      assert.deepEqual(await page.eval(shown, picker), ['code', 'billing-api', 'docs-site', 'pitwall', 'storefront']);
       await page.type('code/');
       await page.until('the repositories under ~/code', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 3, picker);
       await page.key('ArrowDown');
@@ -2230,7 +2230,7 @@ export const checks: Check[] = [
 
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the filter, empty again', (picker: string) => document.querySelector<HTMLInputElement>(`${picker} input`)?.value === '' &&
-        document.querySelectorAll(`${picker} [role="option"]`).length === 4, picker);
+        document.querySelectorAll(`${picker} [role="option"]`).length === 5, picker);
       await page.type('nothing-like-it');
       await page.until('the empty note', (picker: string) => document.querySelector(`${picker} p`)?.textContent === 'No repository matches “nothing-like-it”', picker);
       await page.key('Enter');
@@ -5596,6 +5596,92 @@ export const checks: Check[] = [
         { conversation: 's-review-1-1', history: 0, status: 'exited', archived: true },
       ]);
       assert.equal(after.sessions.length, state.sessions.length);
+    },
+  },
+  {
+    name: 'M1 New task across a folder of repos: the picker lists the folder first, which hides the worktree options and says where Claude starts; ⌘↵ starts it in an empty task folder; the worktrees Claude opens show in the facts, the Diff groups them by repository, the tile names the folder, and Clear task names each worktree and its loss and clears them all',
+    async run({ page, mock, shot }) {
+      const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
+      await page.type('Rename the cart API on both sides');
+      await page.click('dialog#new-task button[aria-haspopup="listbox"]');
+      await page.until('the picker, its filter focused', () => !!document.querySelector('#new-task [data-repo-picker]:popover-open') &&
+        document.activeElement === document.querySelector('#new-task [data-repo-picker] input'));
+      const first = await page.eval(() => {
+        const option = document.querySelector('#new-task [data-repo-picker] [role="option"]');
+        return { folder: option?.hasAttribute('data-folder'), text: option?.textContent };
+      });
+      assert.deepEqual(first, { folder: true, text: 'code~/code3 repositories · Claude picks which to change' });
+      await page.type('code');
+      await page.key('Enter');
+      await page.until('the picker to close', () => !document.querySelector('#new-task [data-repo-picker]:popover-open'));
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
+      await page.type('cart api');
+      const form = await page.eval(() => ({
+        target: document.querySelector('dialog#new-task button[aria-haspopup="listbox"]')?.getAttribute('aria-label'),
+        mode: !!document.querySelector('dialog#new-task fieldset'),
+        branch: !!document.querySelector('dialog#new-task input[placeholder="cart-api"]'),
+        hint: document.querySelector('dialog#new-task [data-hint]')?.textContent,
+      }));
+      assert.deepEqual(form, {
+        target: 'Folder: code', mode: false, branch: false,
+        hint: 'Starts Claude in ~/code/worktrees/cart-api, where it reads billing-api, docs-site, storefront and opens a worktree on the branch cart-api in each one it changes.',
+      });
+      await shot('new-task-folder');
+      await page.eval(submit);
+      const [created] = await logged(mock, 'the folder task', (e) => e.method === 'POST' && e.path === '/api/folder-tasks');
+      assert.deepEqual({ ...created.body, status: created.status }, { folder: '~/code', name: 'cart-api', prompt: 'Rename the cart API on both sides', model: '', effort: '', status: 200 });
+      const id: string = (await mock.get('/api/state')).sessions.find((x: { worktree: string }) => x.worktree === '~/code/worktrees/cart-api').id;
+      const before = await page.until('its facts', () => {
+        const dl = document.querySelector('#task-sheet dl');
+        return document.querySelector('#task-sheet h2')?.textContent === 'cart-api' && dl &&
+          Object.fromEntries([...dl.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]));
+      });
+      assert.deepEqual([before.Folder, before.Path, before.Worktrees, before.Repository], ['code', '~/code/worktrees/cart-api', 'None yet; Claude opens one in each repository it changes', undefined]);
+
+      await mock.post('/mock/open-worktree', { id, repo: 'storefront' });
+      await mock.post('/mock/open-worktree', { id, repo: 'billing-api' });
+      const after = await page.until('both worktrees in the facts', () => document.querySelectorAll('[data-task-worktrees] li').length === 2 &&
+        [...document.querySelectorAll('[data-task-worktrees] li')].map((li) => li.textContent));
+      assert.deepEqual(after, [
+        'storefront ~/code/worktrees/cart-api/storefront on cart-api',
+        'billing-api ~/code/worktrees/cart-api/billing-api on cart-api',
+      ]);
+      await shot('folder-task-facts');
+
+      await page.key('2');
+      const files = await page.until('the diff of both', () => {
+        const all = [...document.querySelectorAll('section[data-file]')].map((s) => s.getAttribute('data-file')!);
+        return all.length > 0 && all;
+      });
+      assert.ok(files.some((f) => f.startsWith('storefront/')) && files.some((f) => f.startsWith('billing-api/')), files.join(', '));
+      assert.ok(files.every((f) => f.startsWith('storefront/') || f.startsWith('billing-api/')), files.join(', '));
+
+      await page.goto(`${mock.url}/wall`);
+      const where = await page.until('its tile', (task: string) => document.querySelector(`[data-tile][data-session="${task}"] [class*="where"]`)?.textContent, id);
+      assert.equal(where, 'code · cart-api');
+      await page.click(`[data-tile][data-session="${id}"] button[aria-label="Session actions"]`);
+      await page.until('its menu', menuItems);
+      await page.click(':popover-open button', 'Clear task');
+      const asked = await page.until('the delete dialog', () => {
+        const d = document.querySelector<HTMLDialogElement>('dialog#delete-worktree');
+        if (!d?.open || d.innerText.includes('Checking')) return null;
+        return { title: d.querySelector('h2')?.textContent, path: d.querySelector('code')?.textContent, text: d.innerText, loss: [...d.querySelectorAll('li')].map((l) => l.textContent) };
+      });
+      assert.deepEqual({ ...asked, text: undefined }, {
+        title: 'Clear the task and its task folder, with 2 worktrees?', path: '~/code/worktrees/cart-api', text: undefined,
+        loss: ['storefront: 3 uncommitted or untracked files and 2 commits that no other branch or remote has'],
+      });
+      assert.match(asked.text, /Removes the worktrees in storefront, billing-api and their local branch cart-api\./);
+      await shot('folder-task-clear');
+      await page.click('dialog#delete-worktree button', 'Clear task');
+      const [deleted] = await logged(mock, 'the deletion', (e) => e.method === 'POST' && e.action === 'delete-worktree');
+      assert.deepEqual([deleted.sessionId, deleted.status], [id, 204]);
+      await page.until('the tile to go', (task: string) => !document.querySelector(`[data-tile][data-session="${task}"]`), id);
+      const state = await mock.get('/api/state');
+      assert.ok(!state.repos.some((r: { worktrees: { path: string }[] }) => r.worktrees.some((w) => w.path.startsWith('~/code/worktrees/cart-api/'))), 'the worktrees went');
     },
   },
 ];

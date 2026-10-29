@@ -15,7 +15,8 @@ import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/
 import { handOver, taskOf } from '../../server/handover.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
 import { readEntry, watchEntry } from '../../server/uiEntry.ts';
-import type { RepoView } from '../../server/workspace.ts';
+import type { FolderView, RepoView } from '../../server/workspace.ts';
+import { prefixRenames } from '../../server/git.ts';
 import { isolateHome, refuseLive } from '../isolate.ts';
 import { addFromTemplate, artifactPage, COMMANDS, DELETE_LOSS, explanationOf, TEMPLATES, worktreeRootOf, type Template } from './fixtures.ts';
 import { scenarios, type Flag, type Scenario } from './scenarios.ts';
@@ -111,8 +112,18 @@ function shown(s: Session) {
   return old;
 }
 
+const parentOf = (path: string) => path.slice(0, path.lastIndexOf('/'));
+
+// As the server's folders(): a folder holding two or more of the repositories.
+const folders = (): FolderView[] => [...Map.groupBy(state.repos, (r) => parentOf(r.path))]
+  .filter(([, rs]) => rs.length > 1)
+  .map(([path, rs]) => ({ path, name: path.split('/').at(-1)!, repos: rs.map((r) => r.id) }));
+
+const taskWorktrees = (taskFolder: string) =>
+  state.repos.flatMap((repo) => repo.worktrees.filter((w) => !w.isMain && parentOf(w.path) === taskFolder).map((worktree) => ({ repo, worktree })));
+
 const snapshot = () => ({
-  home: '/Users/me', roots: state.roots, repos: state.repos, sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
+  home: '/Users/me', roots: state.roots, repos: state.repos, ...(!args.legacy && { folders: folders() }), sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
   ...(!args.legacy && { usage: state.usage }),
 });
 
@@ -191,7 +202,7 @@ function update(id: string, patch: Partial<Session>) {
 
 const flagged = (id: string, flag: Flag) => !!state.flags[id]?.includes(flag);
 
-const repoOf = (id: number) => state.repos.find((r) => r.id === id);
+const repoOf = (id: number | null) => state.repos.find((r) => r.id === id);
 
 function mustRepo(id: number) {
   const repo = repoOf(id);
@@ -337,7 +348,7 @@ function respond(s: Session, body: any) {
   }
   if (!['accept', 'elaborate', 'second-look', 'reply'].includes(kind)) throw new Error('unknown response');
   if (kind === 'reply' && !text) throw new Error('write an answer first');
-  const id = startSession(mustRepo(s.repoId), s.worktree, { title: `#${index + 1} ${SUBTASK_LABELS[kind]} · ${f.title}`, prompt: `${f.title}\n\n${text}` });
+  const id = startSession(s.repoId, s.worktree, { title: `#${index + 1} ${SUBTASK_LABELS[kind]} · ${f.title}`, prompt: `${f.title}\n\n${text}` });
   update(id, { parent: { id: s.id, basis: s.findings.basis, finding: index, title: f.title, kind, text } });
   return { id };
 }
@@ -371,6 +382,12 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
   },
   'delete-worktree': (s) => {
     if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
+    if (s.repoId === null) {
+      for (const { repo, worktree } of taskWorktrees(s.worktree)) repo.worktrees = repo.worktrees.filter((w) => w !== worktree);
+      state.sessions = state.sessions.filter((o) => o.worktree !== s.worktree && !o.worktree.startsWith(`${s.worktree}/`));
+      push();
+      return;
+    }
     const worktree = mustRepo(s.repoId).worktrees.find((w) => w.path === s.worktree);
     if (worktree && !worktree.isMain) return removeWorktree(mustRepo(s.repoId), s.worktree);
     const gone = new Set([s, ...subtasksOf(s.id)]);
@@ -404,6 +421,13 @@ function deleteLoss(s: Session) {
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
   if (s.parent) throw new Error("a subtask works in its task's worktree; Quit Claude or Archive it instead");
   const subtasks = subtasksOf(s.id).length;
+  if (s.repoId === null) {
+    const repos = taskWorktrees(s.worktree).map(({ repo: r, worktree: w }, i) => ({
+      name: r.name, branch: w.branch, deletesBranch: true, files: i === 0 ? DELETE_LOSS.files : 0, commits: i === 0 ? DELETE_LOSS.commits : 0,
+    }));
+    const sum = (k: 'files' | 'commits') => repos.reduce((n, r) => n + r[k], 0);
+    return { branch: s.worktree.split('/').at(-1), deletesBranch: repos.length > 0, files: sum('files'), commits: sum('commits'), subtasks, repos };
+  }
   if (!repo || !worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
@@ -428,12 +452,12 @@ const MODELS: { models: Record<string, string>; efforts: Record<string, string |
   efforts: { '': 'medium', fable: 'high', opus: 'medium', sonnet: 'high', haiku: null },
 };
 
-function startSession(repo: RepoView, worktree: string, o: { id?: string; title?: string | null; prompt?: string | null; model?: string; effort?: string }) {
+function startSession(repoId: number | null, worktree: string, o: { id?: string; title?: string | null; prompt?: string | null; model?: string; effort?: string }) {
   const now = Date.now();
   const id = o.id ?? randomUUID();
   const working = !!o.prompt;
   state.sessions.push({
-    id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
+    id, conversation: id, history: [], repoId, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, priority: null, diffstat: null,
     lastMessage: null, lastPrompt: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
@@ -592,7 +616,18 @@ route('POST', '/api/worktrees', ({ body }) => {
   const repo = mustRepo(body.repoId);
   const path = addWorktree(repo, body);
   push();
-  return { path, sessionId: startSession(repo, path, { title: String(body.name ?? '').trim(), prompt: body.prompt, model: MODELS.models[body.model ?? ''] ?? body.model, effort: body.effort || MODELS.efforts[body.model ?? ''] || undefined }) };
+  return { path, sessionId: startSession(repo.id, path, { title: String(body.name ?? '').trim(), prompt: body.prompt, model: MODELS.models[body.model ?? ''] ?? body.model, effort: body.effort || MODELS.efforts[body.model ?? ''] || undefined }) };
+});
+route('GET', '/api/folders/models', () => MODELS);
+// As the server: the task folder starts empty, and Claude opens worktrees in it (/mock/open-worktree here).
+route('POST', '/api/folder-tasks', ({ body }) => {
+  const folder = folders().find((f) => f.path === body.folder);
+  if (!folder) throw new Error('unknown folder');
+  const name = String(body.name ?? '').trim();
+  if (!name) throw new Error('name is required');
+  const path = `${folder.path}/worktrees/${name}`;
+  if (state.sessions.some((s) => s.worktree === path) || taskWorktrees(path).length) throw new Error(`${path} already exists; pick another name`);
+  return { path, sessionId: startSession(null, path, { title: name, prompt: body.prompt, model: MODELS.models[body.model ?? ''] ?? body.model, effort: body.effort || MODELS.efforts[body.model ?? ''] || undefined }) };
 });
 route('DELETE', '/api/worktrees', ({ body }) => {
   removeWorktree(mustRepo(body.repoId), body.path);
@@ -600,12 +635,12 @@ route('DELETE', '/api/worktrees', ({ body }) => {
 });
 route('POST', '/api/sessions', ({ body }) => {
   const repo = mustRepo(body.repoId);
-  if (!body.continueId) return { id: startSession(repo, body.worktree, { prompt: body.prompt }) };
+  if (!body.continueId) return { id: startSession(repo.id, body.worktree, { prompt: body.prompt }) };
   const existing = taskOf(state.sessions, body.continueId);
   if (existing && existing.status !== 'exited') return { id: existing.id };
   const conversation = repo.worktrees.find((w) => w.path === body.worktree)?.conversations.find((c) => c.id === body.continueId);
   if (!existing && !conversation) throw new Error('conversation not found in this worktree');
-  if (!existing) return { id: startSession(repo, body.worktree, { id: body.continueId, title: conversation!.title, prompt: null }) };
+  if (!existing) return { id: startSession(repo.id, body.worktree, { id: body.continueId, title: conversation!.title, prompt: null }) };
   update(existing.id, { ...(existing.conversation !== body.continueId && handOver(existing, body.continueId, Date.now())), status: 'idle', pid: 41_500, tty: '/dev/ttys042', archived: false });
   return { id: existing.id };
 });
@@ -648,16 +683,37 @@ route('POST', '/api/uploads', ({ raw, headers }) => {
   return { path };
 });
 route('GET', '/api/commands', () => COMMANDS);
+// As the server's folderDiff(): the fixture's change in every worktree of the task, each under its repository's folder.
+async function folderDiff(taskFolder: string, paths: string[] = []): Promise<FullDiff> {
+  const parts = await Promise.all(taskWorktrees(taskFolder).map(async ({ repo }) => {
+    const own = paths.filter((p) => p.startsWith(`${repo.name}/`)).map((p) => p.slice(repo.name.length + 1));
+    if (paths.length && !own.length) return null;
+    const diff = await fixtureDiff(own);
+    const patch = prefixRenames(diff.patch.replace(/^(diff --git a\/)(.*) b\/(.*)$/gm, `$1${repo.name}/$2 b/${repo.name}/$3`).replace(/^(---|\+\+\+) ([ab])\//gm, `$1 $2/${repo.name}/`), repo.name);
+    return { name: repo.name, base: repo.base, patch, stat: diff.stat };
+  }));
+  const read = parts.filter((p) => p !== null);
+  return {
+    base: read.map((p) => `${p.name} ${p.base}`).join(', ') || 'the base branches',
+    mergeBase: '',
+    patch: read.map((p) => p.patch).join(''),
+    stat: read.reduce((sum, p) => ({ files: sum.files + p.stat.files, insertions: sum.insertions + p.stat.insertions, deletions: sum.deletions + p.stat.deletions }), { files: 0, insertions: 0, deletions: 0 }),
+  };
+}
+
+const isTaskFolder = (worktree: string) => state.sessions.some((s) => s.repoId === null && s.worktree === worktree);
+
 route('GET', '/api/diff/file', async ({ url }) => {
-  const repo = repoOfWorktree(url.searchParams.get('worktree') ?? '');
+  const worktree = url.searchParams.get('worktree') ?? '';
   const paths = url.searchParams.getAll('path');
   if (!paths.length || paths.some((p) => p.startsWith('/') || p.split('/').includes('..'))) throw new Error('bad path');
+  if (isTaskFolder(worktree)) return folderDiff(worktree, paths);
+  const repo = repoOfWorktree(worktree);
   return { base: repo.base, ...(await fixtureDiff(paths)) };
 });
 route('GET', '/api/diff', async ({ url }) => {
   const worktree = url.searchParams.get('worktree') ?? '';
-  const repo = repoOfWorktree(worktree);
-  const diff = { base: repo.base, ...(await fixtureDiff()) };
+  const diff = isTaskFolder(worktree) ? await folderDiff(worktree) : { base: repoOfWorktree(worktree).base, ...(await fixtureDiff()) };
   for (const s of state.sessions.filter((s) => s.worktree === worktree)) s.diffstat = diff.stat;
   push();
   return diff;
@@ -703,9 +759,22 @@ route('POST', '/mock/resume', ({ body }) => {
   const known = taskOf(state.sessions, to);
   if (known === s) throw new Error('the task runs that conversation already');
   if (known) update(known.id, { ...(known.conversation !== to && handOver(known, to, Date.now())), pid: s.pid, tty: s.tty, status: 'idle', archived: !!known.resolution && known.archived });
-  else startSession(mustRepo(s.repoId), s.worktree, { id: to, prompt: null });
+  else startSession(s.repoId, s.worktree, { id: to, prompt: null });
   update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, archived: true });
   return known ?? find(to);
+});
+// As the open_worktree tool a folder task's Claude calls: a worktree <task folder>/<repo> on the branch named after it.
+route('POST', '/mock/open-worktree', ({ body }) => {
+  const s = must(body.id);
+  if (s.repoId !== null) throw new Error('not a task across a folder of repos');
+  const repo = state.repos.find((r) => r.name === body.repo && parentOf(r.path) === parentOf(parentOf(s.worktree)));
+  if (!repo) throw new Error(`no repository ${body.repo} in that folder`);
+  const path = `${s.worktree}/${repo.name}`;
+  if (!repo.worktrees.some((w) => w.path === path)) {
+    repo.worktrees.push({ path, branch: s.worktree.split('/').at(-1)!, head: randomUUID().replaceAll('-', '').padEnd(40, '0'), isMain: false, conversations: [] });
+  }
+  push();
+  return { path };
 });
 route('POST', '/mock/advice', ({ body }) => {
   setAdvice(must(body.id), body);

@@ -7,7 +7,7 @@ import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
 import { hold, useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { MenuAnswer, RepoView, Session } from '../types.ts';
-import { adviceFor, ago, attentionOf, decisionOf, effortName, modelName, shortUrl, tilde, worktreeName } from '../util.ts';
+import { adviceFor, ago, attentionOf, decisionOf, effortName, folderTaskOf, modelName, shortUrl, tilde, worktreeName } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { Findings, Subtasks, SubtaskOf } from './Findings.tsx';
@@ -152,7 +152,8 @@ function Queued({ session, name, box: ownBox }: { session: Session; name: string
 }
 
 export function Overview({ session, name, branch, repo }: { session: Session; name: string; branch?: string; repo?: RepoView }) {
-  const { home } = useStore();
+  const { home, repos } = useStore();
+  const task = folderTaskOf(repos, session);
   const busy = useBusy();
   const { summary, activity } = session;
   const attention = attentionOf(session);
@@ -255,10 +256,34 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
                   <dd>{repo.name}</dd>
                 </>
               )}
-              <dt>Worktree</dt>
-              <dd>{worktreeName(session.worktree, repo)}</dd>
-              <dt>Path</dt>
-              <dd><Copy value={session.worktree} shown={tilde(session.worktree, home)} what="Worktree path" /></dd>
+              {task ? (
+                <>
+                  <dt title="The folder of repositories the task works across">Folder</dt>
+                  <dd>{task.folder}</dd>
+                  <dt>Path</dt>
+                  <dd><Copy value={session.worktree} shown={tilde(session.worktree, home)} what="Task folder path" /></dd>
+                  <dt title="Claude opens a worktree in each repository it changes, on a branch named after the task">Worktrees</dt>
+                  <dd data-task-worktrees>
+                    {task.worktrees.length ? (
+                      <ul className={styles.worktrees}>
+                        {task.worktrees.map(({ repo: r, worktree: w }) => (
+                          <li key={w.path}>
+                            <strong>{r.name}</strong> <Copy value={w.path} shown={tilde(w.path, home)} what={`${r.name} worktree path`} />
+                            {w.branch && <> on <Copy value={w.branch} what="Branch" /></>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : 'None yet; Claude opens one in each repository it changes'}
+                  </dd>
+                </>
+              ) : (
+                <>
+                  <dt>Worktree</dt>
+                  <dd>{worktreeName(session.worktree, repo)}</dd>
+                  <dt>Path</dt>
+                  <dd><Copy value={session.worktree} shown={tilde(session.worktree, home)} what="Worktree path" /></dd>
+                </>
+              )}
               {branch && (
                 <>
                   <dt>Branch</dt>

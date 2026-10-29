@@ -2,7 +2,7 @@ import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStor
 import { api } from '../api.ts';
 import { keepUnderLayer } from '../layers.ts';
 import { openSheet } from '../router.ts';
-import type { RepoView } from '../types.ts';
+import type { FolderView, RepoView } from '../types.ts';
 import { useStore } from '../store.ts';
 import { EFFORTS, effortName, modelName, tilde, untilde } from '../util.ts';
 import { Icon } from './Icon.tsx';
@@ -11,6 +11,8 @@ import styles from './NewTaskForm.module.css';
 interface Fields {
   prompt: string;
   repoId: number | null;
+  // A folder of repos picked instead of one repository: Claude decides which of them to open worktrees in.
+  folder: string | null;
   name: string;
   branch: string;
   path: string;
@@ -34,7 +36,7 @@ interface Branch {
 
 const DIALOG = 'new-task';
 const STORED = 'pitwall:new-task';
-const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, model: '', effort: '' };
+const EMPTY: Fields = { prompt: '', repoId: null, folder: null, name: '', branch: '', path: '', existing: false, model: '', effort: '' };
 
 const NAME = /^[A-Za-z0-9._/-]+$/;
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -55,8 +57,8 @@ let branches: { repoId: number; list: Branch[] } | null = null;
 let reading: number | null = null;
 // Each opening reads the branches again, so one fetched or pushed since shows.
 let opened = 0;
-let models: { repoId: number; read: Models } | null = null;
-let readingModels: number | null = null;
+let models: { key: string; read: Models } | null = null;
+let readingModels: string | null = null;
 const subscribers = new Set<() => void>();
 
 const notify = () => {
@@ -84,16 +86,22 @@ function readBranches(repoId: number) {
   });
 }
 
-function readModels(repoId: number) {
-  if (readingModels === repoId || models?.repoId === repoId) return;
-  readingModels = repoId;
-  api<Models>('GET', `/api/repos/${repoId}/models`).catch(() => ({ models: {}, efforts: {} })).then((read) => {
-    if (readingModels !== repoId) return;
+// `key` is the target's: what a model resolves to depends on the settings of the folder Claude starts in.
+function readModels(key: string, url: string) {
+  if (readingModels === key || models?.key === key) return;
+  readingModels = key;
+  api<Models>('GET', url).catch(() => ({ models: {}, efforts: {} })).then((read) => {
+    if (readingModels !== key) return;
     readingModels = null;
-    models = { repoId, read };
+    models = { key, read };
     notify();
   });
 }
+
+type Target = { kind: 'repo'; key: string; name: string; path: string; repo: RepoView } | { kind: 'folder'; key: string; name: string; path: string; folder: FolderView };
+
+const repoTarget = (repo: RepoView): Target => ({ kind: 'repo', key: `repo:${repo.id}`, name: repo.name, path: repo.path, repo });
+const folderTarget = (folder: FolderView): Target => ({ kind: 'folder', key: `folder:${folder.path}`, name: folder.name, path: folder.path, folder });
 
 const defaultBranch = (repo: RepoView) => (repo.base === 'HEAD' ? '' : repo.base.replace(/^origin\//, ''));
 
@@ -115,7 +123,7 @@ export function openNewTask() {
 }
 
 // Typing on the closed button opens the list with that letter already in the filter.
-function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; pick: (id: number) => void }) {
+function RepoPicker({ repos, repo, pick }: { repos: Target[]; repo: Target; pick: (t: Target) => void }) {
   const id = useId();
   const list = useRef<HTMLDivElement>(null);
   const filter = useRef<HTMLInputElement>(null);
@@ -126,21 +134,21 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
   const q = query.trim().toLowerCase();
   const shown = q ? repos.filter((r) => r.name.toLowerCase().includes(q) || tilde(r.path, home).toLowerCase().includes(q)) : repos;
   const at = Math.min(active, shown.length - 1);
-  const activeId = shown[at] && `${id}-${shown[at].id}`;
+  const activeId = shown[at] && `${id}-${at}`;
 
   useEffect(() => {
     if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   }, [activeId]);
 
-  const choose = (r: RepoView) => {
-    pick(r.id);
+  const choose = (r: Target) => {
+    pick(r);
     list.current?.hidePopover();
   };
 
   const onToggle = (e: ToggleEvent<HTMLDivElement>) => {
     if (e.newState !== 'open') return;
     setQuery(seed.current);
-    setActive(seed.current ? 0 : Math.max(0, repos.indexOf(repo)));
+    setActive(seed.current ? 0 : Math.max(0, repos.findIndex((r) => r.key === repo.key)));
     seed.current = '';
     filter.current?.focus();
   };
@@ -165,8 +173,8 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
 
   return (
     <>
-      <button type="button" className={styles.repo} popoverTarget={`${id}-list`} aria-haspopup="listbox" aria-label={`Repository: ${repo.name}`} onKeyDown={onButtonKey}>
-        <span className={styles.caption}>Repository</span>
+      <button type="button" className={styles.repo} popoverTarget={`${id}-list`} aria-haspopup="listbox" aria-label={`${repo.kind === 'folder' ? 'Folder' : 'Repository'}: ${repo.name}`} onKeyDown={onButtonKey}>
+        <span className={styles.caption}>{repo.kind === 'folder' ? 'Folder' : 'Repository'}</span>
         <strong>{repo.name}</strong>
         <Icon name="chevron-down" size={14} />
       </button>
@@ -192,18 +200,20 @@ function RepoPicker({ repos, repo, pick }: { repos: RepoView[]; repo: RepoView; 
         <div id={`${id}-options`} role="listbox" aria-label="Repositories" className={styles.repos}>
           {shown.map((r, i) => (
             <button
-              key={r.id}
-              id={`${id}-${r.id}`}
+              key={r.key}
+              id={`${id}-${i}`}
               type="button"
               role="option"
               tabIndex={-1}
-              aria-selected={r.id === repo.id}
+              aria-selected={r.key === repo.key}
               data-active={i === at || undefined}
+              data-folder={r.kind === 'folder' || undefined}
               onPointerMove={() => setActive(i)}
               onClick={() => choose(r)}
             >
               <strong>{r.name}</strong>
               <code>{tilde(r.path, home)}</code>
+              {r.kind === 'folder' && <span>{r.folder.repos.length} repositories · Claude picks which to change</span>}
             </button>
           ))}
           {shown.length === 0 && <p className={styles.none}>No repository matches “{query.trim()}”</p>}
@@ -318,26 +328,41 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
   const read = useSyncExternalStore(subscribe, () => branches);
   const opening = useSyncExternalStore(subscribe, () => opened);
   const known = useSyncExternalStore(subscribe, () => models);
-  const { home } = useStore();
-  const sorted = repos.toSorted((a, b) => byName(a.name, b.name));
+  const { home, folders } = useStore();
+  const targets = [
+    ...folders.toSorted((a, b) => byName(a.name, b.name)).map(folderTarget),
+    ...repos.toSorted((a, b) => byName(a.name, b.name)).map(repoTarget),
+  ];
+  const pickedFolder = folders.find((x) => x.path === f.folder);
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
+  const target = pickedFolder ? folderTarget(pickedFolder) : repoTarget(repo);
   useEffect(() => {
-    if (opening) readBranches(repo.id);
-  }, [repo.id, opening]);
-  useEffect(() => readModels(repo.id), [repo.id]);
+    if (opening && !pickedFolder) readBranches(repo.id);
+  }, [repo.id, opening, pickedFolder]);
+  useEffect(() => readModels(target.key, pickedFolder ? `/api/folders/models?path=${encodeURIComponent(pickedFolder.path)}` : `/api/repos/${repo.id}/models`), [target.key]);
+  const existing = f.existing && !pickedFolder;
 
   const name = f.name.trim();
   const branch = f.branch.trim();
-  const valid = f.existing ? !!branch : NAME.test(name);
+  const valid = existing ? !!branch : pickedFolder ? NAME.test(name) && !name.includes('/') : NAME.test(name);
   const main = repo.worktrees.find((w) => w.isMain);
   const list = read?.repoId === repo.id ? read.list : null;
   const picked = list?.find((b) => b.name === branch);
-  const target = branch || name;
-  const reused = list?.find((b) => b.name === target && (b.local || b.origin));
+  const wanted = branch || name;
+  const reused = list?.find((b) => b.name === wanted && (b.local || b.origin));
 
   const [error, create, pending] = useActionState(async () => {
     const now = fields;
     try {
+      if (pickedFolder) {
+        const result = await api<{ path: string; sessionId: string }>('POST', '/api/folder-tasks', {
+          folder: pickedFolder.path, name: now.name.trim(), prompt: now.prompt, model: now.model, effort: now.effort,
+        });
+        edit({ ...EMPTY, folder: pickedFolder.path, model: now.model, effort: now.effort });
+        done?.();
+        openSheet(result.sessionId);
+        return null;
+      }
       const result = await api<{ path: string; sessionId: string | null }>('POST', '/api/worktrees', {
         repoId: repo.id,
         name: now.existing ? '' : now.name.trim(),
@@ -364,7 +389,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
     }
   };
 
-  const choices = known?.repoId === repo.id ? known.read : null;
+  const choices = known?.key === target.key ? known.read : null;
   const real = (value: string) => choices?.models[value] ?? null;
   const modelOptions = [
     ['', real('') ? modelName(real('')!) : 'Default'],
@@ -389,16 +414,22 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         onKeyDown={onPromptKey}
       />
       <div className={styles.row}>
-        <RepoPicker repos={sorted} repo={repo} pick={(id) => edit({ repoId: id, branch: f.existing ? defaultBranch(repos.find((r) => r.id === id)!) : '' })} />
-        <fieldset className={styles.mode}>
-          <legend>Where Claude runs</legend>
-          <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
-          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Current checkout</label>
-        </fieldset>
-        {f.existing ? (
+        <RepoPicker
+          repos={targets}
+          repo={target}
+          pick={(t) => edit(t.kind === 'folder' ? { folder: t.path, branch: '' } : { folder: null, repoId: t.repo.id, branch: f.existing ? defaultBranch(t.repo) : '' })}
+        />
+        {!pickedFolder && (
+          <fieldset className={styles.mode}>
+            <legend>Where Claude runs</legend>
+            <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
+            <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Current checkout</label>
+          </fieldset>
+        )}
+        {existing ? (
           <BranchPicker branches={list} value={f.branch} pick={(b) => edit({ branch: b })} where={where} />
         ) : (
-          <label className={styles.field} title="Names the worktree folder, and the branch unless you set one">
+          <label className={styles.field} title={pickedFolder ? 'Names the task folder, and the branch of every worktree Claude opens' : 'Names the worktree folder, and the branch unless you set one'}>
             <span className={styles.caption}>Name</span>
             <input value={f.name} onChange={(e) => edit({ name: e.currentTarget.value.replace(/\s+/g, '-') })} placeholder="fix-login-redirect" spellCheck={false} autoComplete="off" />
           </label>
@@ -407,7 +438,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
         </button>
       </div>
-      {!f.existing && (
+      {!existing && !pickedFolder && (
         <div className={styles.options}>
           <label className={styles.input} title="The new branch; defaults to the name">
             <span>Branch</span>
@@ -421,14 +452,20 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
       )}
       <div className={styles.foot}>
         <p className={styles.hint} data-hint>
-          {f.existing ? (
+          {pickedFolder ? (
+            <>
+              Starts Claude in <code>{tilde(pickedFolder.path, home)}/worktrees/{name || '<name>'}</code>, where it reads{' '}
+              {repos.filter((r) => pickedFolder.repos.includes(r.id)).map((r) => r.name).toSorted(byName).join(', ')} and opens a worktree on the
+              branch <code>{name || '<name>'}</code> in each one it changes.
+            </>
+          ) : existing ? (
             picked?.worktree ? <>Starts Claude in <code>{tilde(picked.worktree, home)}</code>, where it is checked out.</>
               : <>Switches <code>{tilde(main?.path ?? repo.path, home)}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
           ) : (
-            reused?.worktree ? <><code>{target}</code> is already checked out in <code>{tilde(reused.worktree, home)}</code>.</>
+            reused?.worktree ? <><code>{wanted}</code> is already checked out in <code>{tilde(reused.worktree, home)}</code>.</>
               : <>
-                {reused?.local ? <>Reuses the local branch <code>{target}</code> and starts Claude there.</>
-                  : reused ? <>Tracks <code>origin/{target}</code> in a new branch and starts Claude there.</>
+                {reused?.local ? <>Reuses the local branch <code>{wanted}</code> and starts Claude there.</>
+                  : reused ? <>Tracks <code>origin/{wanted}</code> in a new branch and starts Claude there.</>
                   : <>Branches from <code>{repo.base}</code> and starts Claude there.</>}
                 {repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}
               </>

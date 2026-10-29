@@ -2,11 +2,25 @@ import { decisionKey, turnDecision } from '../../server/decision.ts';
 export { tildeIn } from '../../server/home.ts';
 import type { Finding, QuestionOption, RepoView, Session } from './types.ts';
 
+// `place` names the repository, or for a task across a folder of repos, the folder.
 export function locate(repos: RepoView[], session: Session) {
   const repo = repos.find((r) => r.id === session.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === session.worktree);
   const folder = session.worktree.split('/').at(-1) ?? session.worktree;
-  return { repo, worktree, branch: worktree?.branch ?? folder };
+  const task = folderTaskOf(repos, session);
+  return { repo, worktree, task, place: repo?.name ?? task?.folder, branch: worktree?.branch ?? folder };
+}
+
+// A task across a folder of repos runs in <folder>/worktrees/<task>, with a worktree <task>/<repo> in each repo it changes.
+export function folderTaskOf(repos: RepoView[], session: Session) {
+  if (session.repoId !== null) return null;
+  const parent = session.worktree.slice(0, session.worktree.lastIndexOf('/worktrees/'));
+  return {
+    folder: parent.split('/').at(-1) ?? parent,
+    worktrees: repos.flatMap((repo) => repo.worktrees
+      .filter((w) => !w.isMain && w.path.slice(0, w.path.lastIndexOf('/')) === session.worktree)
+      .map((worktree) => ({ repo, worktree }))),
+  };
 }
 
 export const tilde = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);

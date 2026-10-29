@@ -60,7 +60,7 @@ function Line({ capsule }: { capsule: Capsule }) {
 
 function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: RepoView[]; fresh: boolean }) {
   const s = c.session;
-  const { repo, branch } = locate(repos, s);
+  const { place, branch } = locate(repos, s);
   const name = sessionLabel(s, branch);
   const card = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -126,7 +126,7 @@ function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: Re
       {/* Inert, so the PR link in it is no stop for Tab: everything on the card is in the sheet a click opens. */}
       <div ref={card} popover="hint" inert className={styles.card} data-hovercard>
         <strong className={styles.title}>{name}</strong>
-        <code className={styles.where}>{[repo?.name, branch].filter(Boolean).join(' · ')}</code>
+        <code className={styles.where}>{[place, branch].filter(Boolean).join(' · ')}</code>
         <span className={styles.row}>
           {glyph}
           <span className={styles.step}><Line capsule={c} /></span>

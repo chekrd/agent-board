@@ -4,7 +4,7 @@ import { wsUrl } from './api.ts';
 import { orderKey } from './order.ts';
 import { active } from './outbox.ts';
 import { sends } from './sends.ts';
-import type { RepoView, Session, Usage } from './types.ts';
+import type { FolderView, RepoView, Session, Usage } from './types.ts';
 import { menuOpen } from './layers.ts';
 import { isEditable } from './useKeys.ts';
 import { diag } from './diag.ts'; // DIAG(paste-loss)
@@ -16,6 +16,7 @@ interface State {
   home: string;
   roots: string[];
   repos: RepoView[];
+  folders: FolderView[];
   sessions: Session[];
   usage: Usage | null;
   link: Link;
@@ -27,7 +28,7 @@ interface State {
 const RELOAD_CAP_MS = 15_000;
 const RELOADED_FOR = 'pitwall:reloaded-for';
 
-let state: State = { home: '', roots: [], repos: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
+let state: State = { home: '', roots: [], repos: [], folders: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();
 let order = '';
 

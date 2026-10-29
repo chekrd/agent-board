@@ -3,7 +3,7 @@ import { conversationMeta, type Turn } from './conversations.ts';
 import { sessions, type Session } from './db.ts';
 import { headless } from './headless.ts';
 import { clip } from './priority.ts';
-import { notify, repoView } from './workspace.ts';
+import { notify, repoView, taskRepoNames } from './workspace.ts';
 
 const MODEL = 'sonnet';
 const MAX_PARALLEL = 2;
@@ -107,7 +107,7 @@ ${clip(q.details, 6000)}`
     : 'Claude has no formal question open.';
   return `You brief a developer on a coding task they run with a coding agent (Claude). They run several tasks in parallel and read your briefing instead of the conversation, so it must stand on its own.
 
-Repository: ${repoView(s.repoId)?.name ?? s.worktree}
+Repository: ${s.repoId === null ? `${taskRepoNames(s.worktree)} (a task across several repositories)` : repoView(s.repoId)?.name ?? s.worktree}
 Task as first given: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 
 Previous headline: ${s.summary?.text || '(none yet)'}

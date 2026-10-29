@@ -2,7 +2,7 @@ import { sessions, type Finding, type Parent, type Session, type SubtaskKind } f
 import { Refusal } from './decision.ts';
 import { clip } from './priority.ts';
 import { startClaude } from './sessions.ts';
-import { notify, repoView } from './workspace.ts';
+import { notify, placeOf, repoView } from './workspace.ts';
 
 export type Response = SubtaskKind | 'reject' | 'solve' | 'reopen';
 
@@ -17,12 +17,12 @@ const ASKS: Record<SubtaskKind, string> = {
   reply: `The developer answered this finding as below. Act on their answer.`,
 };
 
-const SHARED = `Other agents work on other findings in this same worktree at the same time. Change only what your finding needs; leave changes you did not make alone (do not revert, reformat, stage or commit them), and do not commit or push unless the developer asks.`;
+const SHARED = `Other agents work on other findings in this same worktree (or task folder) at the same time. Change only what your finding needs; leave changes you did not make alone (do not revert, reformat, stage or commit them), and do not commit or push unless the developer asks.`;
 
 export function subtaskPrompt(s: Session, n: number, f: Finding, kind: SubtaskKind, text: string) {
   const repo = repoView(s.repoId);
   const answer = text.trim();
-  return `You take on one finding from a review of the work in this git worktree (${s.worktree}${repo ? `, repository ${repo.name}, base branch ${repo.base}` : ''}). The review ran in another session, which you have not seen; this message holds what you need.
+  return `You take on one finding from a review of the work in ${s.repoId === null ? placeOf(s) : `this git worktree (${s.worktree}${repo ? `, repository ${repo.name}, base branch ${repo.base}` : ''})`}. The review ran in another session, which you have not seen; this message holds what you need.
 
 The task the review was given: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 

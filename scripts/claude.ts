@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, MCP_SERVER_NAME, OLD_MCP_SERVER_NAMES, ORIGIN } from '../server/config.ts';
+import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, MCP_SERVER_NAME, OLD_MCP_SERVER_NAMES, OPEN_WORKTREE_TOOL_NAME, ORIGIN } from '../server/config.ts';
 
 const SETTINGS = join(homedir(), '.claude', 'settings.json');
 
@@ -17,7 +17,7 @@ const HOOK = {
 };
 
 const OLD_TOOL_NAMES = OLD_MCP_SERVER_NAMES.flatMap((n) => [ASK_TOOL, ARTIFACT_TOOL].map((t) => `mcp__${n}__${t}`));
-const TOOLS = [ASK_TOOL_NAME, ARTIFACT_TOOL_NAME];
+const TOOLS = [ASK_TOOL_NAME, ARTIFACT_TOOL_NAME, OPEN_WORKTREE_TOOL_NAME];
 
 const removeServer = (name: string) => {
   try {

@@ -85,6 +85,9 @@
     }
     strong { font-weight: 650; }
     code { font-size: 12px; color: var(--muted); }
+    span { font-size: 12px; color: var(--accent-ink); }
+    /* Folders come first; the line under the last one sets them apart from the repositories. */
+    [data-folder]:has(+ :not([data-folder])) { margin-bottom: 4px; box-shadow: 0 1px 0 var(--line); }
   }
 
   .none { padding: 8px 10px; font-size: 13px; color: var(--muted); }

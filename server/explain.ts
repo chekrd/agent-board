@@ -2,14 +2,14 @@ import { sessions, type Explanation, type Session } from './db.ts';
 import { openDecision, type OpenDecision } from './decision.ts';
 import { headless } from './headless.ts';
 import { clip } from './priority.ts';
-import { notify, repoView } from './workspace.ts';
+import { notify, placeOf } from './workspace.ts';
 
 const MODEL = 'sonnet';
 const TIMEOUT_MS = 5 * 60_000;
 
 function prompt(s: Session, d: OpenDecision) {
   const options = d.options.map((o) => `- ${o.label}${o.description ? `: ${o.description}` : ''}`).join('\n');
-  return `A developer runs a coding agent (Claude) in the git worktree ${s.worktree} (repository ${repoView(s.repoId)?.name ?? ''}, base branch ${repoView(s.repoId)?.base ?? 'unknown'}). The agent needs a decision from them, and they asked for a deeper explanation so they can understand the topic before deciding.
+  return `A developer runs a coding agent (Claude) in ${placeOf(s)}. The agent needs a decision from them, and they asked for a deeper explanation so they can understand the topic before deciding.
 
 The task: ${clip(s.firstPrompt, 2000) || '(unknown)'}
 

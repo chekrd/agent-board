@@ -1,18 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { ASK_TOOL_NAME, ORIGIN, SCRATCH_DIR } from './config.ts';
+import { ASK_TOOL_NAME, OPEN_WORKTREE_TOOL_NAME, ORIGIN, SCRATCH_DIR } from './config.ts';
 import { sessions, type Advice, type Session } from './db.ts';
 import { describeTool } from './conversations.ts';
 import { openDecision, type OpenDecision } from './decision.ts';
 import { quote } from './env.ts';
-import { addScratchCopy, removeScratchCopy } from './git.ts';
+import { addScratchCopies, addScratchCopy, removeScratchCopy } from './git.ts';
 import { headless } from './headless.ts';
 import { menuKeystrokes } from './menu.ts';
 import { clip, scheduleRerank } from './priority.ts';
-import { notify, repoView } from './workspace.ts';
+import { notify, placeOf, repoView, taskWorktrees } from './workspace.ts';
 
 const MODEL = 'opus';
 const MAX_PARALLEL = 2;
@@ -111,7 +111,10 @@ function scratchCopy(run: Run) {
     const dir = join(SCRATCH_DIR, `${run.session.id}-${Date.now()}`);
     run.scratch = dir;
     run.save({ activity: 'Making a scratch copy of the worktree' });
-    run.copying = addScratchCopy(run.session.worktree, dir).then(() => dir);
+    const { session } = run;
+    run.copying = (session.repoId === null
+      ? addScratchCopies(taskWorktrees(session.worktree).map(({ worktree }) => ({ path: worktree.path, name: basename(worktree.path) })), dir)
+      : addScratchCopy(session.worktree, dir)).then(() => dir);
   }
   return run.copying;
 }
@@ -123,7 +126,8 @@ export async function handleAdvisorMcp(request: Request, token: string) {
     title: 'Scratch copy',
     description:
       'Creates (once per run) a disposable copy of the worktree and returns its path: a detached git worktree whose files are ' +
-      'clones of the original, uncommitted changes, dependencies and build output included. Call it before changing code or ' +
+      'clones of the original, uncommitted changes, dependencies and build output included (for a task folder, a folder ' +
+      'holding such a copy of each of its worktrees, under the same names). Call it before changing code or ' +
       'running anything that writes (tests, builds, scripts, servers), then do that work only inside the returned path. ' +
       'Creating it can take a minute. It is deleted when you finish.',
     inputSchema: {},
@@ -164,7 +168,7 @@ function prompt(s: Session, d: OpenDecision) {
     ? '- answers: one per question, in order: the labels you would pick, copied exactly from its options (one for a pick-one question, any number for a pick-any one), or for a pick-one question no labels and your own answer in other.'
     : `- choice: the label of the option you would pick, copied exactly from the list above, or "" when no option fits or there are none.
 - answer: the reply to send the agent, written as the developer: short, concrete, ready to send as is. Do not repeat the option label; add only what the agent needs beyond it (constraints, the reason, next steps). May be "" when the choice says it all.`;
-  return `A coding agent working in the git worktree ${s.worktree} ${asked[d.key[0]]}. You are an independent senior engineer giving the developer a second opinion. You have not seen the agent's conversation, so do not take its framing on trust: verify it yourself before deciding: read the code, compare with ${repo?.base ?? 'the base branch'}, and where it helps, try things out with your tools, skills and the browser.
+  return `A coding agent working in ${placeOf(s)} ${asked[d.key[0]]}. You are an independent senior engineer giving the developer a second opinion. You have not seen the agent's conversation, so do not take its framing on trust: verify it yourself before deciding: read the code, compare with ${repo?.base ?? 'the base branch'}, and where it helps, try things out with your tools, skills and the browser.
 
 The worktree belongs to the agent and the developer: read it, but never change it. When you want to change code or run anything that writes (tests, builds, scripts, servers), first call the ${SCRATCH_TOOL} tool and do that work only inside the copy it returns; it is deleted afterwards, so you need not undo changes there. Stop any server or background process you start; the developer may already run servers, so pick free ports. Do nothing outward-facing: no pushing, no PRs, no comments or messages to anyone, no changes to shared services or data.
 
@@ -217,7 +221,7 @@ async function advise(s: Session, d: OpenDecision) {
         '--settings', JSON.stringify(guard),
         '--add-dir', SCRATCH_DIR,
         '--allowedTools', `mcp__${MCP_NAME}__${SCRATCH_TOOL}`,
-        '--disallowedTools', ASK_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, `NotebookEdit(/${s.worktree}/**)`, 'Bash(git push:*)',
+        '--disallowedTools', ASK_TOOL_NAME, OPEN_WORKTREE_TOOL_NAME, `Edit(/${s.worktree}/**)`, `Write(/${s.worktree}/**)`, `NotebookEdit(/${s.worktree}/**)`, 'Bash(git push:*)',
         '--permission-prompts', 'none',
         '--json-schema', JSON.stringify(schema(d)),
       ],

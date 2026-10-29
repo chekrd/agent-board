@@ -3,7 +3,7 @@ import { DATA_DIR, RUBRIC_FILE } from './config.ts';
 import { openDecision } from './decision.ts';
 import { sessions } from './db.ts';
 import { headless } from './headless.ts';
-import { notify, repoView } from './workspace.ts';
+import { notify, repoView, taskRepoNames } from './workspace.ts';
 
 export const clip = (s: string | null, n: number) => (s && s.length > n ? `${s.slice(0, n)}…` : s ?? '');
 
@@ -64,7 +64,7 @@ async function rerank() {
     }
     const items = open.map(({ s, d }) => ({
       id: s.id,
-      repo: repoView(s.repoId)?.name,
+      repo: s.repoId === null ? taskRepoNames(s.worktree) : repoView(s.repoId)?.name,
       worktree: s.worktree,
       task: clip(s.firstPrompt, 600),
       taskSummary: clip(s.summary?.text ?? null, 1200) || null,

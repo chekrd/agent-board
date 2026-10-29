@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { adviseOpen, stopAdvice } from './advisor.ts';
 import { answering } from './answering.ts';
@@ -23,7 +23,8 @@ import { scheduleRerank, trackDecisions } from './priority.ts';
 import { summarizeStale } from './summary.ts';
 import { describeLinks } from './linkAbout.ts';
 import { mergeLinks } from './links.ts';
-import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './workspace.ts';
+import { notify, refreshWorkspace, repoView, taskFolderOf, taskWorktrees, workspace, type RepoView } from './workspace.ts';
+import { folderArgs, folderDiff } from './folderTasks.ts';
 import { checkUploads } from './uploads.ts';
 
 const run = promisify(execFile);
@@ -37,13 +38,13 @@ async function launch(id: string, cwd: string, args: string[], setup?: string | 
   const dir = join(SESSIONS_DIR, id);
   await mkdir(dir, { recursive: true });
   const script = join(dir, 'start.sh');
-  const lines = ['#!/bin/sh', `cd ${quote(cwd)} || exit`, setup ?? '', `exec ${[CLAUDE, ...args].map(quote).join(' ')}`].filter(Boolean);
+  const lines = ['#!/bin/sh', `cd ${quote(cwd)} || exit`, setup ?? '', `exec ${[CLAUDE, ...folderArgs(cwd), ...args].map(quote).join(' ')}`].filter(Boolean);
   await writeFile(script, `${lines.join('\n')}\n`);
   await terminal.start(id, cwd, `/bin/sh ${quote(script)}`);
 }
 
 // With a prompt, Claude starts on it at once; until it registers, idle would show a finished turn that never was.
-export async function startClaude(opts: { repoId: number; worktree: string; prompt?: string; title?: string; setup?: string | null; parent?: Parent; model?: string; effort?: string; running?: { model: string | null; effort: string | null } }) {
+export async function startClaude(opts: { repoId: number | null; worktree: string; prompt?: string; title?: string; setup?: string | null; parent?: Parent; model?: string; effort?: string; running?: { model: string | null; effort: string | null } }) {
   const id = randomUUID();
   sessions.insert({
     id, repoId: opts.repoId, worktree: opts.worktree, cwd: opts.worktree, pid: null, tty: null,
@@ -62,7 +63,7 @@ export async function startClaude(opts: { repoId: number; worktree: string; prom
 }
 
 // `continueId` names a conversation; a task that ran it, now or before a /clear, picks it up again.
-export async function continueConversation(opts: { repoId: number; worktree: string; continueId: string; cwd?: string }) {
+export async function continueConversation(opts: { repoId: number | null; worktree: string; continueId: string; cwd?: string }) {
   const id = opts.continueId;
   const cwd = opts.cwd ?? opts.worktree;
   const existing = taskOf(sessions.all(), id);
@@ -139,7 +140,8 @@ const deleting = new Set<string>();
 async function adopt(id: string, p: LiveProcess) {
   const at = ignored.get(id);
   if (at && Date.now() - at < IGNORE_RETRY_MS) return false;
-  const worktree = await locateWorktree(p.cwd);
+  const task = taskFolderOf(p.cwd);
+  const worktree = task ? { repoId: null, path: task.path } : await locateWorktree(p.cwd);
   if (!worktree) {
     ignored.set(id, Date.now());
     return false;
@@ -453,15 +455,66 @@ const subtasksOf = (id: string): Session[] => sessions.all().filter((o) => o.par
 // What Clear task would throw away, for its confirmation. A task in the main checkout keeps it, and its branch.
 export async function deleteWorktreeLoss(id: string) {
   const s = must(id);
-  const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
   if (s.parent) throw new Error(NOT_A_SUBTASK);
   const subtasks = subtasksOf(id).length;
+  if (s.repoId === null) return taskFolderLoss(s.worktree, subtasks);
+  const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
   if (!worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
   const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
   return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0, subtasks };
+}
+
+async function taskFolderLoss(folder: string, subtasks: number) {
+  const repos = await Promise.all(taskWorktrees(folder).map(async ({ repo, worktree }) => {
+    const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
+    const [files, commits] = await Promise.all([changedFiles(worktree.path), unsharedCommits(worktree.path, worktree.branch)]);
+    return { name: repo.name, branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
+  }));
+  return {
+    branch: basename(folder),
+    deletesBranch: repos.some((r) => r.deletesBranch),
+    files: repos.reduce((n, r) => n + r.files, 0),
+    commits: repos.reduce((n, r) => n + r.commits, 0),
+    gone: !existsSync(folder),
+    subtasks,
+    repos,
+  };
+}
+
+// A task folder goes with every worktree in it, each with its branch, and then the folder itself, unless something
+// other than those worktrees left a repository in it.
+async function removeTaskFolder(folder: string) {
+  const inside = (path: string) => path === folder || path.startsWith(`${folder}/`);
+  deleting.add(folder);
+  try {
+    const claudes = [...(await liveConversations()).values()].filter((p) => inside(p.cwd));
+    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
+    const gone = sessions.all().filter((o) => inside(o.worktree));
+    for (const o of gone) stopAdvice(o.id);
+    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
+    await waitForExit(claudes.map((p) => p.pid), 10_000);
+    await ghostty.closeTerminalsIn(folder, ttys);
+    await Promise.all(gone.map((o) => terminal.stop(o.id)));
+    for (const { repo, worktree } of taskWorktrees(folder)) {
+      deleting.add(worktree.path);
+      try {
+        await removeWorktree(repo.path, worktree.path, { force: true, deleteBranch: !!worktree.branch && !longLived(repo, worktree.branch) });
+        await stopWorktree(worktree.path);
+      } finally {
+        deleting.delete(worktree.path);
+      }
+    }
+    const left = await readdir(folder).catch(() => []);
+    if (left.some((e) => existsSync(join(folder, e, '.git')))) console.warn(`kept ${folder}: a repository is still in it`);
+    else await rm(folder, { recursive: true, force: true });
+    await stopWorktree(folder);
+  } finally {
+    deleting.delete(folder);
+    await refreshWorkspace();
+  }
 }
 
 const NOT_A_SUBTASK = "a subtask works in its task's worktree; Quit Claude or Archive it instead";
@@ -473,9 +526,10 @@ const NOT_A_SUBTASK = "a subtask works in its task's worktree; Quit Claude or Ar
 // task's worktree.
 export async function deleteWorktree(id: string) {
   const s = must(id);
+  if (s.parent) throw new Error(NOT_A_SUBTASK);
+  if (s.repoId === null) return removeTaskFolder(s.worktree);
   const repo = repoView(s.repoId);
   const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
-  if (s.parent) throw new Error(NOT_A_SUBTASK);
   if (repo && worktree && !worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
   const gone = [s, ...subtasksOf(id)];
   for (const o of gone) stopAdvice(o.id);
@@ -496,10 +550,10 @@ const diffInFlight = new Set<string>();
 export async function refreshDiffstat(id: string) {
   const s = sessions.get(id);
   const repo = s && repoView(s.repoId);
-  if (!s || !repo || diffInFlight.has(s.worktree)) return;
+  if (!s || (!repo && s.repoId !== null) || diffInFlight.has(s.worktree)) return;
   diffInFlight.add(s.worktree);
   try {
-    const { stat } = await fullDiff(s.worktree, repo.base, { statOnly: true });
+    const { stat } = repo ? await fullDiff(s.worktree, repo.base, { statOnly: true }) : await folderDiff(s.worktree, { statOnly: true });
     for (const other of sessions.all().filter((o) => o.worktree === s.worktree)) sessions.update(other.id, { diffstat: stat });
     notify();
   } catch (err) {
