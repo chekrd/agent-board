@@ -107,6 +107,7 @@ test('no content reaches the table: question, options, advice and answer text st
   assert.ok(!/Zephyr/.test(stored), stored);
   const keys = (v: unknown): string[] => (v && typeof v === 'object' ? Object.entries(v).flatMap(([k, x]) => [k, ...keys(x)]) : []);
   for (const r of rows) for (const k of keys(r.data ? JSON.parse(String(r.data)) : {})) assert.ok(!CONTENT_FIELDS.has(k), `${r.name} carries ${k}`);
+  assert.equal(JSON.parse(String(rows[0].data)).optionCount, 2);
   assert.deepEqual(JSON.parse(String(rows[3].data)), { kind: 'ask', waitMs: 0, confidence: 85, how: 'option-and-text', option: 0, files: 1, followed: 'edited' });
 });
 

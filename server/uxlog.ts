@@ -153,7 +153,7 @@ export function boardTracker(record: (name: string, data: Data) => void, now = (
         current.set(d.key, s);
         if (open.has(d.key)) continue;
         open.set(d.key, { task: s.id, askedAt: d.askedAt });
-        record('decision-open', { task: s.id, decision: d.key, kind: kindOf(d.key), options: d.menu ? d.menu.questions.length : d.options.length, askedAt: d.askedAt, load });
+        record('decision-open', { task: s.id, decision: d.key, kind: kindOf(d.key), optionCount: d.menu ? d.menu.questions.length : d.options.length, askedAt: d.askedAt, load });
       }
       for (const [key, o] of open) {
         if (current.has(key)) continue;
