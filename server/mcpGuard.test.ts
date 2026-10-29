@@ -24,7 +24,7 @@ test('reading and browser tools are allowed', () => {
     'mcp__brave-devtools__click',
     'mcp__brave-devtools__navigate_page',
     'mcp__brave-devtools__evaluate_script',
-    'mcp__agent-board-advisor__scratch_copy',
+    'mcp__pitwall-advisor__scratch_copy',
   ]) assert.equal(changesSomething(name), false, name);
 });
 

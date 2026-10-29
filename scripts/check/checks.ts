@@ -11,7 +11,7 @@ import { sleep, until, type Look, type Page } from './cdp.ts';
 import { startMock, type Entry, type Mock } from './mock.ts';
 
 // The build under test, which the runner names with --dist.
-const underTest = () => process.env.AGENT_BOARD_E2E_DIST ?? join(import.meta.dirname, '..', '..', 'web', 'dist');
+const underTest = () => process.env.PITWALL_E2E_DIST ?? join(import.meta.dirname, '..', '..', 'web', 'dist');
 
 export interface Context {
   page: Page;
@@ -50,7 +50,7 @@ const logged = (mock: Mock, what: string, match: (e: Entry) => boolean, timeout 
 // A mock of its own over a copy of the build. `build()` writes a new build there, an index.html that names a copy of
 // the entry script, and returns that script.
 async function withOwnBuild(run: (own: Mock, build: () => string) => Promise<void>) {
-  const dist = mkdtempSync(join(tmpdir(), 'agent-board-dist-'));
+  const dist = mkdtempSync(join(tmpdir(), 'pitwall-dist-'));
   let own: Mock | undefined;
   try {
     cpSync(underTest(), dist, { recursive: true });
@@ -408,7 +408,7 @@ async function cartNotSent(page: Page, text: string) {
 
 // A one-pixel PNG on disk, for a file chooser, in a folder of its own that `remove` deletes.
 function pngOnDisk() {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-board-png-'));
+  const dir = mkdtempSync(join(tmpdir(), 'pitwall-png-'));
   const file = join(dir, 'shot.png');
   writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
   return { file, remove: () => rmSync(dir, { recursive: true, force: true }) };
@@ -635,7 +635,7 @@ export const checks: Check[] = [
         open: document.querySelector('details')?.open,
         title: document.title,
       }));
-      assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: 'Agent Board' });
+      assert.deepEqual(board, { tiles: 11, archived: 'Archived (1)', open: false, title: 'Pitwall' });
       await shot('board');
 
       await openQueue(page, mock);
@@ -650,7 +650,7 @@ export const checks: Check[] = [
       await page.goto(`${mock.url}/wall`);
       await page.until('the s-cart tile to turn working', () => document.querySelector('[data-tile][data-session="s-cart"]')?.getAttribute('data-attention') === 'working');
       assert.equal((await mock.log()).filter((e) => e.action === 'answer').length, 1);
-      assert.equal(await page.eval(() => document.title), 'Agent Board');
+      assert.equal(await page.eval(() => document.title), 'Pitwall');
       await shot('board-answered');
     },
   },
@@ -1210,9 +1210,9 @@ export const checks: Check[] = [
       const hooks = () => [document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention'), document.title];
       await mock.post('/mock/patch', { id: 's-hooks', patch: { answered: { key: 'm:toolu_01Hooks', text: 'Backoff: Exponential, 5 tries', at: Date.now() - 8000 } } });
       await page.until('the answered menu to count as working', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'working');
-      assert.deepEqual(await page.eval(hooks), ['working', 'Agent Board']);
+      assert.deepEqual(await page.eval(hooks), ['working', 'Pitwall']);
       await page.until('the menu still open to need focus', () => document.querySelector('[data-tile][data-session="s-hooks"]')?.getAttribute('data-attention') === 'focus');
-      assert.deepEqual(await page.eval(hooks), ['focus', 'Agent Board']);
+      assert.deepEqual(await page.eval(hooks), ['focus', 'Pitwall']);
     },
   },
   {
@@ -1241,7 +1241,7 @@ export const checks: Check[] = [
         };
       });
       assert.deepEqual({ ...bar, shown: undefined }, {
-        link: ['live', 'Live'], title: 'Agent Board', segments: 6, label: '3 decisions · 1 terminal prompt · 2 finished turns', shown: undefined, order: true,
+        link: ['live', 'Live'], title: 'Pitwall', segments: 6, label: '3 decisions · 1 terminal prompt · 2 finished turns', shown: undefined, order: true,
       });
       assert.doesNotMatch(bar.shown ?? '', /\d/, 'the top bar shows a count');
       await shot('top-bar');
@@ -1884,7 +1884,7 @@ export const checks: Check[] = [
         const down = await page.until('the pill to turn reconnecting', pillAt, 'reconnecting');
         assert.ok(Date.now() - start < 1500, `reconnecting after ${Date.now() - start} ms`);
         assert.deepEqual({ ...down, title: undefined }, { link: 'reconnecting', text: 'Reconnecting…', title: undefined, breathing: 'breathe' });
-        assert.match(down.title, /^Lost the connection to Agent Board at .+; what you see may be out of date\. Answers you send wait and go out once it is back\.$/);
+        assert.match(down.title, /^Lost the connection to Pitwall at .+; what you see may be out of date\. Answers you send wait and go out once it is back\.$/);
         await shot('reconnecting');
       } finally {
         await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
@@ -1907,7 +1907,7 @@ export const checks: Check[] = [
       const build = '/assets/index-narrow.js';
       await page.eval((build: string) => {
         const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
-        sessionStorage.setItem('agent-board:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
+        sessionStorage.setItem('pitwall:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
       }, build);
       await mock.post('/mock/ui-entry', { src: build });
       await page.until('the reload pill', () => !!document.querySelector('[data-new-version]'));
@@ -1974,7 +1974,7 @@ export const checks: Check[] = [
       await page.until('the prompt kept through the reload', () => document.querySelector<HTMLTextAreaElement>('dialog#new-task textarea')?.value === 'Fix the login redirect');
       assert.equal(await page.eval(() => {
         const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
-        return sessionStorage.getItem('agent-board:reloaded-for') === `${entry} ${new URL('/assets/index-next2.js', location.href).href}`;
+        return sessionStorage.getItem('pitwall:reloaded-for') === `${entry} ${new URL('/assets/index-next2.js', location.href).href}`;
       }), true, 'the pill did not note the build it reloaded for');
     },
   },
@@ -2115,7 +2115,7 @@ export const checks: Check[] = [
       await openNewTask(page);
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the filter focused', (picker: string) => document.activeElement === document.querySelector(`${picker} input`), picker);
-      assert.deepEqual(await page.eval(shown, picker), ['agent-board', 'billing-api', 'docs-site', 'storefront']);
+      assert.deepEqual(await page.eval(shown, picker), ['billing-api', 'docs-site', 'pitwall', 'storefront']);
       await page.type('code/');
       await page.until('the repositories under ~/code', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 3, picker);
       await page.key('ArrowDown');
@@ -2126,13 +2126,13 @@ export const checks: Check[] = [
       assert.equal(await page.eval(() => !!document.querySelector('#new-task:modal')), true, 'Enter kept the dialog');
       assert.equal((await mock.log()).some((e) => e.method === 'POST' && e.path === '/api/worktrees'), false, 'Enter created nothing');
 
-      await page.key('A');
+      await page.key('P');
       await page.until('the picker filtered by the letter', (picker: string) =>
-        !!document.querySelector(`${picker}:popover-open`) && document.querySelector<HTMLInputElement>(`${picker} input`)?.value === 'A', picker);
-      await page.type('GENT');
-      await page.until('agent-board alone', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 1, picker);
+        !!document.querySelector(`${picker}:popover-open`) && document.querySelector<HTMLInputElement>(`${picker} input`)?.value === 'P', picker);
+      await page.type('ITWALL');
+      await page.until('pitwall alone', (picker: string) => document.querySelectorAll(`${picker} [role="option"]`).length === 1, picker);
       await page.key('Enter');
-      await page.until('agent-board picked', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'agent-board');
+      await page.until('pitwall picked', () => document.querySelector('#new-task button[aria-haspopup="listbox"] strong')?.textContent === 'pitwall');
 
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the filter, empty again', (picker: string) => document.querySelector<HTMLInputElement>(`${picker} input`)?.value === '' &&
@@ -2142,7 +2142,7 @@ export const checks: Check[] = [
       await page.key('Enter');
       await page.key('Escape');
       await page.until('the picker to close', (picker: string) => !document.querySelector(`${picker}:popover-open`), picker);
-      assert.deepEqual([await page.eval(picked), await page.eval(() => !!document.querySelector('#new-task:modal'))], ['agent-board', true]);
+      assert.deepEqual([await page.eval(picked), await page.eval(() => !!document.querySelector('#new-task:modal'))], ['pitwall', true]);
       await page.click('dialog#new-task button[aria-haspopup="listbox"]');
       await page.until('the picker', (picker: string) => !!document.querySelector(`${picker}:popover-open`), picker);
       await page.click(`${picker} [role="option"]`, 'billing-api');
@@ -2299,7 +2299,7 @@ export const checks: Check[] = [
     name: 'P5.1.1 the first card is s-cart, an ask, with Retry failed webhooks and Group board tiles by repo peeking out behind it and the sliver; its meter segment is the current one, 40 px wide',
     async run({ page, mock, shot }) {
       await openQueue(page, mock);
-      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLElement>('[data-card]')?.dataset.kind, document.title]), ['ask', 'Agent Board']);
+      assert.deepEqual(await page.eval(() => [document.querySelector<HTMLElement>('[data-card]')?.dataset.kind, document.title]), ['ask', 'Pitwall']);
       assert.deepEqual((await page.eval(peeks)).map((p) => [p.peek, p.session, p.text.split('\n')[0]]), [
         ['1', 's-hooks', 'Retry failed webhooks'], ['2', 's-group', 'Group board tiles by repo'],
       ]);
@@ -3023,7 +3023,7 @@ export const checks: Check[] = [
       // The countdown follows the shared clock, which ticks once a second at its own phase.
       await until('the countdown to count down', async () => (await page.eval(count)) < first, 2100);
       assert.deepEqual(await page.eval(() => [document.querySelector('[data-meter] [role="group"]')?.getAttribute('aria-label'), document.title]), [
-        '2 decisions · 1 terminal prompt · 2 finished turns', 'Agent Board',
+        '2 decisions · 1 terminal prompt · 2 finished turns', 'Pitwall',
       ]);
       await shot('queue-held');
       await sleep(HELD_MS - (Date.now() - pressed));
@@ -3429,7 +3429,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.18 reconnecting: a send held as the connection drops for 8 s waits for Agent Board at about 5 s, and goes out once, after the pill reads Live again',
+    name: 'P5.2.18 reconnecting: a send held as the connection drops for 8 s waits for Pitwall at about 5 s, and goes out once, after the pill reads Live again',
     expectedErrors: [/WebSocket/, /ERR_/],
     async run({ page, mock }) {
       await openQueue(page, mock);
@@ -3443,7 +3443,7 @@ export const checks: Check[] = [
         const [waiting] = await until('the waiting toast', () => page.eval(toastsOf, 'info'), 8000);
         const at = Date.now() - pressed;
         assert.ok(at > 4500 && at < 7000, `waiting after ${at} ms`);
-        assert.equal(waiting.text, 'Waiting for Agent Board to send “Merge both carts” to Merge guest cart on login');
+        assert.equal(waiting.text, 'Waiting for Pitwall to send “Merge both carts” to Merge guest cart on login');
       } finally {
         await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 10_000);
       }
@@ -4502,7 +4502,7 @@ export const checks: Check[] = [
       const build = '/assets/index-contrast.js';
       await page.eval((build: string) => {
         const entry = document.querySelector<HTMLScriptElement>('script[type="module"][src]')!.src;
-        sessionStorage.setItem('agent-board:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
+        sessionStorage.setItem('pitwall:reloaded-for', `${entry} ${new URL(build, location.href).href}`);
       }, build);
       await mock.post('/mock/ui-entry', { src: build });
       await page.until('the reload pill', () => !!document.querySelector('[data-new-version]'));
@@ -4722,7 +4722,7 @@ export const checks: Check[] = [
       await page.until('the board', () => !!document.querySelector('[data-card]'));
       await sleep(Math.max(0, 9000 - (Date.now() - pressed)));
       assert.equal(await page.eval(toastsOf, 'error'), null);
-      assert.deepEqual(await page.eval(() => [sessionStorage.getItem('agent-board:sends'), sessionStorage.getItem('agent-board:drafts')]), ['[]', '[]']);
+      assert.deepEqual(await page.eval(() => [sessionStorage.getItem('pitwall:sends'), sessionStorage.getItem('pitwall:drafts')]), ['[]', '[]']);
       assert.equal((await actions(mock)).length, 1);
     },
   },
@@ -4747,7 +4747,7 @@ export const checks: Check[] = [
       await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
       await mock.post('/mock/drop', { ms: 9000 });
       try {
-        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Agent Board')), 9000);
+        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Pitwall')), 9000);
         await page.goto(`${mock.url}/`).catch(() => {});
       } finally {
         await until('the drop to end', () => mock.get('/mock').then(() => true, () => false), 15_000);
@@ -4765,7 +4765,7 @@ export const checks: Check[] = [
       await replyOnCart(page, mock, 'Merge them, but keep the account cart quantities');
       await mock.post('/mock/drop', { ms: 7000 });
       try {
-        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Agent Board')), 9000);
+        await until('the waiting toast', async () => (await page.eval(toastsOf, 'info'))?.find((t) => t.text.startsWith('Waiting for Pitwall')), 9000);
         await page.lifecycle('frozen');
         await sleep(300);
         await page.lifecycle('active');
@@ -4909,7 +4909,7 @@ export const checks: Check[] = [
       await page.until('its toast', toastsOf, 'undo');
       const kept = await page.eval(() => {
         [...document.querySelectorAll<HTMLButtonElement>('[data-toast][data-kind="undo"] button')].find((b) => b.textContent?.startsWith('Undo'))!.click();
-        return (JSON.parse(sessionStorage.getItem('agent-board:sends') ?? '[]') as { sessionId: string }[]).map((i) => i.sessionId);
+        return (JSON.parse(sessionStorage.getItem('pitwall:sends') ?? '[]') as { sessionId: string }[]).map((i) => i.sessionId);
       });
       assert.deepEqual(kept.filter((id) => id === 's-group'), [], 'the send was still held when its Undo had run');
       await page.until('s-group back at the front', frontIs, 's-group');
@@ -4941,7 +4941,7 @@ export const checks: Check[] = [
       assert.equal(pressed, true, 'the option did not deal the card');
       const [sent] = await logged(mock, 'the answer', (e) => e.action === 'answer', POSTED_MS);
       assert.deepEqual([sent.body.choice, sent.body.text, sent.body.files], ['Keep the account cart', 'see the screenshot', undefined]);
-      const drafts = await page.eval(() => JSON.parse(sessionStorage.getItem('agent-board:drafts') ?? '[]') as [string, { text: string; files: { path: string }[] }][]);
+      const drafts = await page.eval(() => JSON.parse(sessionStorage.getItem('pitwall:drafts') ?? '[]') as [string, { text: string; files: { path: string }[] }][]);
       assert.deepEqual(drafts, [['s-cart', { text: '', files: [{ name: 'shot.png', path: '/uploads/late/shot.png' }] }]]);
     },
   },

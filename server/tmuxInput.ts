@@ -8,7 +8,7 @@ const target = (name: string) => `=${name}:`;
 // Text goes into a buffer through stdin, never onto tmux's command line, which takes a leading '-' for a flag and a
 // trailing ';' for the end of the command, and refuses a command over about 16 KB.
 async function load(tmux: Tmux, name: string, text: string) {
-  const buffer = `agent-board-${name}`;
+  const buffer = `pitwall-${name}`;
   await tmux(['load-buffer', '-b', buffer, '-'], text);
   return buffer;
 }

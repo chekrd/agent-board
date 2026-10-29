@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-const STRIPPED = /^(CLAUDECODE|CLAUDE_CODE_.*|AGENT_BOARD_.*)$/;
+const STRIPPED = /^(CLAUDECODE|CLAUDE_CODE_.*|PITWALL_.*)$/;
 
 // The server may be started by launchd with a bare PATH, so take the environment
 // the user's login shell would produce.

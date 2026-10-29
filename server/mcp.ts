@@ -38,7 +38,7 @@ function server() {
   mcp.registerTool(ASK_TOOL, {
     title: 'Ask the human',
     description:
-      'The user supervises several Claude sessions from the Agent Board and does not watch every terminal. ' +
+      'The user supervises several Claude sessions from the Pitwall and does not watch every terminal. ' +
       'Call this to put a question or request on that dashboard when you genuinely need them: a problem with the plan or ' +
       'requirements you did not anticipate together, failures you cannot fix yourself (CI, tests, access, environment), ' +
       'a decision that is theirs to make (product behavior, trade-offs, scope, anything irreversible or outward-facing), ' +
@@ -52,7 +52,7 @@ function server() {
   mcp.registerTool(ARTIFACT_TOOL, {
     title: 'Create a visual explanation',
     description:
-      'The user follows this session from the Agent Board, which shows artifacts on the task page next to your messages. ' +
+      'The user follows this session from the Pitwall, which shows artifacts on the task page next to your messages. ' +
       'Call this when a picture would make something markedly easier to understand than prose: how data or control flows ' +
       'through the code, a before/after of a change, a state machine, a timeline of events behind a bug, a dependency or ' +
       'architecture map, a comparison of options, numbers worth charting. Draw the real mechanism with real names from the ' +

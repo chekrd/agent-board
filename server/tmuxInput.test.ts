@@ -34,7 +34,7 @@ async function until<T>(what: string, poll: () => Promise<T | null>) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-// A tmux server of the test's own, on a socket in its temporary folder, never Agent Board's or the default one.
+// A tmux server of the test's own, on a socket in its temporary folder, never Pitwall's or the default one.
 async function pane(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), 'tmux-'));
   const reader = join(dir, 'reader.cjs');

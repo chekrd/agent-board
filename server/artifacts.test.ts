@@ -12,7 +12,7 @@ import type { Session } from './db.ts';
 // paths with the account's home would let it through under another name, such as /System/Volumes/Data/Users/<name>,
 // and an empty HOME leaves every state path relative to the working folder.
 const home = process.env.HOME ?? '';
-const isolated = isAbsolute(home) && /^agent-board-home-[A-Za-z0-9]{6}$/.test(basename(home)) && process.env.TMPDIR === join(home, 'tmp') &&
+const isolated = isAbsolute(home) && /^pitwall-home-[A-Za-z0-9]{6}$/.test(basename(home)) && process.env.TMPDIR === join(home, 'tmp') &&
   !!lstatSync(home, { throwIfNoEntry: false })?.isDirectory() && SESSIONS_DIR.startsWith(home + sep);
 if (!isolated) {
   throw new Error(`refusing to write artifacts under ${SESSIONS_DIR}: HOME (${JSON.stringify(home)}) is not a folder scripts/isolate.ts made; run the tests with pnpm test`);

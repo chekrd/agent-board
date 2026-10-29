@@ -106,7 +106,7 @@ test('a fresh read that finds another entry, or none, empties settled() until th
 });
 
 function indexFile(t: TestContext) {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-board-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'pitwall-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return join(dir, 'index.html');
 }

@@ -24,7 +24,7 @@ interface State {
 }
 
 const RELOAD_CAP_MS = 15_000;
-const RELOADED_FOR = 'agent-board:reloaded-for';
+const RELOADED_FOR = 'pitwall:reloaded-for';
 
 let state: State = { home: '', roots: [], repos: [], sessions: [], usage: null, link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();

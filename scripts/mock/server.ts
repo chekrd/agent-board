@@ -34,7 +34,7 @@ const { values: args } = parseArgs({
 });
 refuseLive(Number(args.port));
 const DIST = resolve(args.dist);
-const UPLOADS_DIR = join(homedir(), 'Library', 'Caches', 'agent-board', 'uploads');
+const UPLOADS_DIR = join(homedir(), 'Library', 'Caches', 'pitwall', 'uploads');
 // Every Diff tab shows this commit of the repository itself, a real patch of 12 files.
 const FIXTURE_COMMIT = 'ff30c77';
 
@@ -855,5 +855,5 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => pr
 load(args.scenario);
 server.listen(Number(args.port), '127.0.0.1', () => {
   port = (server.address() as AddressInfo).port;
-  console.log(`agent-board mock on http://127.0.0.1:${port} · scenario ${scenarioName} · ${DIST}${args.legacy ? ' · legacy' : ''}`);
+  console.log(`pitwall mock on http://127.0.0.1:${port} · scenario ${scenarioName} · ${DIST}${args.legacy ? ' · legacy' : ''}`);
 });

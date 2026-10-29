@@ -1,6 +1,6 @@
 {
-  "name": "Agent Board",
-  "short_name": "Agent Board",
+  "name": "Pitwall",
+  "short_name": "Pitwall",
   "description": "Your Claude sessions, one decision at a time",
   "id": "/",
   "start_url": "/",

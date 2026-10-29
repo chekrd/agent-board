@@ -8,14 +8,14 @@ export const LIVE_PORT = 7420;
 
 export function refuseLive(target: string | number) {
   const port = typeof target === 'number' ? target : Number(new URL(target).port);
-  if (port === LIVE_PORT) throw new Error(`refusing ${target}: port ${LIVE_PORT} is the live Agent Board`);
+  if (port === LIVE_PORT) throw new Error(`refusing ${target}: port ${LIVE_PORT} is the live Pitwall`);
 }
 
 // Every state path the server uses derives from homedir() (config.ts, conversations.ts, commands.ts),
 // so a fresh HOME keeps tests and the mock away from the live state.db, sessions folder and Claude config.
 // TMPDIR moves inside it, so the folders they make with mkdtemp go with it.
 export function isolateHome() {
-  const home = mkdtempSync(join(tmpdir(), 'agent-board-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'pitwall-home-'));
   process.env.HOME = home;
   process.env.TMPDIR = join(home, 'tmp');
   mkdirSync(process.env.TMPDIR);

@@ -67,7 +67,7 @@ export interface Timers {
 export const NO_ANSWER_MS = 30_000;
 export const CONFIRM_MS = 15_000;
 export const ADOPTED_MS = 3000;
-export const NO_ANSWER = "No answer from Agent Board; check the session's terminal before sending again";
+export const NO_ANSWER = "No answer from Pitwall; check the session's terminal before sending again";
 export const NOT_SENT = 'the page closed before it went out';
 
 export const active = (i: Item) => i.state === 'held' || i.state === 'sending' || i.state === 'waiting';

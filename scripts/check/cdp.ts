@@ -55,7 +55,7 @@ const KEYS: Record<string, { code: string; keyCode: number; text?: string }> = {
 // A headless browser of its own: a fresh profile, a DevTools port nobody else knows, and only the pages it opens.
 // Its resolver fails every host on the live board's port, so no page, request or WebSocket in it can reach that board.
 export async function launch(binary = process.env.BROWSER || BRAVE) {
-  const profile = mkdtempSync(join(tmpdir(), 'agent-board-e2e-'));
+  const profile = mkdtempSync(join(tmpdir(), 'pitwall-e2e-'));
   const child = spawn(binary, [
     '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--use-mock-keychain', '--password-store=basic',
     '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--hide-scrollbars', '--mute-audio',

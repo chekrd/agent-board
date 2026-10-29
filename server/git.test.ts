@@ -17,7 +17,7 @@ const wt = (cwd: string, ...args: string[]) => execFileSync(GIT_WT, args, { cwd,
 const write = (dir: string, file: string, content: string) => writeFileSync(join(dir, file), content);
 
 function repo() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agent-board-git-')));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pitwall-git-')));
   const main = join(root, 'app');
   mkdirSync(main);
   git(main, 'init', '-q', '-b', 'master');

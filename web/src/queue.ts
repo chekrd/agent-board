@@ -12,9 +12,9 @@ export const GUARD_MS = 900;
 export const UPDATED_MS = 10_000;
 export const FRESH_MS = 2600;
 const KEPT = 100;
-const FRONT_KEY = 'agent-board:front';
-const FROZEN_KEY = 'agent-board:frozen';
-const PICKS_KEY = 'agent-board:picks';
+const FRONT_KEY = 'pitwall:front';
+const FROZEN_KEY = 'pitwall:frozen';
+const PICKS_KEY = 'pitwall:picks';
 
 // How a card change moves: an answer drops down, a dismissal or archive goes sideways, a skip goes back, and a send
 // taken back comes back.

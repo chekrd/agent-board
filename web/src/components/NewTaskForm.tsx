@@ -33,7 +33,7 @@ interface Branch {
 }
 
 const DIALOG = 'new-task';
-const STORED = 'agent-board:new-task';
+const STORED = 'pitwall:new-task';
 const EMPTY: Fields = { prompt: '', repoId: null, name: '', branch: '', path: '', existing: false, model: '', effort: '' };
 
 const NAME = /^[A-Za-z0-9._/-]+$/;

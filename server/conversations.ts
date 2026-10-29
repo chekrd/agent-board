@@ -3,7 +3,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
+import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
 import { tildeIn } from './home.ts';
 import { linksIn, type Found } from './links.ts';
@@ -144,6 +144,7 @@ const blocks = (entry: Record<string, any>): Record<string, any>[] =>
 
 const MENU_TOOL_NAME = 'AskUserQuestion';
 const ASK_TOOL_NAMES = new Set([ASK_TOOL_NAME, ...OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ASK_TOOL}`)]);
+const ARTIFACT_TOOL_NAMES = new Set([ARTIFACT_TOOL_NAME, ...OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ARTIFACT_TOOL}`)]);
 
 // An ask_human call stays open until the user sends a prompt after it.
 function latestAsk(entries: Record<string, any>[]): ToolCall | null {
@@ -157,7 +158,7 @@ function latestAsk(entries: Record<string, any>[]): ToolCall | null {
 }
 
 const artifactCalls = (entries: Record<string, any>[]): ToolCall[] =>
-  entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && b.name === ARTIFACT_TOOL_NAME)
+  entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && ARTIFACT_TOOL_NAMES.has(b.name))
     .map((b) => ({ toolUseId: b.id, input: b.input ?? {}, at: Date.parse(e.timestamp) || Date.now() })));
 
 // The links in what Claude wrote: its messages and the questions it asked through ask_human.

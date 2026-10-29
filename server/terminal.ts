@@ -1,7 +1,7 @@
 import * as ghostty from './ghostty.ts';
 import * as tmux from './tmux.ts';
 
-// Sessions Agent Board starts run in a detached tmux session, out of sight until shown in a
+// Sessions Pitwall starts run in a detached tmux session, out of sight until shown in a
 // Ghostty tab; ones started by hand run in their own Ghostty tab. Either is found by the tty
 // of the Claude process.
 

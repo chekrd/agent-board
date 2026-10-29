@@ -102,7 +102,7 @@ test('the second line: the step or Starting, a countdown that never reads more t
   assert.deepEqual(lines(), ['Dismissing…', 'Sending…']);
   posts[0].fail(new TypeError('Failed to fetch'));
   await settle();
-  assert.deepEqual(lines(), ['Dismissing…', 'Waiting for Agent Board']);
+  assert.deepEqual(lines(), ['Dismissing…', 'Waiting for Pitwall']);
   box.reconnected();
   posts[1].ok();
   posts[2].ok();

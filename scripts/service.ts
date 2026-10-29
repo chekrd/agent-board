@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DATA_DIR, ROOT, UPLOADS_DIR } from '../server/config.ts';
 
-const LABEL = 'dev.agent-board';
-const OLD_LABEL = 'dev.docket';
+const LABEL = 'dev.pitwall';
+const OLD_NAMES = ['agent-board', 'docket'];
 const plistOf = (label: string) => join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
 const PLIST = plistOf(LABEL);
 const DOMAIN = `gui/${process.getuid!()}`;
@@ -41,14 +41,16 @@ function uninstall(label = LABEL) {
   rmSync(plistOf(label), { force: true });
 }
 
-// The app was called Docket; its stopped service leaves state behind under the old name.
+// The app was called Docket, then Agent Board; its stopped service leaves state behind under an old name, the latest first.
 function migrate() {
-  uninstall(OLD_LABEL);
-  const moves = [
-    [join(homedir(), 'Library', 'Application Support', 'docket'), DATA_DIR],
-    [join(homedir(), 'Library', 'Caches', 'docket'), dirname(UPLOADS_DIR)],
-  ];
-  for (const [from, to] of moves) if (existsSync(from) && !existsSync(to)) renameSync(from, to);
+  for (const name of OLD_NAMES) {
+    uninstall(`dev.${name}`);
+    const moves = [
+      [join(homedir(), 'Library', 'Application Support', name), DATA_DIR],
+      [join(homedir(), 'Library', 'Caches', name), dirname(UPLOADS_DIR)],
+    ];
+    for (const [from, to] of moves) if (existsSync(from) && !existsSync(to)) renameSync(from, to);
+  }
 }
 
 switch (process.argv[2]) {

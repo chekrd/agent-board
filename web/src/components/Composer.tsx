@@ -22,7 +22,7 @@ export interface Draft {
   files: readonly Attachment[];
 }
 
-const STORED = 'agent-board:drafts';
+const STORED = 'pitwall:drafts';
 const EMPTY: Draft = { text: '', files: [] };
 
 // A draft as storage keeps it: the text and the files that finished uploading.

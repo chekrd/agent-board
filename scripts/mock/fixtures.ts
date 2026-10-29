@@ -45,10 +45,10 @@ export function repos(now: number): RepoView[] {
       worktree('/Users/me/code/worktrees/invoice-rounding/billing-api', 'invoice-rounding', [conversation('s-invoice', 'Fix invoice PDF rounding', null, now - MIN, 77031)]),
       worktree('~/code/worktrees/stripe-18/billing-api', 'stripe-18', [conversation('s-stripe', 'Upgrade Stripe SDK to v18', null, now - 3 * HOUR)]),
     ]),
-    repo(3, '~/git/github/agent-board', {}, [
-      worktree('~/git/github/agent-board', 'main', [conversation('s-split', 'Split-only diff view', null, now - 2 * DAY)], true),
-      worktree('~/git/github/worktrees/board-grouping/agent-board', 'board-grouping', [conversation('s-group', 'Group board tiles by repo', null, now - 6 * MIN, 76555)]),
-      worktree('~/git/github/worktrees/artifact-thumbs/agent-board', 'artifact-thumbs', [conversation('s-thumbs', 'Artifact thumbnails in Overview', null, now - MIN, 76002)]),
+    repo(3, '~/git/github/pitwall', {}, [
+      worktree('~/git/github/pitwall', 'main', [conversation('s-split', 'Split-only diff view', null, now - 2 * DAY)], true),
+      worktree('~/git/github/worktrees/board-grouping/pitwall', 'board-grouping', [conversation('s-group', 'Group board tiles by repo', null, now - 6 * MIN, 76555)]),
+      worktree('~/git/github/worktrees/artifact-thumbs/pitwall', 'artifact-thumbs', [conversation('s-thumbs', 'Artifact thumbnails in Overview', null, now - MIN, 76002)]),
     ]),
     repo(4, '~/code/docs-site', { setupCommand: 'pnpm install' }, [
       worktree('~/code/docs-site', 'main', [], true),
@@ -101,7 +101,7 @@ export function queue(now: number): Session[] {
         key: 'q:toolu_01Cart', state: 'done', at: now - MIN,
         text: '**Background.** `src/auth/onLogin.ts` calls `CartService.mergeOnLogin(guestId, userId)`, which returns early (`src/cart/CartService.ts:88`). The guest cart cookie `sf_guest_cart` expires after 24 h.\n\n**Merge both carts** adds `mergeCarts()` (already drafted) and calls it from `onLogin`. Quantities above stock are trimmed by `reserve()`; the toast needs one new string in `messages/cart.json`.\n\n**Keep the account cart** needs no code beyond a notice, but CHK-412\'s acceptance criterion "no items are lost" stays unmet.\n\n**Ask the shopper** needs a new dialog (`web/checkout/LoginCartDialog.tsx`) and an API flag; the mobile app would need the same dialog.',
       },
-      lastMessage: 'I drafted `mergeCarts()` in `src/cart/mergeCarts.ts` and three failing tests that pin down the cases:\n\n1. Disjoint carts → union of both\n2. Same product in both → quantities add up, capped at stock\n3. Empty guest cart → account cart unchanged\n\nBefore wiring it into `onLogin` I need your call on the merge rule, so I asked through Agent Board. The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).',
+      lastMessage: 'I drafted `mergeCarts()` in `src/cart/mergeCarts.ts` and three failing tests that pin down the cases:\n\n1. Disjoint carts → union of both\n2. Same product in both → quantities add up, capped at stock\n3. Empty guest cart → account cart unchanged\n\nBefore wiring it into `onLogin` I need your call on the merge rule, so I asked through Pitwall. The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).',
       lastTurn: 't-cart-6', diffstat: { files: 4, insertions: 211, deletions: 8 },
       artifacts: [
         { id: 'art-cart-1', title: 'Cart merge — before and after', at: now - 6 * MIN },
@@ -153,7 +153,7 @@ export function queue(now: number): Session[] {
       lastTurn: 't-hooks-3', diffstat: { files: 6, insertions: 340, deletions: 22 },
     }),
     session({
-      id: 's-group', repoId: 3, worktree: '~/git/github/worktrees/board-grouping/agent-board', tty: '/dev/ttys021', pid: 76555,
+      id: 's-group', repoId: 3, worktree: '~/git/github/worktrees/board-grouping/pitwall', tty: '/dev/ttys021', pid: 76555,
       title: 'Group board tiles by repo',
       firstPrompt: 'Try grouping the board tiles by repository. Keep attention order inside groups.',
       status: 'idle', createdAt: now - 70 * MIN, updatedAt: now - 6 * MIN,
@@ -239,7 +239,7 @@ export function queue(now: number): Session[] {
       artifacts: [{ id: 'art-invoice-1', title: 'Where the cent goes missing', at: now - 25 * MIN }],
     }),
     session({
-      id: 's-thumbs', repoId: 3, worktree: '~/git/github/worktrees/artifact-thumbs/agent-board', tty: '/dev/ttys022', pid: 76002,
+      id: 's-thumbs', repoId: 3, worktree: '~/git/github/worktrees/artifact-thumbs/pitwall', tty: '/dev/ttys022', pid: 76002,
       title: 'Artifact thumbnails in Overview',
       firstPrompt: 'Show a small preview of each artifact next to its link in Overview.',
       status: 'working', createdAt: now - 14 * MIN, updatedAt: now - MIN,
@@ -279,7 +279,7 @@ export function queue(now: number): Session[] {
       lastTurn: 't-stripe-8', diffstat: { files: 6, insertions: 40, deletions: 33 },
     }),
     session({
-      id: 's-split', repoId: 3, worktree: '~/git/github/agent-board',
+      id: 's-split', repoId: 3, worktree: '~/git/github/pitwall',
       title: 'Split-only diff view',
       firstPrompt: 'Make the diff split-only and let me resize the file list.',
       status: 'exited', createdAt: now - 2 * DAY - 2 * HOUR, updatedAt: now - 2 * DAY,
@@ -382,7 +382,7 @@ function templateFields(template: Template, o: { toolUseId: string; now: number;
           ...summary, text: 'The v2 endpoint and its tests are done; Claude asks whether v1 stays for now.', question: toolUseId,
           decision: { problem: 'Should /v1/orders stay while clients migrate?', brief: 'Keeping it costs one more release of upkeep; removing it breaks old app versions.', context: '', options: [] },
         },
-        lastMessage: 'The `/v2/orders` endpoint and its tests are done. Before I delete `/v1/orders` I need to know whether old app versions must keep working, so I asked through Agent Board.',
+        lastMessage: 'The `/v2/orders` endpoint and its tests are done. Before I delete `/v1/orders` I need to know whether old app versions must keep working, so I asked through Pitwall.',
       };
     case 'turn':
       return {

@@ -45,7 +45,7 @@ export function lineOf({ session, send }: Capsule, now: number, holdMs: number) 
     return `${dismiss ? 'Dismissing' : 'Sending'} in ${left} s`;
   }
   if (send.state === 'sending') return dismiss ? 'Dismissing…' : 'Sending…';
-  if (send.state === 'waiting') return 'Waiting for Agent Board';
+  if (send.state === 'waiting') return 'Waiting for Pitwall';
   return dismiss ? 'Dismissed' : 'Sent';
 }
 

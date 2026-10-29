@@ -137,7 +137,7 @@ async function remoteBase(worktree: string, base: string) {
 export async function fullDiff(worktree: string, localBase: string, opts: { statOnly?: boolean; paths?: string[] } = {}): Promise<FullDiff> {
   const base = await remoteBase(worktree, localBase);
   const mergeBase = (await git(worktree, ['merge-base', base, 'HEAD'])).trim();
-  const dir = await mkdtemp(join(tmpdir(), 'agent-board-index-'));
+  const dir = await mkdtemp(join(tmpdir(), 'pitwall-index-'));
   const index = join(dir, 'index');
   try {
     let realIndex = (await git(worktree, ['rev-parse', '--git-path', 'index'])).trim();

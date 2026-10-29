@@ -2,7 +2,7 @@ import babel from '@rolldown/plugin-babel';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-const server = process.env.AGENT_BOARD_API ?? 'http://127.0.0.1:7420';
+const server = process.env.PITWALL_API ?? 'http://127.0.0.1:7420';
 
 export default defineConfig({
   root: 'web',

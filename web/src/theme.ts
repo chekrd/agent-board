@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 export type Theme = 'system' | 'light' | 'dark';
 
-const KEY = 'agent-board:theme';
+const KEY = 'pitwall:theme';
 const subscribers = new Set<() => void>();
 
 // Kept in this browser only: storage may be off, as in a private window, and then the theme follows the system.

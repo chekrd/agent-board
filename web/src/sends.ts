@@ -34,7 +34,7 @@ export interface Restore {
 
 const subscribers = new Set<() => void>();
 
-const KEPT = 'agent-board:sends';
+const KEPT = 'pitwall:sends';
 
 type Kept = Omit<Item<Restore>, 'restore'> & { restore: Omit<Restore, 'draft'> & { draft: KeptDraft | null } };
 
@@ -94,7 +94,7 @@ function announce(i: Item<Restore>) {
   if (i.state === 'held') {
     return toast('undo', heldText(i), { session, until: i.dueAt, lasts: HOLD_MS + 2000, action: { label: 'Undo', kbd: 'Esc', run: () => undo(i.id) } });
   }
-  if (i.state === 'waiting') return toast('info', `Waiting for Agent Board to send ${quote(i.label)} to ${name}`, { session, lasts: NO_ANSWER_MS });
+  if (i.state === 'waiting') return toast('info', `Waiting for Pitwall to send ${quote(i.label)} to ${name}`, { session, lasts: NO_ANSWER_MS });
   if (i.state === 'failed') return toast('error', `Not sent to ${name}: ${i.error}`, { session, action: { label: 'Show', run: () => show(session) } });
   if (i.state === 'answered') return toast('info', `Already answered elsewhere; nothing was sent to ${name}`, { session });
   return null;

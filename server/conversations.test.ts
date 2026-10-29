@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileMeta } from './conversations.ts';
 
-const dir = mkdtempSync(join(tmpdir(), 'agent-board-test-'));
+const dir = mkdtempSync(join(tmpdir(), 'pitwall-test-'));
 let n = 0;
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 24, 12, minute)).toISOString();
@@ -23,7 +23,7 @@ async function meta(entries: object[]) {
   return m;
 }
 
-const ask = (id: string, server = 'agent-board') => toolUse(id, `mcp__${server}__ask_human`, { title: 'Which way?', details: 'd', category: 'plan-problem' });
+const ask = (id: string, server = 'pitwall') => toolUse(id, `mcp__${server}__ask_human`, { title: 'Which way?', details: 'd', category: 'plan-problem' });
 
 test('an ask_human call stays open until the developer prompts again', async () => {
   const open = await meta([prompt('Fix the login'), assistant([text('Found two ways.'), ask('q1')])]);
@@ -35,15 +35,20 @@ test('an ask_human call stays open until the developer prompts again', async () 
 });
 
 test('ask_human calls under the names used before the renames still count', async () => {
-  for (const server of ['docket', 'agent-ide']) {
+  for (const server of ['docket', 'agent-ide', 'agent-board']) {
     assert.equal((await meta([prompt('x'), assistant([ask('old', server)])])).ask?.toolUseId, 'old');
   }
 });
 
 test('create_artifact calls are collected from the transcript', async () => {
   const html = '<svg></svg>';
-  const m = await meta([prompt('Explain the flow'), assistant([text('Here is a diagram.'), toolUse('v1', 'mcp__agent-board__create_artifact', { title: 'Flow', html })])]);
+  const m = await meta([prompt('Explain the flow'), assistant([text('Here is a diagram.'), toolUse('v1', 'mcp__pitwall__create_artifact', { title: 'Flow', html })])]);
   assert.deepEqual(m.artifacts.map((a) => [a.toolUseId, a.input.title, a.input.html]), [['v1', 'Flow', html]]);
+});
+
+test('create_artifact calls under the name used before the rename to Pitwall still count', async () => {
+  const m = await meta([prompt('x'), assistant([toolUse('v1', 'mcp__agent-board__create_artifact', { title: 'Flow', html: '<svg></svg>' })])]);
+  assert.deepEqual(m.artifacts.map((a) => a.toolUseId), ['v1']);
 });
 
 test('links come from what Claude wrote and asked, not from prompts or tool results', async () => {
@@ -51,7 +56,7 @@ test('links come from what Claude wrote and asked, not from prompts or tool resu
     prompt('Look at https://prompt.dev/x'),
     assistant([text('Opened [PR #3](https://github.com/o/r/pull/3).'), toolUse('b1', 'Bash', { command: 'curl https://tool.dev' })]),
     toolResult('b1', 'see https://result.dev'),
-    assistant([toolUse('q1', 'mcp__agent-board__ask_human', { title: 'Which way?', details: 'Per https://docs.dev/y', category: 'plan-problem' })]),
+    assistant([toolUse('q1', 'mcp__pitwall__ask_human', { title: 'Which way?', details: 'Per https://docs.dev/y', category: 'plan-problem' })]),
   ]);
   assert.deepEqual(m.links.map((l) => l.url), ['https://github.com/o/r/pull/3', 'https://docs.dev/y']);
 });
@@ -207,7 +212,7 @@ test('huge inline lines are skipped and the tail grows back to the last prompt',
     screenshot('s3'),
   ]);
   assert.equal(m.ask?.toolUseId, 'q-far');
-  assert.equal(m.activity?.step, 'agent-board: ask_human');
+  assert.equal(m.activity?.step, 'pitwall: ask_human');
 });
 
 test('a conversation that /clear started says so; one that only mentions /clear later does not', async () => {

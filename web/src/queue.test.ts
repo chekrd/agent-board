@@ -304,7 +304,7 @@ test('the pin and the frozen choices live in sessionStorage too, so a reload res
   reloaded.q.sync([a, b]);
   assert.equal(reloaded.q.state().front, 'b');
   assert.equal(reloaded.q.guarded(), true);
-  assert.equal(world(new Map([['agent-board:frozen', '{not json']])).q.state().frozen.size, 0);
+  assert.equal(world(new Map([['pitwall:frozen', '{not json']])).q.state().frozen.size, 0);
 });
 
 test('a fresh ring lasts 2.6 s', () => {
