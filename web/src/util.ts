@@ -63,10 +63,11 @@ export function openSubtasks(sessions: readonly Session[], id: string) {
   return { open, total: descendantsOf(sessions, id).length };
 }
 
-// A finding is done with once rejected, or once every subtask started from it is solved or dropped: solved if any one
-// was. One without subtasks, or with one still open, is not.
+// A finding is done with once rejected or marked solved, or once every subtask started from it is solved or dropped:
+// solved if any one was. One without subtasks, or with one still open, is not.
 export function settledAs(finding: Finding, subtasks: readonly Session[]) {
   if (finding.rejected) return 'rejected' as const;
+  if (finding.solved) return 'solved' as const;
   if (!subtasks.length || subtasks.some((o) => !o.resolution)) return null;
   return subtasks.some((o) => o.resolution!.state === 'solved') ? ('solved' as const) : ('dropped' as const);
 }

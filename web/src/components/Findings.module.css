@@ -99,7 +99,8 @@
     > ol, > ul { margin-top: 6px; }
   }
 
-  .reject { margin-left: auto; color: var(--danger); }
+  .solve { margin-left: auto; }
+  .reject { color: var(--danger); }
 
   .rejected {
     margin-left: 32px;

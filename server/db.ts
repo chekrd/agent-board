@@ -152,6 +152,7 @@ export interface Finding {
   detail: string;
   location: string;
   rejected?: { reason: string; at: number } | null;
+  solved?: { at: number } | null;
 }
 
 // The findings Claude listed in one message, its turn id in `basis`, kept until a later message lists others.

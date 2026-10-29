@@ -4,9 +4,9 @@ import { clip } from './priority.ts';
 import { startClaude } from './sessions.ts';
 import { notify, repoView } from './workspace.ts';
 
-export type Response = SubtaskKind | 'reject' | 'reopen';
+export type Response = SubtaskKind | 'reject' | 'solve' | 'reopen';
 
-const KINDS: Response[] = ['accept', 'elaborate', 'second-look', 'reply', 'reject', 'reopen'];
+const KINDS: Response[] = ['accept', 'elaborate', 'second-look', 'reply', 'reject', 'solve', 'reopen'];
 
 const LABELS: Record<SubtaskKind, string> = { accept: 'Fix', elaborate: 'Explain', 'second-look': 'Second look', reply: 'Reply' };
 
@@ -35,9 +35,14 @@ ${ASKS[kind]}${answer ? `\n\nThe developer's ${kind === 'reply' ? 'answer' : 'no
 ${SHARED}`;
 }
 
+const mark = (kind: 'reject' | 'solve' | 'reopen', reason: string) => ({
+  rejected: kind === 'reject' ? { reason, at: Date.now() } : null,
+  solved: kind === 'solve' ? { at: Date.now() } : null,
+});
+
 export const subtaskTitle = (n: number, f: Finding, kind: SubtaskKind) => clip(`#${n} ${LABELS[kind]} · ${f.title}`, 120);
 
-// Reject and Reopen only mark the finding; every other response starts a subtask on it.
+// Reject, Solve and Reopen only mark the finding; every other response starts a subtask on it.
 export async function respond(id: string, body: { basis?: unknown; finding?: unknown; kind?: unknown; text?: unknown }) {
   const s = sessions.get(id);
   if (!s) throw new Error(`unknown session ${id}`);
@@ -47,8 +52,8 @@ export async function respond(id: string, body: { basis?: unknown; finding?: unk
   const f = s.findings?.items[index];
   if (!s.findings || s.findings.basis !== body.basis || !f) throw new Refusal('these findings were replaced; read them again', 'stale');
   const text = String(body.text ?? '').trim().slice(0, 4000);
-  if (kind === 'reject' || kind === 'reopen') {
-    const items = s.findings.items.map((x, i) => (i === index ? { ...x, rejected: kind === 'reject' ? { reason: text, at: Date.now() } : null } : x));
+  if (kind === 'reject' || kind === 'solve' || kind === 'reopen') {
+    const items = s.findings.items.map((x, i) => (i === index ? { ...x, ...mark(kind, text) } : x));
     sessions.update(id, { findings: { ...s.findings, items } });
     notify();
     return null;

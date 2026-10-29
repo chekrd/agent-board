@@ -13,7 +13,7 @@ import { STATE_LABELS } from './Status.tsx';
 import { resolveSubtask } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
 
-type Response = SubtaskKind | 'reject' | 'reopen';
+type Response = SubtaskKind | 'reject' | 'solve' | 'reopen';
 
 const RESOLVED = { solved: 'Solved', dropped: 'Dropped' } as const;
 
@@ -27,9 +27,9 @@ const ACTIONS: { kind: SubtaskKind; label: string; title: string }[] = [
   { kind: 'second-look', label: 'Second look', title: 'A new agent checks independently whether the finding is real, without changing files' },
 ];
 
-// The task's findings, each answered on its own: Reject only marks it, every other answer starts a subtask, a new
-// Claude in this worktree that gets the finding and the answer and nothing of this conversation. The ones done with
-// fold away under Settled.
+// The task's findings, each answered on its own: Reject and Mark solved only mark it (Mark solved settles its open
+// subtasks instead, when it has some), every other answer starts a subtask, a new Claude in this worktree that gets
+// the finding and the answer and nothing of this conversation. The ones done with fold away under Settled.
 export function Findings({ session, compact = false }: { session: Session; compact?: boolean }) {
   const findings = session.findings;
   const { sessions } = useStore();
@@ -79,6 +79,7 @@ function Item({ session, basis, index, finding, subtasks, settled, compact }: It
   const busy = useBusy();
   const n = index + 1;
   const rejected = !!finding.rejected;
+  const unsettled = subtasks.filter((o) => !o.resolution);
 
   const respond = async (kind: Response) => {
     if (sending) return;
@@ -92,6 +93,11 @@ function Item({ session, basis, index, finding, subtasks, settled, compact }: It
     } finally {
       setSending(false);
     }
+  };
+
+  const solve = () => {
+    if (!unsettled.length) return void respond('solve');
+    for (const o of unsettled) resolveSubtask(o, 'solved', o.title ?? `#${n} ${SUBTASK_LABELS[o.parent!.kind]}`);
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -108,9 +114,9 @@ function Item({ session, basis, index, finding, subtasks, settled, compact }: It
         {finding.location && <code className={styles.where}>{finding.location}</code>}
       </button>
       {expanded && <div className={styles.detail}><Markdown source={finding.detail} /></div>}
-      {rejected ? (
+      {rejected || finding.solved ? (
         <div className={styles.rejected}>
-          <span>Rejected{finding.rejected!.reason ? `: ${finding.rejected!.reason}` : ''}</span>
+          <span>{rejected ? `Rejected${finding.rejected!.reason ? `: ${finding.rejected!.reason}` : ''}` : 'Solved'}</span>
           <button type="button" disabled={sending} onClick={() => void respond('reopen')}>Reopen</button>
         </div>
       ) : settled ? (
@@ -136,6 +142,16 @@ function Item({ session, basis, index, finding, subtasks, settled, compact }: It
             {expanded && (
               <button type="button" data-response="reply" title="A new agent acts on your answer" disabled={sending || !note.trim()} onClick={() => void respond('reply')}>Reply</button>
             )}
+            <button
+              type="button"
+              data-response="solve"
+              className={styles.solve}
+              title={unsettled.length ? `Done with it: marks its open ${unsettled.length === 1 ? 'subtask' : `${unsettled.length} subtasks`} solved` : 'Done with it, say fixed in this conversation: marks it solved. Nothing starts'}
+              disabled={sending}
+              onClick={solve}
+            >
+              Mark solved
+            </button>
             <button type="button" data-response="reject" className={styles.reject} title="Mark it rejected; your note is kept as the reason. Nothing starts" disabled={sending} onClick={() => void respond('reject')}>Reject</button>
           </div>
         </div>

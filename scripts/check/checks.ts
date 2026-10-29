@@ -5102,6 +5102,45 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P8.findings-solve Mark solved on a finding settles its open subtasks, out of the queue too, or marks one without subtasks solved, which Reopen undoes; nothing starts',
+    scenario: 'findings',
+    async run({ page, mock, shot }) {
+      const state = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
+        n: f.dataset.finding, settled: !!f.closest('[data-settled-findings]'), note: f.querySelector('[class*="rejected"] span')?.textContent ?? null,
+      }));
+      await openSheetOf(page, mock, 's-review');
+      await page.until('the findings', () => document.querySelectorAll('#task-sheet [data-finding]').length === 3);
+      assert.match(await page.eval(() => document.querySelector<HTMLElement>('#task-sheet [data-finding="1"] [data-response="solve"]')!.title), /its open 2 subtasks solved/);
+      await shot('findings-solve');
+
+      await page.click('#task-sheet [data-finding="1"] [data-response="solve"]');
+      await page.until('#1 settled in its subtasks', () => !!document.querySelector('[data-settled-findings] [data-finding="1"]'));
+      const resolved = await until('both subtasks resolved in the mock\'s log', async () => {
+        const found = (await mock.log()).filter((e) => e.action === 'resolve' && e.status !== null);
+        return found.length === 2 && found;
+      });
+      assert.deepEqual(resolved.map((e) => [e.sessionId, e.body.state]).toSorted(), [['s-review-1', 'solved'], ['s-review-2', 'solved']]);
+      assert.equal(await page.eval(() => document.querySelector('[data-settled-findings] [data-finding="1"] [class*="rejected"] span')!.textContent), 'Solved in its 2 subtasks');
+      assert.equal(await page.eval(() => !!document.querySelector('[data-segment][data-session="s-review-2"]')), false, 'the subtask\'s decision left the queue');
+
+      await page.click('#task-sheet [data-finding="3"] [data-response="solve"]');
+      await page.until('#3 marked solved', () => !!document.querySelector('[data-settled-findings] [data-finding="3"]'));
+      const [marked] = await logged(mock, 'the mark', (e) => e.action === 'finding');
+      assert.deepEqual(marked.body, { basis: 't-review-4', finding: 2, kind: 'solve', text: '' });
+      assert.equal(await page.eval(() => document.querySelectorAll('#task-sheet [data-finding="3"] [data-subtask]').length), 0, 'a subtask started');
+      assert.deepEqual(await page.eval(state), [
+        { n: '1', settled: true, note: 'Solved in its 2 subtasks' },
+        { n: '2', settled: true, note: 'Rejected: Covered by the a11y ticket' },
+        { n: '3', settled: true, note: 'Solved' },
+      ]);
+      assert.equal(await page.eval(() => document.querySelector('#task-sheet [data-settled-count]')!.textContent), '· all 3 settled');
+
+      await page.eval(() => { document.querySelector<HTMLDetailsElement>('#task-sheet [data-settled-findings]')!.open = true; });
+      await page.click('#task-sheet [data-finding="3"] [class*="rejected"] button');
+      await page.until('#3 open again', () => !!document.querySelector('#task-sheet [data-finding="3"]:not([data-settled-findings] *) [data-response="solve"]'));
+    },
+  },
+  {
     name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile lists none and reads In progress while one works, and its page lists them all; Mark solved and Drop settle a subtask and open its task in its place, and the task counts the ones still open',
     scenario: 'findings',
     async run({ themes, page, mock, shot }) {

@@ -314,15 +314,17 @@ const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-ad
 
 const SUBTASK_LABELS: Record<SubtaskKind, string> = { accept: 'Fix', elaborate: 'Explain', 'second-look': 'Second look', reply: 'Reply' };
 
-// As the server's respond(): Reject and Reopen mark the finding, any other answer starts a subtask in its worktree.
+// As the server's respond(): Reject, Solve and Reopen mark the finding, any other answer starts a subtask in its worktree.
 function respond(s: Session, body: any) {
   const index = Number(body.finding);
   const f = s.findings?.items[index];
   if (!s.findings || s.findings.basis !== body.basis || !f) throw new Refusal('these findings were replaced; read them again', 'stale');
-  const kind = body.kind as SubtaskKind | 'reject' | 'reopen';
+  const kind = body.kind as SubtaskKind | 'reject' | 'solve' | 'reopen';
   const text = String(body.text ?? '').trim();
-  if (kind === 'reject' || kind === 'reopen') {
-    const items = s.findings.items.map((x, i) => (i === index ? { ...x, rejected: kind === 'reject' ? { reason: text, at: Date.now() } : null } : x));
+  if (kind === 'reject' || kind === 'solve' || kind === 'reopen') {
+    const at = Date.now();
+    const marks = { rejected: kind === 'reject' ? { reason: text, at } : null, solved: kind === 'solve' ? { at } : null };
+    const items = s.findings.items.map((x, i) => (i === index ? { ...x, ...marks } : x));
     update(s.id, { findings: { ...s.findings, items } });
     return { id: null };
   }

@@ -93,7 +93,7 @@ test('a task counts its subtasks still open: a solved or dropped one and everyth
   assert.deepEqual(openSubtasks(all, 'b').open.map((s) => s.id), ['b2']);
 });
 
-test('a finding settles once rejected or once all its subtasks are solved or dropped, solved if any one was', () => {
+test('a finding settles once rejected or marked solved, or once all its subtasks are solved or dropped, solved if any one was', () => {
   const sub = (resolution: 'solved' | 'dropped' | null) => session('x', { resolution: resolution && { state: resolution, at: 1 } });
   const finding = { title: 'f', detail: '', location: '' };
   assert.equal(settledAs(finding, []), null, 'nothing started on it');
@@ -101,6 +101,7 @@ test('a finding settles once rejected or once all its subtasks are solved or dro
   assert.equal(settledAs(finding, [sub('dropped'), sub('solved')]), 'solved');
   assert.equal(settledAs(finding, [sub('dropped')]), 'dropped');
   assert.equal(settledAs({ ...finding, rejected: { reason: '', at: 1 } }, [sub(null)]), 'rejected');
+  assert.equal(settledAs({ ...finding, solved: { at: 1 } }, []), 'solved', 'fixed without a subtask');
 });
 
 test('a model id reads as its family and version', () => {
