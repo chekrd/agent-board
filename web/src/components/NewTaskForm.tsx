@@ -27,6 +27,8 @@ interface Models {
 
 interface Branch {
   name: string;
+  local: boolean;
+  origin: boolean;
   worktree: string | null;
 }
 
@@ -51,6 +53,8 @@ let fields = stored();
 // They share the branch list too: both are mounted at once, and one read serves them.
 let branches: { repoId: number; list: Branch[] } | null = null;
 let reading: number | null = null;
+// Each opening reads the branches again, so one fetched or pushed since shows.
+let opened = 0;
 let models: { repoId: number; read: Models } | null = null;
 let readingModels: number | null = null;
 const subscribers = new Set<() => void>();
@@ -103,6 +107,7 @@ export function openNewTask() {
   const dialog = document.getElementById(DIALOG) as HTMLDialogElement | null;
   if (!dialog) return;
   if (!dialog.open) {
+    opened++;
     edit({ name: '' });
     dialog.showModal();
   }
@@ -311,13 +316,14 @@ function BranchPicker({ branches, value, pick, where }: { branches: Branch[] | n
 function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) {
   const f = useSyncExternalStore(subscribe, () => fields);
   const read = useSyncExternalStore(subscribe, () => branches);
+  const opening = useSyncExternalStore(subscribe, () => opened);
   const known = useSyncExternalStore(subscribe, () => models);
   const { home } = useStore();
   const sorted = repos.toSorted((a, b) => byName(a.name, b.name));
   const repo = repos.find((r) => r.id === f.repoId) ?? repos[0];
   useEffect(() => {
-    if (f.existing) readBranches(repo.id);
-  }, [f.existing, repo.id]);
+    if (opening) readBranches(repo.id);
+  }, [repo.id, opening]);
   useEffect(() => readModels(repo.id), [repo.id]);
 
   const name = f.name.trim();
@@ -326,6 +332,8 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
   const main = repo.worktrees.find((w) => w.isMain);
   const list = read?.repoId === repo.id ? read.list : null;
   const picked = list?.find((b) => b.name === branch);
+  const target = branch || name;
+  const reused = list?.find((b) => b.name === target && (b.local || b.origin));
 
   const [error, create, pending] = useActionState(async () => {
     const now = fields;
@@ -393,7 +401,7 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         <fieldset className={styles.mode}>
           <legend>Where Claude runs</legend>
           <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
-          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Existing branch, no worktree</label>
+          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Current checkout</label>
         </fieldset>
         <button type="submit" className={styles.create} disabled={!valid || pending}>
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
@@ -417,7 +425,13 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
             picked?.worktree ? <>Starts Claude in <code>{tilde(picked.worktree, home)}</code>, where it is checked out.</>
               : <>Switches <code>{tilde(main?.path ?? repo.path, home)}</code> to {branch ? <code>{branch}</code> : 'the branch'} and starts Claude there.</>
           ) : (
-            <>Branches from <code>{repo.base}</code> and starts Claude there.{repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}</>
+            reused?.worktree ? <><code>{target}</code> is already checked out in <code>{tilde(reused.worktree, home)}</code>.</>
+              : <>
+                {reused?.local ? <>Reuses the local branch <code>{target}</code> and starts Claude there.</>
+                  : reused ? <>Tracks <code>origin/{target}</code> in a new branch and starts Claude there.</>
+                  : <>Branches from <code>{repo.base}</code> and starts Claude there.</>}
+                {repo.setupCommand && <> Runs <code>{repo.setupCommand}</code> there first.</>}
+              </>
           )}
         </p>
         <label className={styles.select} title="The model Claude starts with; the first is the one your Claude Code settings pick">

@@ -1649,7 +1649,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.10 New task opened on the Wall: a space typed in the name or branch becomes a hyphen; Model and Effort name what Claude Code would pick by itself; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; the model and effort picked go with it and show on its Overview; Existing branch hides Branch and Worktree path, starts on the repository\'s default branch and lists the server\'s branches by name in a list under the field, with the hint',
+    name: 'P4.10 New task opened on the Wall: a space typed in the name or branch becomes a hyphen; Model and Effort name what Claude Code would pick by itself; ⌘↵ creates from the prompt, repository and name and opens the new sheet; a refused name shows inline and keeps the fields; the model and effort picked go with it and show on its Overview; Current checkout hides Branch and Worktree path, starts on the repository\'s default branch and lists the server\'s branches by name in a list under the field, with the hint',
     expectedErrors: [/status of 400/],
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
@@ -1709,7 +1709,7 @@ export const checks: Check[] = [
 
       const extra = () => [...document.querySelectorAll('dialog#new-task label > span')].map((c) => c.textContent).filter((t) => t === 'Branch' || t === 'Worktree path');
       assert.deepEqual(await page.eval(extra), ['Branch', 'Worktree path'], 'New worktree shows its branch and path');
-      await page.click('dialog#new-task label', 'Existing branch');
+      await page.click('dialog#new-task label', 'Current checkout');
       await page.until('only the branch picker', (want: string) => JSON.stringify([...document.querySelectorAll('dialog#new-task label > span')].map((c) => c.textContent).filter((t) => t === 'Branch' || t === 'Worktree path')) === want, JSON.stringify(['Branch']));
       await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
       assert.equal(await page.eval(() => document.querySelector<HTMLInputElement>('#new-task [data-branch-field] input')!.value), 'main', 'the repository\'s default branch, its base without origin/');
@@ -1728,6 +1728,39 @@ export const checks: Check[] = [
       await page.until('the hint for a branch with its own worktree', () =>
         document.querySelector('dialog#new-task [data-hint]')?.textContent === 'Starts Claude in ~/code/worktrees/guest-cart-merge/storefront, where it is checked out.');
       await shot('new-task-existing-branch');
+    },
+  },
+  {
+    name: 'P4.10.branch New worktree\'s hint follows the branch it will use, the Branch field or else the name, as it is typed: a new one branches from the base, one only on origin is tracked, a local one is reused, and one checked out already says where',
+    async run({ page, mock, shot }) {
+      const hint = (want: string) => document.querySelector('dialog#new-task [data-hint]')?.textContent === want;
+      const erase = async (n: number) => {
+        for (let i = 0; i < n; i++) await page.key('Backspace');
+      };
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', tiles);
+      await openNewTask(page);
+      await pickRepo(page, 'storefront');
+      await logged(mock, 'the branches', (e) => e.method === 'GET' && e.path === '/api/repos/1/branches');
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
+      await page.type('fix login');
+      await page.until('a new branch from the base', hint, 'Branches from origin/main and starts Claude there. Runs pnpm install there first.');
+      await page.click('dialog#new-task input[placeholder="fix-login"]');
+      await page.type('renovate/vite-8');
+      await page.until('the branch on origin, tracked', hint, 'Tracks origin/renovate/vite-8 in a new branch and starts Claude there. Runs pnpm install there first.');
+      await shot('new-task-tracks-origin');
+      await erase('renovate/vite-8'.length);
+      await page.type('spike/edge-cache');
+      await page.until('the local branch, reused', hint, 'Reuses the local branch spike/edge-cache and starts Claude there. Runs pnpm install there first.');
+      await erase('spike/edge-cache'.length);
+      await page.type('guest-cart-merge');
+      await page.until('the branch checked out already', hint, 'guest-cart-merge is already checked out in ~/code/worktrees/guest-cart-merge/storefront.');
+      await erase('guest-cart-merge'.length);
+      await page.until('the name\'s branch again', hint, 'Branches from origin/main and starts Claude there. Runs pnpm install there first.');
+      await page.click('dialog#new-task input[placeholder="fix-login-redirect"]');
+      await erase('fix-login'.length);
+      await page.type('renovate/vite-8');
+      await page.until('the name on origin, tracked', hint, 'Tracks origin/renovate/vite-8 in a new branch and starts Claude there. Runs pnpm install there first.');
     },
   },
   {
@@ -2022,7 +2055,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.branches-once New task reads a repository\'s branch list once: Existing branch and a change of repository each ask the server once',
+    name: 'P4.branches-once New task reads a repository\'s branch list once per opening: Current checkout does not ask again, a change of repository asks once, and opening New task again asks again',
     async run({ page, mock }) {
       const reads = async (repo: number) => (await mock.log()).filter((e) => e.method === 'GET' && e.path === `/api/repos/${repo}/branches`).length;
       const rows = (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].map((c) => c.textContent);
@@ -2030,7 +2063,7 @@ export const checks: Check[] = [
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await pickRepo(page, 'storefront');
-      await page.click('dialog#new-task label', 'Existing branch');
+      await page.click('dialog#new-task label', 'Current checkout');
       await page.until('the storefront branches', (host: string) => [...document.querySelectorAll(`${host} [aria-label="Branches"] code`)].some((c) => c.textContent === 'guest-cart-merge'), '#new-task');
       await sleep(300);
       assert.equal(await reads(1), 1);
@@ -2039,6 +2072,12 @@ export const checks: Check[] = [
       await sleep(300);
       assert.deepEqual([await reads(1), await reads(2)], [1, 1]);
       assert.ok((await page.eval(rows, '#new-task')).includes('webhook-retries'));
+      await page.key('Escape');
+      await page.until('New task to close', () => !document.querySelector('#new-task[open]'));
+      await openNewTask(page);
+      await until('billing-api read again', async () => (await reads(2)) === 2);
+      await sleep(300);
+      assert.deepEqual([await reads(1), await reads(2)], [1, 2]);
     },
   },
   {
@@ -2098,7 +2137,7 @@ export const checks: Check[] = [
       await page.until('the tiles', tiles);
       await openNewTask(page);
       await pickRepo(page, 'storefront');
-      await page.click('dialog#new-task label', 'Existing branch');
+      await page.click('dialog#new-task label', 'Current checkout');
       await page.until('the branches', (list: string) => document.querySelectorAll(`${list} [role="option"]`).length > 40, list);
       await page.until('the dialog to settle', still);
       const before = await page.eval(dialogHeight);

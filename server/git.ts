@@ -68,14 +68,21 @@ export async function addWorktree(repo: string, opts: { branch: string; task: st
   return gitWt(repo, ['add', opts.branch, '--task', opts.task, '--base', opts.base, '--root', opts.root, ...(opts.path ? ['--path', opts.path] : [])]);
 }
 
+// Each branch by name, with whether it is local and whether origin has it: git wt add reuses a local branch, else
+// tracks origin's.
 export async function listBranches(repo: string) {
   const out = await git(repo, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', 'refs/remotes']);
-  const names = out.split('\n').filter(Boolean).flatMap((ref) => {
-    if (ref.startsWith('refs/heads/')) return [ref.slice('refs/heads/'.length)];
-    const name = ref.split('/').slice(3).join('/');
-    return name && name !== 'HEAD' ? [name] : [];
-  });
-  return [...new Set(names)];
+  const found = new Map<string, { name: string; local: boolean; origin: boolean }>();
+  for (const ref of out.split('\n').filter(Boolean)) {
+    const local = ref.startsWith('refs/heads/');
+    const name = local ? ref.slice('refs/heads/'.length) : ref.split('/').slice(3).join('/');
+    if (!name || name === 'HEAD') continue;
+    const branch = found.get(name) ?? { name, local: false, origin: false };
+    if (local) branch.local = true;
+    else if (ref.startsWith('refs/remotes/origin/')) branch.origin = true;
+    found.set(name, branch);
+  }
+  return [...found.values()];
 }
 
 // A remote-only branch gets a local tracking branch, as `git switch` does by default.

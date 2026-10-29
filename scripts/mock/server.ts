@@ -403,11 +403,16 @@ function deleteLoss(s: Session) {
 }
 
 // Enough that New task's branch list has to scroll.
+// Not checked out anywhere: release/2026.10 is local and on origin, spike/edge-cache local only, the rest on origin only.
 const OTHER_BRANCHES = ['release/2026.10', 'spike/edge-cache', 'renovate/vite-8', ...Array.from({ length: 40 }, (_, i) => `feature/kcl-${15600 + i}`)];
+const LOCAL_ONLY = new Set(['spike/edge-cache']);
+const LOCAL = new Set(['release/2026.10', ...LOCAL_ONLY]);
 
 function branches(repo: RepoView) {
   const checkedOut = new Map(repo.worktrees.flatMap((w) => (w.branch ? [[w.branch, w.path]] : [])));
-  return [...new Set([...checkedOut.keys(), ...OTHER_BRANCHES])].map((name) => ({ name, worktree: checkedOut.get(name) ?? null }));
+  return [...new Set([...checkedOut.keys(), ...OTHER_BRANCHES])].map((name) => ({
+    name, local: checkedOut.has(name) || LOCAL.has(name), origin: !LOCAL_ONLY.has(name), worktree: checkedOut.get(name) ?? null,
+  }));
 }
 
 const MODELS: { models: Record<string, string>; efforts: Record<string, string | null> } = {

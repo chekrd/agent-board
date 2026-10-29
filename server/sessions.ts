@@ -411,7 +411,7 @@ export async function removeWorktreeAndSessions(repo: RepoView, path: string, op
 export async function checkoutExistingBranch(repo: RepoView, branch: string) {
   const checkedOut = repo.worktrees.find((w) => w.branch === branch);
   if (checkedOut) return checkedOut.path;
-  if (!(await listBranches(repo.path)).includes(branch)) throw new Error(`no branch named ${branch}`);
+  if (!(await listBranches(repo.path)).some((b) => b.name === branch)) throw new Error(`no branch named ${branch}`);
   const main = repo.worktrees.find((w) => w.isMain);
   if (!main) throw new Error('the main checkout is missing');
   const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === main.path || p.cwd.startsWith(`${main.path}/`));

@@ -106,7 +106,7 @@ app.get('/api/repos/:id/branches', async (c) => {
   const repo = repoView(Number(c.req.param('id')));
   if (!repo) throw new Error('unknown repo');
   const checkedOut = new Map(repo.worktrees.flatMap((w) => (w.branch ? [[w.branch, w.path]] : [])));
-  return c.json((await listBranches(repo.path)).map((name) => ({ name, worktree: checkedOut.get(name) ?? null })));
+  return c.json((await listBranches(repo.path)).map((b) => ({ ...b, worktree: checkedOut.get(b.name) ?? null })));
 });
 
 const MODEL = /^[A-Za-z0-9._-]+(\[1m\])?$/;
