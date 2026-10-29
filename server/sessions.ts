@@ -169,9 +169,10 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;
   const lastTurn = meta.turns.at(-1)?.id ?? null;
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
-  const activity = activityOf(p, meta.activity, meta.background.map(([, what]) => what));
+  const background = meta.background.filter(([id]) => id !== meta.greenWatch).map(([, what]) => what);
+  const activity = activityOf(p, meta.activity, background);
   if (JSON.stringify(activity) !== JSON.stringify(s.activity)) patch.activity = activity;
-  const status = p && statusOf(p, meta.background.length);
+  const status = p && statusOf(p, background.length);
   if (status && status !== s.status) patch.status = status;
   if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
   const artifacts = await storeArtifacts(s, meta.artifacts);

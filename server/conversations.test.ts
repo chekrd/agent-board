@@ -198,6 +198,20 @@ test('a watcher still running in the background keeps watching', async () => {
   assert.equal(m.pr?.id, 1);
   assert.equal(m.pr?.result, 'RUNNING');
   assert.equal(m.pr?.watching, true);
+  assert.equal(m.greenWatch, null);
+});
+
+test('a watcher waiting on checks already green is a green watch; one waiting on a fix is not', async () => {
+  const watch = (result: string) => meta([
+    prompt('ship it'),
+    assistant([toolUse('w', 'Bash', { command: `pr-to-green/watch-pr.sh 1 "${result}"`, run_in_background: true })]),
+    { ...toolResult('w', 'Command running in background with ID: b1'), toolUseResult: { stdout: '', backgroundTaskId: 'b1' } },
+  ]);
+  const green = await watch('PASSED iteration 5 commit d2a7d6ef91');
+  assert.equal(green.pr?.watching, true);
+  assert.deepEqual(green.background, [['b1', 'Bash · pr-to-green/watch-pr.sh 1 "PASSED iteration 5 commit d2a7d6ef91"']]);
+  assert.equal(green.greenWatch, 'b1');
+  assert.equal((await watch('FAILED: e2e')).greenWatch, null);
 });
 
 test('huge inline lines are skipped and the tail grows back to the last prompt', async () => {

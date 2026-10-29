@@ -45,6 +45,8 @@ interface Meta {
   artifacts: ToolCall[];
   links: Found[];
   pr: Omit<PrFlow, 'url'> | null;
+  // The background task of a PR watcher that waits on checks already green, so nothing will come of it but a change.
+  greenWatch: string | null;
   turns: Turn[];
   model: string | null;
   effort: string | null;
@@ -273,9 +275,10 @@ const resultText = (entry: Record<string, any>, block: Record<string, any>) =>
   entry.toolUseResult?.stdout ?? (typeof block.content === 'string' ? block.content : block.content?.map?.((c: any) => c.text ?? '').join('\n') ?? '');
 
 // Follows the pr-to-green skill: the PR it creates and the last result its watch-pr.sh reported.
-async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
+async function prFlow(entries: Record<string, any>[]): Promise<{ flow: Meta['pr']; watcherTask: string | null }> {
   let flow = null as Meta['pr'];
   let watcher: string | null = null;
+  let watcherTask: string | null = null;
   let creator: string | null = null;
   let outputFile: string | null = null;
   const start = (at: string) => (flow ??= { id: null, result: null, watching: false, at: Date.parse(at) || Date.now() });
@@ -289,6 +292,7 @@ async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
         const f = start(entry.timestamp);
         Object.assign(f, { id: Number(watch[1]), result: watch[2] ?? f.result, watching: true });
         watcher = b.id;
+        watcherTask = null;
         outputFile = null;
       } else if (CREATE_PR.test(command)) {
         start(entry.timestamp);
@@ -306,7 +310,11 @@ async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
       if (b.type !== 'tool_result') continue;
       const text = resultText(entry, b);
       if (b.tool_use_id === creator) flow.id = Number(text.match(/"pullRequestId":\s*(\d+)/)?.[1]) || flow.id;
-      if (b.tool_use_id === watcher && !text.includes('running in background')) {
+      if (b.tool_use_id !== watcher) continue;
+      const task = entry.toolUseResult?.backgroundTaskId ?? (text.includes('running in background') ? text.match(/with ID: (\S+)/)?.[1] : null);
+      if (task) {
+        watcherTask = String(task);
+      } else if (!text.includes('running in background')) {
         flow.watching = false;
         flow.result = text.match(RESULT_LINE)?.[0] ?? flow.result;
       }
@@ -316,7 +324,13 @@ async function prFlow(entries: Record<string, any>[]): Promise<Meta['pr']> {
     const out = await readFile(outputFile, 'utf8').catch(() => '');
     flow.result = out.match(RESULT_LINE)?.[0] ?? flow.result;
   }
-  return flow;
+  return { flow, watcherTask };
+}
+
+async function prMeta(tail: Record<string, any>[], cached: Meta | undefined) {
+  const { flow, watcherTask } = await prFlow(tail);
+  const green = flow?.watching && /^PASSED\b/.test(flow.result ?? '');
+  return { pr: flow, greenWatch: green ? watcherTask : flow ? null : cached?.greenWatch ?? null };
 }
 
 async function readMeta(file: string, mtime: number): Promise<Meta> {
@@ -342,7 +356,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     ask: latestAsk(tail),
     artifacts: artifactCalls(tail),
     links: links(tail),
-    pr: await prFlow(tail),
+    ...await prMeta(tail, cached),
     turns: turns(tail),
     ...settings(tail),
   };
