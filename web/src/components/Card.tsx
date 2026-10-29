@@ -20,7 +20,7 @@ import { ParentCrumb } from './Findings.tsx';
 import { PromptBody } from './PromptBody.tsx';
 import { archive, openTerminal, SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
-import { STATE_LABELS } from './Status.tsx';
+import { labelOf, stoppedOnError } from './Status.tsx';
 import { TaskRail } from './TaskRail.tsx';
 import { TurnBody } from './TurnBody.tsx';
 import { elaborate, explanationFor } from './WhyPanel.tsx';
@@ -265,14 +265,14 @@ export function Card({ session, repos, deck, enter }: CardProps) {
       data-session={session.id}
       data-kind={kind}
       data-key={key ?? undefined}
-      aria-label={`${name} · ${STATE_LABELS[attention]}`}
+      aria-label={`${name} · ${labelOf(session, attention)}`}
       tabIndex={-1}
     >
       <header className={styles.head}>
         <div className={styles.top}>
-          <span className={styles.state} data-attention={attention}>
+          <span className={styles.state} data-attention={attention} data-error={stoppedOnError(session, attention) || undefined}>
             <StateMark state={attention} />
-            {STATE_LABELS[attention]}
+            {labelOf(session, attention)}
           </span>
           {q.updated.has(session.id) && <span className={styles.updated} data-updated>Updated just now</span>}
           <BranchMark session={session} branch={branch} />

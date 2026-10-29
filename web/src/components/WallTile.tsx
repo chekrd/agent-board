@@ -11,12 +11,13 @@ import { ParentCrumb } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChips, STATE_HINTS, STATE_LABELS } from './Status.tsx';
+import { ERROR_LINES, hintOf, labelOf, PrChips, stoppedOnError } from './Status.tsx';
 import styles from './WallTile.module.css';
 
 function textOf(s: Session, attention: Attention) {
   if (attention === 'decide') return decisionOf(s)?.problem ?? s.menu!.questions.map((q) => q.question).join(' · ');
   if (attention === 'focus') return promptOf(s).headline;
+  if (stoppedOnError(s, attention)) return ERROR_LINES[s.turnError!.kind];
   return s.summary?.text || s.firstPrompt || 'Starting…';
 }
 
@@ -43,7 +44,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const own = shownOf(session, busy);
   // A task that waits on its subtasks is in progress while any of them works.
   const shown = !archived && (own === 'idle' || own === 'exited') && unsettled.some((o) => !o.archived && shownOf(o, busy) === 'working') ? 'working' : own;
-  const label = archived ? 'Archived' : shown === 'exited' && session.interrupted ? 'Ended by restart' : STATE_LABELS[shown];
+  const label = archived ? 'Archived' : shown === 'exited' && session.interrupted ? 'Ended by restart' : labelOf(session, shown);
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
@@ -75,7 +76,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
     >
       <header className={styles.head}>
         <StateMark state={archived ? 'archived' : shown} />
-        <span className={styles.state} title={archived ? undefined : STATE_HINTS[shown]}>{label}</span>
+        <span className={styles.state} data-error={stoppedOnError(session, shown) || undefined} title={archived ? undefined : hintOf(session, shown)}>{label}</span>
         <span className={styles.age} data-age title={asked !== undefined ? undefined : session.summary ? 'When the status was last updated' : 'When the session last changed'}>
           {asked !== undefined ? `asked ${ago(asked)}` : ago(session.summary?.at ?? session.updatedAt)}
         </span>

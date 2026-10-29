@@ -14,7 +14,7 @@ import { Overview } from './Overview.tsx';
 import { BranchMark } from './Parts.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChips, STATE_HINTS } from './Status.tsx';
+import { hintOf, PrChips, stoppedOnError } from './Status.tsx';
 import { TaskName } from './TaskName.tsx';
 import styles from './TaskSheet.module.css';
 import { toast } from './Toasts.tsx';
@@ -93,7 +93,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
           {session.parent && <div className={styles.crumb}><ParentCrumb session={session} /></div>}
           <BranchMark session={session} branch={branch} />
           <TaskName session={session} name={name} />
-          <span className={styles.state} data-attention={session.archived ? 'archived' : attention} data-resolution={session.resolution?.state} title={session.archived ? undefined : STATE_HINTS[attention]}>
+          <span className={styles.state} data-attention={session.archived ? 'archived' : attention} data-resolution={session.resolution?.state} data-error={stoppedOnError(session, attention) || undefined} title={session.archived ? undefined : hintOf(session, attention)}>
             <StateMark state={session.archived ? 'archived' : attention} size={8} />
             {stateLabel(session, attention)}
           </span>

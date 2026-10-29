@@ -5888,4 +5888,50 @@ export const checks: Check[] = [
       await page.until('the tile to drop it once resumed', () => !document.querySelector('[data-restart-subtask]'));
     },
   },
+  {
+    name: 'E1 a turn that ended on an API error says Stopped on an error on its tile and page, with what to do for its kind, until Claude replies again',
+    async run({ page, mock, shot }) {
+      const all = (await mock.get('/api/state')).sessions as { id: string; status: string; archived: boolean; question: unknown; menu: unknown; summary: { decision?: unknown } | null }[];
+      const s = all.find((o) => o.status === 'idle' && !o.archived && !o.question && !o.menu && !o.summary?.decision)!;
+      const refused = "API Error: Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations.\n\nDouble press esc to edit your last message, or try a different model with /model.";
+      await mock.post('/mock/patch', { id: s.id, patch: { turnError: { at: Date.now(), kind: 'refusal', text: refused } } });
+      await page.goto(`${mock.url}/wall`);
+      const tile = await page.until('the tile to say so', (id: string) => {
+        const state = document.querySelector<HTMLElement>(`[data-tile][data-session="${id}"] [data-error]`);
+        const t = state?.closest<HTMLElement>('[data-tile]');
+        return t && { text: state!.innerText, title: state!.title, label: t.getAttribute('aria-label'), says: t.querySelector('p')?.textContent };
+      }, s.id);
+      assert.equal(tile.says, "The model's safeguards flagged your last message; rephrase it");
+      assert.equal(tile.text, 'STOPPED ON AN ERROR');
+      assert.match(tile.title, /ended on an API error/);
+      assert.match(tile.label!, /, Stopped on an error$/);
+      assert.equal(await page.eval(() => document.querySelectorAll('[data-tile] [data-error]').length), 1, 'only the one that errored');
+      await shot('turn-error-tile');
+
+      await openSheetOf(page, mock, s.id);
+      const panel = await page.until('the error on its page', () => {
+        const p = document.querySelector<HTMLElement>('#task-sheet [data-turn-error]');
+        return p && { kind: p.dataset.turnError, text: p.innerText, quote: p.querySelector('blockquote')?.textContent, buttons: [...p.querySelectorAll('button')].map((b) => b.textContent) };
+      });
+      assert.equal(panel.kind, 'refusal');
+      assert.match(panel.text, /safeguards flagged your last message/);
+      assert.match(panel.text, /rephrase it/);
+      assert.equal(panel.quote, "Opus 5.5's safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations.");
+      assert.deepEqual(panel.buttons, ['Terminal']);
+      assert.ok(await page.eval(() => !!document.querySelector('#task-sheet [data-error]')), 'the page header says so too');
+      assert.ok(await page.eval(() => !!document.querySelector('#task-sheet textarea')), 'a message can still be written');
+      await shot('turn-error-page');
+
+      await mock.post('/mock/patch', { id: s.id, patch: { turnError: { at: Date.now(), kind: 'limit', text: "You've hit your session limit · resets 2pm (Europe/Prague)" } } });
+      const limit = await page.until('the limit advice', () => {
+        const p = document.querySelector<HTMLElement>('#task-sheet [data-turn-error="limit"]');
+        return p && { text: p.innerText, buttons: p.querySelectorAll('button').length };
+      });
+      assert.match(limit.text, /usage limit[\s\S]*resets 2pm/);
+      assert.equal(limit.buttons, 0);
+
+      await mock.post('/mock/patch', { id: s.id, patch: { turnError: null } });
+      await page.until('the error to go once Claude replies', () => !document.querySelector('#task-sheet [data-turn-error], #task-sheet [data-error]'));
+    },
+  },
 ];

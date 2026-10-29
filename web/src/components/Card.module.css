@@ -58,6 +58,7 @@
     &[data-attention="decide"] { color: var(--accent-ink); }
     &[data-attention="focus"] { color: var(--prompt); }
     &[data-attention="idle"] { color: var(--idle); }
+    &[data-error] { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
   }
 
   .updated {

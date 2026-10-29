@@ -9,7 +9,7 @@ import styles from './Findings.module.css';
 import { Icon } from './Icon.tsx';
 import { Markdown } from './Markdown.tsx';
 import { StateMark } from './StateMark.tsx';
-import { STATE_LABELS } from './Status.tsx';
+import { labelOf, STATE_LABELS } from './Status.tsx';
 import { resolveSubtask } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
 
@@ -17,7 +17,7 @@ type Response = SubtaskKind | 'reject' | 'solve' | 'reopen';
 
 const RESOLVED = { solved: 'Solved', dropped: 'Dropped' } as const;
 
-export const stateLabel = (o: Session, shown: Shown) => (o.resolution ? RESOLVED[o.resolution.state] : o.archived ? 'Archived' : STATE_LABELS[shown]);
+export const stateLabel = (o: Session, shown: Shown) => (o.resolution ? RESOLVED[o.resolution.state] : o.archived ? 'Archived' : labelOf(o, shown));
 
 export const SUBTASK_LABELS: Record<SubtaskKind, string> = { accept: 'Fix', elaborate: 'Explain', 'second-look': 'Second look', reply: 'Reply' };
 

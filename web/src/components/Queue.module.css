@@ -114,7 +114,7 @@
     &[data-attention="idle"] { color: var(--idle); }
     /* --danger reads at 4.3:1 on the light deck colours; a share of the text colour darkens it there, and lightens it
        in dark. */
-    &[data-attention="not-sent"] { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
+    &[data-attention="not-sent"], &[data-error] { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
   }
 
   @media (max-width: 760px) {

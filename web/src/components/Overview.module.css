@@ -115,6 +115,23 @@
     button { height: 40px; padding: 0 16px; border-radius: 11px; font-size: 14.5px; }
   }
 
+  .errorText {
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    blockquote {
+      margin: 0;
+      padding-left: 12px;
+      border-left: 3px solid color-mix(in srgb, var(--danger) 80%, var(--text));
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-2);
+      overflow-wrap: anywhere;
+    }
+  }
+
   .status {
     display: flex;
     flex-direction: column;

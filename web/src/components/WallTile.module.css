@@ -40,6 +40,8 @@
     [data-attention="idle"] & { color: var(--idle); }
     [data-attention="working"] & { color: var(--work); }
     [data-archived] & { color: var(--muted); }
+    /* --danger reads at 4.3:1 on the light tile; a share of the text colour darkens it there, and lightens it in dark. */
+    &[data-error] { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
   }
 
   /* The ⋯ takes the age's place at the end of the row while the tile is hovered or focused, or its menu is open. */

@@ -195,6 +195,7 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;
   const lastTurn = meta.turns.at(-1)?.id ?? null;
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
+  if (JSON.stringify(meta.turnError) !== JSON.stringify(s.turnError)) patch.turnError = meta.turnError;
   const background = meta.background.filter(([id]) => !meta.greenWatches.includes(id)).map(([, what]) => what);
   const activity = activityOf(p, meta.activity, background);
   if (JSON.stringify(activity) !== JSON.stringify(s.activity)) patch.activity = activity;

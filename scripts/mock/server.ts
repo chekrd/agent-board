@@ -481,7 +481,7 @@ function startSession(repoId: number | null, worktree: string, o: { id?: string;
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, priority: null, diffstat: null,
     lastMessage: null, lastPrompt: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, prs: [], summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
-    model: o.model || null, effort: o.effort || null, interrupted: null, archived: false, createdAt: now, updatedAt: now,
+    model: o.model || null, effort: o.effort || null, interrupted: null, turnError: null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;

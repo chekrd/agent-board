@@ -158,6 +158,21 @@ test('turns and the last message skip synthetic and API error messages', async (
   assert.equal(after.lastMessage, 'Done.');
 });
 
+const apiError = (t: string, fields: object, minute = 0) => ({ ...assistant([text(t)], minute), isApiErrorMessage: true, ...fields });
+
+test('an API error that ended the turn stays until the next prompt or a reply, and says what kind it is', async () => {
+  const refused = apiError("API Error: Opus 5.5's safeguards flagged this message.", { error: 'invalid_request', message: { model: '<synthetic>', stop_reason: 'refusal', content: [text("API Error: Opus 5.5's safeguards flagged this message.")] } }, 3);
+  const m = await meta([prompt('Fix the login'), assistant([text('Looking.')]), refused, { type: 'assistant', uuid: 'syn', timestamp: at(4), message: { model: '<synthetic>', content: [text('No response requested.')] } }]);
+  assert.deepEqual(m.turnError, { at: Date.parse(at(3)), kind: 'refusal', text: "API Error: Opus 5.5's safeguards flagged this message." });
+
+  const kinds = await Promise.all([{ error: 'rate_limit' }, { error: 'authentication_failed' }, { error: 'server_error' }].map((f) => meta([prompt('x'), apiError('e', f)])));
+  assert.deepEqual(kinds.map((k) => k.turnError?.kind), ['limit', 'login', 'other']);
+
+  assert.equal((await meta([prompt('x'), refused, prompt('Try it this way')])).turnError, null);
+  assert.equal((await meta([prompt('x'), apiError('e', { error: 'server_error' }), assistant([text('Done.')])])).turnError, null);
+  assert.equal((await meta([prompt('x'), assistant([text('Done.')])])).turnError, null);
+});
+
 test('the current step is the latest block, timed from the last prompt', async () => {
   const m = await meta([
     prompt('first', 0),

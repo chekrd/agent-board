@@ -12,7 +12,7 @@ import { Icon } from './Icon.tsx';
 import styles from './Queue.module.css';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
-import { STATE_LABELS } from './Status.tsx';
+import { labelOf, stoppedOnError } from './Status.tsx';
 
 function peekText(s: Session) {
   const kind = kindOf(s);
@@ -191,7 +191,7 @@ function Peek({ session, slot, repos, mark, enter }: { session: Session; slot: n
         <BranchMark session={session} branch={locate(repos, session).branch} />
         <span className={styles.peekName}>{sessionLabel(session, locate(repos, session).branch)}</span>
         <span className={styles.peekText}>{peekText(session)}</span>
-        <span className={styles.kind} data-attention={mark ?? attention}>{mark ? MARKS[mark] : STATE_LABELS[attention]}</span>
+        <span className={styles.kind} data-attention={mark ?? attention} data-error={(!mark && stoppedOnError(session, attention)) || undefined}>{mark ? MARKS[mark] : labelOf(session, attention)}</span>
       </span>
     </button>
   );

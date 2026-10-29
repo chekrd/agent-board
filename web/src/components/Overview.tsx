@@ -19,7 +19,7 @@ import { Options } from './Options.tsx';
 import { interruptedAs } from './RestartBanner.tsx';
 import styles from './Overview.module.css';
 import { SecondOpinion } from './SecondOpinion.tsx';
-import { STATE_LABELS } from './Status.tsx';
+import { STATE_LABELS, stoppedOnError } from './Status.tsx';
 import { FocusButton } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
 import { diag } from '../diag.ts'; // DIAG(paste-loss)
@@ -177,6 +177,27 @@ function Interrupted({ session, name }: { session: Session; name: string }) {
   );
 }
 
+const ERROR_ADVICE = {
+  refusal: <>The model's safeguards flagged your last message, so Claude wrote no reply. Sent again as it is, it will likely be flagged again: <strong>rephrase it</strong> below, or in its terminal press Esc twice to edit it or pick another model with /model.</>,
+  limit: <>You hit your usage limit, so Claude wrote no reply. <strong>Send your message again</strong> once the limit resets.</>,
+  login: <>Claude's login expired, so it wrote no reply. Run <strong>/login</strong> in its terminal, then send your message again.</>,
+  other: <>The request failed, so Claude wrote no reply. <strong>Send your message again</strong>.</>,
+};
+
+function TurnError({ session }: { session: Session }) {
+  const { kind, text } = session.turnError!;
+  const said = text.split(/\n\s*\n/)[0].replace(/^API Error:\s*/, '');
+  return (
+    <section className={styles.blocked} data-turn-error={kind}>
+      <div className={styles.errorText}>
+        <p><strong>Claude's turn stopped on an error.</strong> {ERROR_ADVICE[kind]}</p>
+        {said && <blockquote title={text}>{said}</blockquote>}
+      </div>
+      {(kind === 'refusal' || kind === 'login') && <FocusButton session={session} />}
+    </section>
+  );
+}
+
 export function Overview({ session, name, branch, repo }: { session: Session; name: string; branch?: string; repo?: RepoView }) {
   const { home, repos } = useStore();
   const task = folderTaskOf(repos, session);
@@ -200,6 +221,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
         <div className={styles.main}>
           <SubtaskOf session={session} />
           {session.interrupted && !archived && <Interrupted session={session} name={name} />}
+          {stoppedOnError(session, attention) && <TurnError session={session} />}
           {working && (
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />

@@ -54,6 +54,7 @@ interface Meta {
   // The background tasks of PR watchers that wait on checks already green, so nothing will come of them but a change.
   greenWatches: string[];
   turns: Turn[];
+  turnError: TurnError | null;
   model: string | null;
   effort: string | null;
 }
@@ -78,6 +79,14 @@ export interface Activity {
   background?: string[];
   // Claude's turn has ended and only the background work runs.
   between?: true;
+}
+
+// An API error that ended Claude's turn in place of a reply: the model's safeguards refused it, the usage limit was hit,
+// the login expired, or the request failed.
+export interface TurnError {
+  at: number;
+  kind: 'refusal' | 'limit' | 'login' | 'other';
+  text: string;
 }
 
 export interface Exchange {
@@ -202,6 +211,19 @@ function turns(entries: Record<string, any>[]): Turn[] {
     const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
     return text ? [{ id: e.uuid, role: 'claude', text: text.slice(0, MAX_MESSAGE) }] : [];
   });
+}
+
+const MAX_ERROR = 2000;
+
+const errorKind = (e: Record<string, any>): TurnError['kind'] =>
+  e.message?.stop_reason === 'refusal' ? 'refusal' : e.error === 'rate_limit' ? 'limit' : e.error === 'authentication_failed' ? 'login' : 'other';
+
+// Claude Code writes the error in place of the reply; the next prompt, or a reply after a retry, clears it.
+function turnError(entries: Record<string, any>[]): TurnError | null {
+  const e = entries.findLast((e) => promptText(e) || (blocks(e).length && (e.isApiErrorMessage || e.message?.model !== '<synthetic>')));
+  if (!e?.isApiErrorMessage) return null;
+  const text = blocks(e).filter((b) => b.type === 'text').map((b) => String(b.text)).join('\n').trim();
+  return { at: Date.parse(e.timestamp) || Date.now(), kind: errorKind(e), text: text.slice(0, MAX_ERROR) };
 }
 
 // Claude logs each request it sends, so the model and effort show what it runs on now, after any /model or /effort.
@@ -481,6 +503,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     links: links(tail),
     ...await prMeta(tail, cached),
     turns: turns(tail),
+    turnError: turnError(tail),
     ...settings(tail),
   };
   metaCache.delete(file);

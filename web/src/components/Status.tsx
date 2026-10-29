@@ -1,4 +1,4 @@
-import type { PrFlow, SessionStatus } from '../types.ts';
+import type { PrFlow, Session, SessionStatus } from '../types.ts';
 import type { Shown } from '../util.ts';
 import styles from './Status.module.css';
 
@@ -19,6 +19,21 @@ export const STATE_HINTS: Record<Shown, string> = {
   idle: 'Claude finished its turn and waits for your next message',
   exited: 'The Claude process has quit; Continue resumes the conversation',
 };
+
+// A turn that ended on an API error waits for you like any other, but no reply came.
+export const stoppedOnError = (s: Session, shown: Shown) => shown === 'idle' && !!s.turnError && !s.archived;
+
+export const labelOf = (s: Session, shown: Shown) => (stoppedOnError(s, shown) ? 'Stopped on an error' : STATE_LABELS[shown]);
+
+export const ERROR_LINES = {
+  refusal: "The model's safeguards flagged your last message; rephrase it",
+  limit: 'The usage limit stopped the turn; send again once it resets',
+  login: 'The login expired; run /login in its terminal',
+  other: 'The request failed; send your message again',
+} as const;
+
+export const hintOf = (s: Session, shown: Shown) =>
+  stoppedOnError(s, shown) ? "Claude's turn ended on an API error instead of a reply; the task's page says what to do" : STATE_HINTS[shown];
 
 const prLabels: Record<string, string> = {
   RUNNING: 'checks running',

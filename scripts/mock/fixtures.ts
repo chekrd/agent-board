@@ -63,7 +63,7 @@ type Given = Pick<Session, 'id' | 'repoId' | 'worktree' | 'title' | 'firstPrompt
 export const session = (fields: Given & Partial<Session>): Session => ({
   conversation: fields.id, history: [], cwd: fields.worktree, pid: null, tty: null, question: null, rank: null, rankReason: null, priority: null, diffstat: null, lastMessage: null, lastPrompt: null, lastTurn: null,
   waitingFor: null, dismissedAsk: null, advice: null, prs: [], summary: null, explanation: null, activity: null, menu: null, answered: null, findings: null, parent: null, resolution: null,
-  model: 'claude-opus-5-5', effort: 'high', interrupted: null, artifacts: [], links: [], archived: false, ...fields,
+  model: 'claude-opus-5-5', effort: 'high', interrupted: null, turnError: null, artifacts: [], links: [], archived: false, ...fields,
 });
 
 export function queue(now: number): Session[] {
