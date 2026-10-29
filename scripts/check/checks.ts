@@ -1666,6 +1666,8 @@ export const checks: Check[] = [
         return items.length && items[2]?.images ? { tab, tabs, items, cleared: document.querySelectorAll('#task-sheet section[data-conversation]').length } : null;
       };
       await mock.post('/mock/clear', { id: 's-invoice', conversation: 'c-fresh' });
+      const long = Array.from({ length: 30 }, (_, i) => `Checked the rounding of line ${i + 1}.`).join('\n\n');
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { lastMessage: long } });
       await openFromWall(page, mock, 's-invoice');
       await page.click('#task-sheet [role="tab"]', 'Conversation');
       const shown = await page.until('the conversation with its picture', log);
@@ -1678,8 +1680,14 @@ export const checks: Check[] = [
         ['Go on, and tell me when it is done.', 0, ['Where the cent goes missing']],
       ]);
       assert.match(shown.items[0].reply, /^The cent goes missing in LineItem\.total\(\)/);
-      assert.deepEqual(shown.items.slice(2).map((i) => i.reply), Array(2).fill('No reply from Claude: still working, or stopped.'));
+      assert.equal(shown.items[2].reply, 'No reply from Claude: still working, or stopped.');
+      assert.match(shown.items[3].reply, /^Checked the rounding of line 1\.[^]*line 30\.$/);
       assert.equal(await page.eval(() => location.pathname), '/s/s-invoice/conversation');
+      const lastPrompt = () => {
+        const prompt = [...document.querySelectorAll('#task-sheet [data-prompt]')].at(-1)!.getBoundingClientRect().top;
+        return Math.round(prompt - document.querySelector('#task-sheet [role="tabpanel"]')!.getBoundingClientRect().top);
+      };
+      assert.equal(await page.eval(lastPrompt), 18, 'opens on the last prompt');
       await shot('conversation');
 
       const height = () => document.querySelector<HTMLImageElement>('#task-sheet [data-prompt] img')!.getBoundingClientRect().height;

@@ -6,12 +6,13 @@ import { ago, clock } from '../util.ts';
 import styles from './Conversation.module.css';
 import { Markdown } from './Markdown.tsx';
 
-// Read only while open: the whole transcript can run to many megabytes. A new reply or a /clear reads it again.
+// Read only while open: the whole transcript can run to many megabytes. A new reply or a /clear reads it again. It opens
+// on your last prompt, so its reply reads with the question in view.
 export function Conversation({ session }: { session: Session }) {
   const [log, setLog] = useState<ConversationLog[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const read = useRef(false);
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export function Conversation({ session }: { session: Session }) {
   useLayoutEffect(() => {
     if (!log || read.current) return;
     read.current = true;
-    end.current?.scrollIntoView({ block: 'end' });
+    [...box.current?.querySelectorAll('[data-prompt]') ?? []].at(-1)?.scrollIntoView({ block: 'start' });
   }, [log]);
 
   if (!log) return <div className={styles.scroll}><p className={styles.note}>{error ?? 'Reading the conversation…'}</p></div>;
@@ -36,7 +37,7 @@ export function Conversation({ session }: { session: Session }) {
   const artifacts = new Map(session.artifacts.map((a) => [a.id, a]));
   return (
     <div className={styles.scroll}>
-      <div className={styles.log}>
+      <div ref={box} className={styles.log}>
         {error && <p className={styles.note}>{error}</p>}
         {empty && <p className={styles.note}>No prompts yet.</p>}
         {log.map((c, i) => (
@@ -80,7 +81,6 @@ export function Conversation({ session }: { session: Session }) {
             ))}
           </section>
         ))}
-        <div ref={end} />
       </div>
     </div>
   );
