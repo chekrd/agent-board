@@ -67,6 +67,8 @@ async function rerank() {
       repo: repoView(s.repoId)?.name,
       worktree: s.worktree,
       task: clip(s.firstPrompt, 600),
+      taskSummary: clip(s.summary?.text ?? null, 1200) || null,
+      developerPriority: s.priority,
       title: d.title,
       category: d.category,
       details: clip(d.details, 2500),
@@ -82,6 +84,10 @@ ${rubric}
 
 Open decisions (JSON); category "menu in the terminal" lists its questions and options in details, "end of turn" was read by a model from the agent's last message:
 ${JSON.stringify(items, null, 2)}
+
+taskSummary is where the whole session stands, or null before one is written.
+
+developerPriority is the priority the developer set on the task by hand: "high", "low", or null when they set none. It is their own judgement and weighs heavily: a high task usually comes before the others at its level and may rise above a higher level, a low one usually sits after them. It is not absolute: weigh it with the decision itself, the task's summary and the other open decisions, so a low task whose blocker holds up a lot of work, or a high one with nothing urgent to decide, can still move. When it changed where a decision sits, say so in the reason.
 
 secondOpinionConfidence is how sure an independent model is that it knows the developer's answer (0-100), or null when it has not answered yet.
 

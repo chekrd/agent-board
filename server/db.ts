@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links', 'priority']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
 
@@ -199,6 +199,8 @@ export interface EarlierConversation {
 }
 
 // A task keeps its id for good; `conversation` is the Claude Code conversation it runs now, which /clear replaces.
+export type Priority = 'high' | 'low';
+
 export interface Session {
   id: string;
   conversation: string;
@@ -214,6 +216,8 @@ export interface Session {
   question: Question | null;
   rank: number | null;
   rankReason: string | null;
+  // The developer's own priority for the task, which the ranking weighs with everything else.
+  priority: Priority | null;
   diffstat: DiffStat | null;
   lastMessage: string | null;
   lastTurn: string | null;
@@ -266,6 +270,7 @@ const toSession = (r: Row): Session => ({
   question: r.question ? JSON.parse(r.question) : null,
   rank: r.rank,
   rankReason: r.rank_reason,
+  priority: r.priority === 'high' || r.priority === 'low' ? r.priority : null,
   diffstat: r.diffstat ? JSON.parse(r.diffstat) : null,
   lastMessage: r.last_message,
   lastTurn: r.last_turn,
@@ -326,6 +331,7 @@ const columns: Record<string, string> = {
   question: 'question',
   rank: 'rank',
   rankReason: 'rank_reason',
+  priority: 'priority',
   diffstat: 'diffstat',
   lastMessage: 'last_message',
   lastTurn: 'last_turn',
@@ -369,7 +375,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'priority' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

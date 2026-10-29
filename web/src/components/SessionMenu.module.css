@@ -41,6 +41,31 @@
     &:hover { background: var(--hover); }
   }
 
+  .priority {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+
+  .levels {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    & button {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: none;
+      font-size: 13px;
+      color: var(--text-2);
+      &:hover { background: var(--hover); color: var(--text); }
+      &[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent-line); color: var(--text); }
+    }
+  }
+
   .label { font-weight: 650; color: var(--text); [data-danger] > & { color: var(--danger); } }
 
   .note { max-width: 100%; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.4; color: var(--muted); }

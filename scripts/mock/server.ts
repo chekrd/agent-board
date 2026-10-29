@@ -355,6 +355,7 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
     state.sessions = state.sessions.filter((o) => o !== s);
     push();
   },
+  priority: (s, body) => update(s.id, { priority: body.priority ?? null }),
   archive: (s, body) => update(s.id, { archived: body.archived ?? true, ...(!(body.archived ?? true) && s.resolution && { resolution: null }) }),
   resolve: (s, body) => {
     if (!s.parent) throw new Error('only a subtask is marked solved or dropped');
@@ -426,7 +427,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
   const working = !!o.prompt;
   state.sessions.push({
     id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
-    firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
+    firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, priority: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
     model: o.model || null, effort: o.effort || null, archived: false, createdAt: now, updatedAt: now,

@@ -345,6 +345,14 @@ export function archive(id: string, archived: boolean) {
   notify();
 }
 
+export function setPriority(id: string, priority: unknown) {
+  must(id);
+  if (priority !== null && priority !== 'high' && priority !== 'low') throw new Error(`unknown priority ${String(priority)}`);
+  sessions.update(id, { priority });
+  notify();
+  scheduleRerank();
+}
+
 // Solved and Dropped also archive the subtask, so it leaves the queue; Reopen brings it back.
 export function resolve(id: string, state: unknown) {
   const s = must(id);

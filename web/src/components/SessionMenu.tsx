@@ -4,7 +4,7 @@ import { queue } from '../queue.ts';
 import { closeSheetOf, moveSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
 import { patchSession, unpatch, useStore } from '../store.ts';
-import type { Resolution, Session, WorktreeView } from '../types.ts';
+import type { Priority, Resolution, Session, WorktreeView } from '../types.ts';
 import { tilde } from '../util.ts';
 import { askDeleteWorktree } from './DeleteWorktreeDialog.tsx';
 import { Icon } from './Icon.tsx';
@@ -93,6 +93,7 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
             onClick={pick(() => quit(session))}
           />
         )}
+        <PriorityPicker session={session} />
         {session.parent ? (session.resolution ? (
           <Item label="Reopen" note={`Marked ${session.resolution.state}; back into the queue and its task's open count`} onClick={pick(() => resolveSubtask(session, null, name))} />
         ) : (
@@ -126,6 +127,27 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
         )}
       </div>
     </>
+  );
+}
+
+const PRIORITIES = [[null, 'Auto'], ['high', 'High'], ['low', 'Low']] as const;
+
+// Not a filter: a low task still comes up in the queue, the ranking just weighs it with everything else.
+function PriorityPicker({ session }: { session: Session }) {
+  const set = (priority: Priority | null) => {
+    patchSession(session.id, { priority });
+    sessionAction(session.id, 'priority', { priority }).catch(failed(session.id));
+  };
+  return (
+    <div className={styles.priority} role="group" aria-label="Priority" data-priority>
+      <span className={styles.label}>Priority</span>
+      <span className={styles.note}>Yours for this task; the ranking weighs it with the session and the other decisions</span>
+      <span className={styles.levels}>
+        {PRIORITIES.map(([value, label]) => (
+          <button key={label} type="button" aria-pressed={session.priority === value} onClick={() => set(value)}>{label}</button>
+        ))}
+      </span>
+    </div>
   );
 }
 

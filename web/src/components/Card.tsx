@@ -238,13 +238,14 @@ export function Card({ session, repos, deck, enter }: CardProps) {
   const rankReason = session.rankReason && (
     <em className={styles.reason} title="Why it sits here in the queue; a model ranks the open decisions">{session.rankReason}</em>
   );
+  const mine = session.priority && metaChip(`${session.priority === 'high' ? 'High' : 'Low'} priority`, 'Your priority for this task, from More actions; the ranking weighs it with everything else');
   let meta: ReactNode;
   if (kind === 'ask') {
-    meta = <><Age at={session.question?.askedAt ?? session.updatedAt} prefix="asked " />{metaChip(session.question?.category ?? '', 'The kind of question, as Claude classified it')}{rankReason}</>;
+    meta = <><Age at={session.question?.askedAt ?? session.updatedAt} prefix="asked " />{metaChip(session.question?.category ?? '', 'The kind of question, as Claude classified it')}{mine}{rankReason}</>;
   } else if (kind === 'turn') {
-    meta = <><Age at={session.summary?.at ?? session.updatedAt} prefix="asked " />{metaChip("from Claude's last message", "Claude ended its turn with a choice for you; a model read it from its last message")}{rankReason}</>;
+    meta = <><Age at={session.summary?.at ?? session.updatedAt} prefix="asked " />{metaChip("from Claude's last message", "Claude ended its turn with a choice for you; a model read it from its last message")}{mine}{rankReason}</>;
   } else if (menu) {
-    meta = <><Age at={menu.at} prefix="asked " />{metaChip('asked in the terminal', 'Claude opened a choice menu in its terminal; answering here picks the options there for you')}{rankReason}</>;
+    meta = <><Age at={menu.at} prefix="asked " />{metaChip('asked in the terminal', 'Claude opened a choice menu in its terminal; answering here picks the options there for you')}{mine}{rankReason}</>;
   } else if (kind === 'prompt') {
     meta = <><Age at={session.updatedAt} />{session.tty && <code className={styles.tty} title="The terminal device Claude runs on">{session.tty}</code>}</>;
   } else meta = <Age at={session.summary?.at ?? session.updatedAt} prefix="finished " />;
