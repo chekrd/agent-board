@@ -141,11 +141,12 @@ export interface Artifact {
 }
 
 // A web link Claude gave in a message: its Markdown text if it had one, the line it stood on, and a few words on what
-// it is, written later by a small model ('' when it had none to give).
+// it is, written later by a small model ('' when it had none to give). The whole message is kept only until then.
 export interface Link {
   url: string;
   text: string | null;
   context: string;
+  message?: string;
   about: string | null;
   at: number;
 }

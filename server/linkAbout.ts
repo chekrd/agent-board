@@ -16,9 +16,12 @@ const schema = {
   required: ['links'],
 };
 
-const prompt = (links: Link[]) => `A coding agent gave a developer these links in its messages. For each, write what it is in 3 to 8 plain words, from the URL and the line it appeared on, so the developer can tell the links apart in a list. Name the kind and the subject, e.g. "PR #4512: guard the double load", "GitHub issue on the hydration warning", "React docs on Suspense". No ending period.
+const prompt = (links: Link[]) => {
+  const byMessage = Map.groupBy(links, (l) => l.message ?? l.context);
+  return `A coding agent gave a developer these links in its messages. For each, write what it is in 3 to 8 plain words, from the URL and the message it appeared in, so the developer can tell the links apart in a list. Name the kind and the subject, e.g. "PR #4512: guard the double load", "GitHub issue on the hydration warning", "React docs on Suspense". No ending period.
 
-${links.map((l) => `URL: ${l.url}${l.text ? `\nLink text: ${l.text}` : ''}\nLine: ${l.context}`).join('\n\n')}`;
+${[...byMessage].map(([message, ls]) => `<message>\n${message}\n</message>\n${ls.map((l) => `URL: ${l.url}${l.text ? `\nLink text: ${l.text}` : ''}`).join('\n')}`).join('\n\n')}`;
+};
 
 let running = false;
 const failed = new Map<string, number>();
@@ -44,7 +47,7 @@ export async function describeLinks() {
     if (!current) return;
     // A link the model skipped gets an empty description, so it is not asked about again.
     const done = new Set(batch.map((l) => l.url));
-    sessions.update(s.id, { links: current.links.map((l) => (done.has(l.url) && l.about === null ? { ...l, about: about.get(l.url) ?? '' } : l)) });
+    sessions.update(s.id, { links: current.links.map((l) => (done.has(l.url) && l.about === null ? { ...l, message: undefined, about: about.get(l.url) ?? '' } : l)) });
     failed.delete(s.id);
     notify();
   } catch (err) {

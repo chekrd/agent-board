@@ -16,7 +16,7 @@ test('links in a message: a Markdown link keeps its text, a bare one loses the p
     ['https://example.com/path', null],
   ]);
   const [pr] = linksIn(message, 5);
-  assert.deepEqual([pr.context, pr.at], ['Opened [PR #42](https://github.com/o/r/pull/42) for the fix.', 5]);
+  assert.deepEqual([pr.context, pr.message, pr.at], ['Opened [PR #42](https://github.com/o/r/pull/42) for the fix.', message, 5]);
 });
 
 test('merging keeps the links seen before as they are and adds only new ones, undescribed', () => {

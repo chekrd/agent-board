@@ -1,6 +1,7 @@
 import type { Link } from './db.ts';
 
 const MAX_CONTEXT = 300;
+const MAX_MESSAGE = 20_000;
 
 export type Found = Omit<Link, 'about'>;
 
@@ -15,15 +16,16 @@ const lineAround = (text: string, at: number) => {
   return text.slice(start, end < 0 ? undefined : end).trim().slice(0, MAX_CONTEXT);
 };
 
-// Every web link in one of Claude's messages, with a Markdown link's text and the line it stands on.
+// Every web link in one of Claude's messages, with a Markdown link's text, the line it stands on and the message.
 export function linksIn(text: string, at: number): Found[] {
+  const message = text.trim().slice(0, MAX_MESSAGE);
   const found = new Map<string, Found>();
   for (const m of text.matchAll(MARKDOWN)) {
-    if (!found.has(m[2])) found.set(m[2], { url: m[2], text: m[1].trim(), context: lineAround(text, m.index), at });
+    if (!found.has(m[2])) found.set(m[2], { url: m[2], text: m[1].trim(), context: lineAround(text, m.index), message, at });
   }
   for (const m of text.matchAll(BARE)) {
     const url = m[0].replace(TRAILING, '');
-    if (!found.has(url) && URL.canParse(url)) found.set(url, { url, text: null, context: lineAround(text, m.index), at });
+    if (!found.has(url) && URL.canParse(url)) found.set(url, { url, text: null, context: lineAround(text, m.index), message, at });
   }
   return [...found.values()];
 }
