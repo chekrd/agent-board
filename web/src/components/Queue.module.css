@@ -68,7 +68,7 @@
     &:hover:not(:disabled) { border-color: var(--muted); color: var(--text); }
   }
 
-  .deck { position: relative; flex: 1; max-width: 1120px; min-width: 0; display: flex; flex-direction: column; }
+  .deck { position: relative; flex: 1; max-width: 1280px; min-width: 0; display: flex; flex-direction: column; }
 
   .sliver { position: absolute; z-index: 0; inset: -57px 74px 57px; border: 1px solid var(--line); border-radius: 20px; background: var(--deck-3); }
 

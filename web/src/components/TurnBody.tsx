@@ -3,7 +3,7 @@ import card from './Card.module.css';
 import { Composer } from './Composer.tsx';
 import type { ComposerHooks } from './DecisionBody.tsx';
 import { Findings } from './Findings.tsx';
-import { Column, Headline, LatestReply, Progress } from './Parts.tsx';
+import { Column, Headline, LatestReply } from './Parts.tsx';
 import { PrChip } from './Status.tsx';
 import styles from './TurnBody.module.css';
 
@@ -18,7 +18,6 @@ export function TurnBody({ session, composer }: { session: Session; composer: Co
       <Column side="left">
         <Headline text={session.summary?.text || 'Claude finished its turn'} />
         {listed ? <Findings session={session} compact /> : <LatestReply text={session.lastMessage} />}
-        <Progress items={session.summary?.progress ?? []} quiet />
       </Column>
       <Column side="right">
         {pr && (

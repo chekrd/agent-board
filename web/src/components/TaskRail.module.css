@@ -1,0 +1,23 @@
+@layer components {
+  .rail {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 4px 0 4px 22px;
+    border-left: 1px solid var(--line);
+    section { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+    p { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--text-2); text-wrap: pretty; }
+    ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+  }
+
+  .goal {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    overflow: hidden;
+    &[data-full] { display: block; }
+  }
+
+  .age { font-weight: 500; letter-spacing: 0; text-transform: none; }
+}

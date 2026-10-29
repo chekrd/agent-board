@@ -2274,7 +2274,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.3 the whole card fits the window and the page does not scroll: the headline, the brief, the details, all three options with their descriptions, the suggestion and Worth knowing under them show; in a narrower window each starts in view, in the card\'s scroll area that scrolls to the rest',
+    name: 'P5.1.3 the decision fits the window and the page does not scroll: the headline, the brief, the details, all three options with their descriptions, the suggestion, and the task\'s rail with its goal and Session summary show; in a narrower window each starts in view, in the card\'s scroll area; Worth knowing and Claude\'s latest reply follow in that one scroll area',
     async run({ page, mock, look, shot }) {
       await openQueue(page, mock);
       await page.until('the card to settle', still);
@@ -2282,7 +2282,9 @@ export const checks: Check[] = [
       assert.equal(fit.scroll, fit.height, 'the page scrolls');
       const parts = [
         '[data-card]', '[data-card] h1', '[data-card] h1 + p', '[data-card] section[aria-label="Claude\'s details"]',
-        '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-know]', '[data-card] [data-primary]',
+        '[data-card] [data-option="1"]', '[data-card] [data-option="2"]', '[data-card] [data-option="3"]', '[data-card] [data-suggestion]', '[data-card] [data-primary]',
+        // A narrower card puts the rail under the decision.
+        ...(look.width >= 1440 ? ['[data-card] [data-rail]'] : []),
       ];
       // In a narrower window the columns are narrower and their text longer, so the card scrolls to what does not fit (I§3).
       for (const selector of parts) {
@@ -2296,9 +2298,17 @@ export const checks: Check[] = [
       for (const part of [
         'Guest carts live in a cookie that expires after 24 h', 'What should happen to a guest cart when the shopper logs in?', 'Both carts can hold items; today the guest cart is silently dropped.',
         "CLAUDE'S DETAILS", 'Add up quantities per product, capped at stock; a toast lists anything trimmed', 'Drop the guest cart as today, but tell the shopper',
-        'A choice dialog after login; one more step before checkout',
+        'A choice dialog after login; one more step before checkout', "CLAUDE'S LATEST REPLY", 'I drafted mergeCarts() in src/cart/mergeCarts.ts',
       ]) assert.ok(text.includes(part), `the card lacks ${part}`);
+      const rail = await page.eval(() => document.querySelector<HTMLElement>('[data-card] [data-rail]')!.innerText);
+      for (const part of ['TASK', 'Shoppers lose their guest cart when they log in (CHK-412).', 'SESSION SUMMARY', 'Cart merge drafted with stock caps', 'Found CartService.mergeOnLogin is a no-op']) {
+        assert.ok(rail.includes(part), `the rail lacks ${part}:\n${rail}`);
+      }
       await shot('queue-fit');
+      for (const selector of ['[data-card] [data-know]', '[data-card] [data-reply]', '[data-card] [data-rail]']) {
+        await page.eval((sel: string) => document.querySelector(sel)!.scrollIntoView({ block: 'nearest' }), selector);
+        await page.until(`${selector} to show whole`, whole, selector);
+      }
     },
   },
   {
@@ -2582,7 +2592,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.18 long details and eight options, and a menu of three questions: the card scrolls as one between its head and footer, nothing inside it scrolls on its own, and the footer stays in view',
+    name: 'P5.1.18 long details and eight options, and a menu of three questions: the card scrolls as one between its head and footer to Claude\'s latest reply at its end, nothing inside it scrolls on its own, and the footer stays in view',
     scenario: 'long',
     async run({ page, mock, shot }) {
       const scrolls = () => {
@@ -2601,6 +2611,12 @@ export const checks: Check[] = [
         const scroll = document.querySelector<HTMLElement>('[data-card] [data-scroll]')!;
         scroll.scrollTop = scroll.scrollHeight;
       };
+      const reveal = (selector: string) => document.querySelector(selector)!.scrollIntoView({ block: 'end' });
+      const replyAtEnd = () => {
+        const end = document.querySelector('[data-card] [data-reply]')!.getBoundingClientRect().bottom;
+        const scroll = document.querySelector('[data-card] [data-scroll]')!.getBoundingClientRect();
+        return end > scroll.top && end <= scroll.bottom;
+      };
       await openQueue(page, mock);
       await page.until('the card to settle', still);
       assert.deepEqual(await page.eval(scrolls), { scrolls: true, inner: [], page: true });
@@ -2610,22 +2626,26 @@ export const checks: Check[] = [
       }
       await shot('queue-long');
       await page.eval(toEnd);
-      for (const selector of ['[data-card] [data-option="8"]', '[data-card] [data-primary]']) {
-        assert.equal(await page.eval(whole, selector), true, `${selector} is out of view at the end of the card`);
-      }
+      assert.equal(await page.eval(replyAtEnd), true, "Claude's latest reply is not at the end of the card");
+      assert.equal(await page.eval(whole, '[data-card] [data-primary]'), true, 'the primary is out of view at the end of the card');
+      await page.eval(reveal, '[data-card] [data-option="8"]');
+      assert.equal(await page.eval(whole, '[data-card] [data-option="8"]'), true, 'option 8 does not scroll into view');
+      await page.eval(reveal, '[data-card] [data-side="left"]');
       assert.equal(await page.eval(() => {
         const end = document.querySelector('[data-card] [data-side="left"]')!.getBoundingClientRect().bottom;
         const scroll = document.querySelector('[data-card] [data-scroll]')!.getBoundingClientRect();
         return end > scroll.top && end <= scroll.bottom;
-      }), true, 'the end of the details is out of view at the end of the card');
+      }), true, 'the end of the details does not scroll into view');
 
       await page.click('[data-peek][data-session="s-hooks"] > span');
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       await page.until('the card to settle', still);
       assert.deepEqual(await page.eval(scrolls), { scrolls: true, inner: [], page: true });
       await page.eval(toEnd);
+      assert.equal(await page.eval(replyAtEnd), true, "Claude's latest reply is not at the end of the menu's card");
       for (const selector of ['[data-card] [data-option="9"]', '[data-card] section[role="group"]:last-of-type input', '[data-card] [data-primary]']) {
-        assert.equal(await page.eval(whole, selector), true, `${selector} is out of view at the end of the card`);
+        await page.eval(reveal, selector);
+        assert.equal(await page.eval(whole, selector), true, `${selector} does not scroll into view`);
       }
       await shot('queue-long-menu');
     },

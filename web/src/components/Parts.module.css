@@ -87,16 +87,6 @@
     &[data-side="right"] { gap: 10px; }
   }
 
-  .progress {
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.5; color: var(--text-2); }
-    &[data-quiet] { gap: 6px; }
-    &[data-quiet] ul { gap: 3px; font-size: 14px; color: var(--muted); }
-  }
-
   .reply { flex: none; display: flex; flex-direction: column; gap: 8px; }
 
   .body { font-size: 15.5px; line-height: 1.6; color: var(--text-2); }

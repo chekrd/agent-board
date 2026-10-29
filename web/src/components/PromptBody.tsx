@@ -1,7 +1,7 @@
 import { promptOf } from '../deck.ts';
 import type { Session } from '../types.ts';
 import card from './Card.module.css';
-import { Column, Headline, LatestReply, Progress } from './Parts.tsx';
+import { Column, Headline, LatestReply } from './Parts.tsx';
 import styles from './PromptBody.module.css';
 
 // Needs focus: Claude shows a prompt in its terminal that only the terminal can answer.
@@ -11,8 +11,6 @@ export function PromptBody({ session }: { session: Session }) {
     <div className={card.cols}>
       <Column side="left">
         <Headline text={headline} />
-        {session.summary?.text && <p className={card.lead}>{session.summary.text}</p>}
-        <Progress items={session.summary?.progress ?? []} />
         <LatestReply text={session.lastMessage} />
       </Column>
       <Column side="right">

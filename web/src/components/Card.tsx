@@ -13,6 +13,7 @@ import styles from './Card.module.css';
 import { editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { DecisionBody } from './DecisionBody.tsx';
 import { Icon } from './Icon.tsx';
+import { LatestReply } from './LatestReply.tsx';
 import { MenuBody } from './MenuBody.tsx';
 import { Age, BranchMark } from './Parts.tsx';
 import { ParentCrumb } from './Findings.tsx';
@@ -20,6 +21,7 @@ import { PromptBody } from './PromptBody.tsx';
 import { archive, openTerminal, SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
 import { STATE_LABELS } from './Status.tsx';
+import { TaskRail } from './TaskRail.tsx';
 import { TurnBody } from './TurnBody.tsx';
 import { elaborate, explanationFor } from './WhyPanel.tsx';
 
@@ -291,47 +293,54 @@ export function Card({ session, repos, deck, enter }: CardProps) {
         </div>
       </header>
       <div ref={scroll} className={styles.scroll} data-scroll>
-        {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
-        {menu && session.summary?.text && <p className={styles.brief}>{session.summary.text}</p>}
-        {decision && (
-          <DecisionBody
-            session={session}
-            decision={decision}
-            kind={kind as 'ask' | 'turn'}
-            advice={advice}
-            frozen={frozen}
-            accepting={primary.press !== null && !('intent' in primary.press) && primary.press.action === 'accept-advice'}
-            hidden={hidden}
-            onDetails={() => setHidden(!hidden)}
-            whyOpen={whyOpen}
-            whyRef={why}
-            onCloseWhy={() => setWhyOpen(false)}
-            onPick={pick}
-            onAccept={accept}
-            onEdit={edit}
-            composer={open ? composer : null}
-          />
-        )}
-        {menu && (
-          <MenuBody
-            session={session}
-            menu={menu}
-            picks={picks}
-            advice={advice}
-            onPick={pickInMenu}
-            onOther={(question, other) => setPicks(picks.map((p, i) => (i === question ? { labels: other ? [] : p.labels, other } : p)))}
-            onPicks={setPicks}
-            onSubmit={pressPrimary}
-          />
-        )}
-        {kind === 'prompt' && <PromptBody session={session} />}
-        {kind === 'idle' && <TurnBody session={session} composer={composer} />}
-        {learnings.length > 0 && (
-          <div className={styles.know} data-know>
-            <span className={styles.knowLabel}>Worth knowing</span>
-            {learnings.map((k) => <span key={k}>{k}</span>)}
+        <div className={styles.layout}>
+          <div className={styles.main}>
+            {notSent?.shown && <p className={styles.notSent} data-not-sent role="alert">Not sent: {notSent.message}</p>}
+            {decision && (
+              <DecisionBody
+                session={session}
+                decision={decision}
+                kind={kind as 'ask' | 'turn'}
+                advice={advice}
+                frozen={frozen}
+                accepting={primary.press !== null && !('intent' in primary.press) && primary.press.action === 'accept-advice'}
+                hidden={hidden}
+                onDetails={() => setHidden(!hidden)}
+                whyOpen={whyOpen}
+                whyRef={why}
+                onCloseWhy={() => setWhyOpen(false)}
+                onPick={pick}
+                onAccept={accept}
+                onEdit={edit}
+                composer={open ? composer : null}
+              />
+            )}
+            {menu && (
+              <MenuBody
+                session={session}
+                menu={menu}
+                picks={picks}
+                advice={advice}
+                onPick={pickInMenu}
+                onOther={(question, other) => setPicks(picks.map((p, i) => (i === question ? { labels: other ? [] : p.labels, other } : p)))}
+                onPicks={setPicks}
+                onSubmit={pressPrimary}
+              />
+            )}
+            {kind === 'prompt' && <PromptBody session={session} />}
+            {kind === 'idle' && <TurnBody session={session} composer={composer} />}
+            {learnings.length > 0 && (
+              <div className={styles.know} data-know>
+                <span className={styles.knowLabel}>Worth knowing</span>
+                {learnings.map((k) => <span key={k}>{k}</span>)}
+              </div>
+            )}
+            {(kind === 'ask' || menu) && session.lastMessage && (
+              <div className={styles.reply} data-reply><LatestReply key={session.lastMessage} text={session.lastMessage} /></div>
+            )}
           </div>
-        )}
+          <TaskRail session={session} summaryText={kind !== 'idle'} />
+        </div>
       </div>
       <footer className={styles.foot}>
         <button

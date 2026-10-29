@@ -27,16 +27,6 @@ export function Column({ side, children }: { side: 'left' | 'right'; children: R
   return <div className={parts.column} data-side={side}>{children}</div>;
 }
 
-export function Progress({ items, quiet = false }: { items: readonly string[]; quiet?: boolean }) {
-  if (!items.length) return null;
-  return (
-    <section className={parts.progress} data-quiet={quiet || undefined}>
-      <h3 className={parts.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">Session summary</h3>
-      <ul>{items.map((p) => <li key={p}>{p}</li>)}</ul>
-    </section>
-  );
-}
-
 export function LatestReply({ text }: { text: string | null }) {
   if (!text) return null;
   return (
