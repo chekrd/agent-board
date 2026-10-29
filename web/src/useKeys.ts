@@ -2,12 +2,13 @@ import { useEffect, useEffectEvent } from 'react';
 import { stepFile } from './components/DiffView.tsx';
 import { toggleKeys } from './components/KeysDialog.tsx';
 import { openNewTask } from './components/NewTaskForm.tsx';
-import { keyAction, KEYS_DIALOG, LOCK_MS, SHEET_DIALOG, typingLock, type Action, type Card, type KeyContext, type Target } from './keys.ts';
+import { keyAction, KEYS_DIALOG, LOCK_MS, rowFor, SHEET_DIALOG, typingLock, type Action, type Card, type KeyContext, type Key, type Target } from './keys.ts';
 import { openPopovers } from './layers.ts';
 import { queue } from './queue.ts';
 import { closeSheet, go, showTab, viewPath, type Route } from './router.ts';
 import { holding, undo } from './sends.ts';
 import { diag } from './diag.ts'; // DIAG(paste-loss)
+import { track } from './ux.ts';
 
 // The reply box's paperclip counts as part of its field: focus on it is still writing a reply.
 const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"])';
@@ -26,6 +27,34 @@ function target(el: EventTarget | null): Target {
   };
 }
 
+const actionName = (a: Action) => [a.type, 'tab' in a ? a.tab : 'to' in a ? a.to : 'what' in a ? a.what : null].filter(Boolean).join(':');
+
+const scopeOf = (ctx: KeyContext) => (ctx.sheet ? `task/${ctx.sheet.tab}` : ctx.view);
+
+// Misses in a row less than a second apart count into the first, so typing that lands on the page reads as one
+// burst, not as the text.
+let lastMiss: { at: number; data: { more: number } } | null = null;
+
+// What a key press meant to the board: the action, a board key that did nothing here, or a key it has no use for,
+// which shows what someone expected a key to do.
+function trackKey(ctx: KeyContext, e: Key & { repeat: boolean }, action: Action | null) {
+  if (e.repeat) return;
+  const card = ctx.card?.kind ?? null;
+  const row = rowFor(ctx, e);
+  if (action) return void track('key', { action: actionName(action), keys: row?.keys, screen: scopeOf(ctx), card });
+  if (row) return void track('key-noop', { keys: row.keys, screen: scopeOf(ctx), card, guarded: !!row.guarded && ctx.guarded });
+  if (e.key.length !== 1 || e.key === ' ' || ctx.target.editable || ctx.modal || ctx.popovers.includes('auto')) return;
+  const now = Date.now();
+  if (lastMiss && now - lastMiss.at < 1000) {
+    lastMiss.at = now;
+    lastMiss.data.more++;
+    return;
+  }
+  const data = { key: e.key.toLowerCase(), screen: scopeOf(ctx), card, more: 0 };
+  track('key-miss', data);
+  lastMiss = { at: now, data };
+}
+
 function dom(e: KeyboardEvent): Pick<KeyContext, 'target' | 'modal' | 'popovers'> {
   const modal = document.querySelector(`dialog:modal:not(#${SHEET_DIALOG})`);
   return {
@@ -40,7 +69,9 @@ function dom(e: KeyboardEvent): Pick<KeyContext, 'target' | 'modal' | 'popovers'
 // that follow until the typing stops.
 export function useKeys(context: () => Omit<KeyContext, 'target' | 'modal' | 'popovers'>, dispatch: (action: Action, e: KeyboardEvent) => void) {
   const press = useEffectEvent((e: KeyboardEvent) => {
-    const action = keyAction({ ...context(), ...dom(e) }, e);
+    const ctx = { ...context(), ...dom(e) };
+    const action = keyAction(ctx, e);
+    trackKey(ctx, e, action);
     if (!action) return;
     e.preventDefault();
     dispatch(action, e);

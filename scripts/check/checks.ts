@@ -5717,4 +5717,25 @@ export const checks: Check[] = [
       assert.ok(!state.repos.some((r: { worktrees: { path: string }[] }) => r.worktrees.some((w) => w.path.startsWith('~/code/worktrees/cart-api/'))), 'the worktrees went');
     },
   },
+  {
+    name: 'UX the usage recorder posts the screens, a board key, a key the board has no use for and a click, but not what the option said',
+    async run({ page, mock }) {
+      await openQueue(page, mock);
+      await page.key('ArrowRight');
+      await page.key('q');
+      const label = await page.eval(() => document.querySelector('[data-card] [data-option]')!.textContent!.trim());
+      await page.click('[data-card] [data-option]');
+      await page.goto(`${mock.url}/wall`);
+      const events = await until('the recorded events', async () => {
+        const all: { name: string; data?: Record<string, any> }[] = await mock.get('/mock/ux');
+        return all.some((e) => e.name === 'screen') ? all : null;
+      });
+      assert.ok(events.some((e) => e.name === 'load'), 'the page load');
+      assert.ok(events.some((e) => e.name === 'screen' && e.data?.screen === 'queue' && e.data.ms > 0), 'time on the queue');
+      assert.ok(events.some((e) => e.name === 'key' && e.data?.action === 'skip' && e.data.keys === '→'), 'the skip key');
+      assert.ok(events.some((e) => e.name === 'key-miss' && e.data?.key === 'q'), 'the unused key');
+      assert.ok(events.some((e) => e.name === 'click' && e.data?.control === 'option' && e.data.area === 'queue/menu'), 'the option clicked');
+      assert.ok(label && !JSON.stringify(events).includes(label), `the option's text "${label}" is not recorded`);
+    },
+  },
 ];

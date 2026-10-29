@@ -30,6 +30,7 @@ A local dashboard for running many Claude Code sessions in git worktrees. macOS 
   usage="$HOME/Library/Application Support/pitwall/usage.json"
   jq -ec '{at: (now * 1000 | floor), rate_limits} | select(.rate_limits)' <<<"$input" > "$usage.$$" 2>/dev/null && mv -f "$usage.$$" "$usage" || rm -f "$usage.$$"
   ```
+- **Usage log**: to tell what to improve, the board records how it is used: time on each screen, the board keys pressed (and keys pressed that did nothing or that the board has no use for), the controls clicked, sends and their Undo, the requests the page made and the errors it showed. It never records what is typed, what a task or option says, or anything from the conversations. It stays on this Mac in `state.db` (table `ux_events`, kept 180 days). `pnpm ux` reports the last 30 days (`--days 7`; `--json` gives the raw events, e.g. for Claude to look for patterns).
 
 ## Run
 

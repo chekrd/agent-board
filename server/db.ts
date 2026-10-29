@@ -405,3 +405,28 @@ export const sessions = {
   remove: (id: string) => db.prepare('DELETE FROM sessions WHERE id = ?').run(id),
   removeByWorktree: (worktree: string) => db.prepare('DELETE FROM sessions WHERE worktree = ?').run(worktree),
 };
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ux_events (
+    at INTEGER NOT NULL,
+    page TEXT NOT NULL,
+    name TEXT NOT NULL,
+    data TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ux_events_at ON ux_events(at);
+`);
+
+export const uxEvents = {
+  add: (page: string, events: { at: number; name: string; data: string | null }[]) => {
+    const insert = db.prepare('INSERT INTO ux_events (at, page, name, data) VALUES (?, ?, ?, ?)');
+    db.exec('BEGIN');
+    try {
+      for (const e of events) insert.run(e.at, page, e.name, e.data);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+  prune: (before: number) => db.prepare('DELETE FROM ux_events WHERE at < ?').run(before),
+};

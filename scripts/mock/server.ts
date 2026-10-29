@@ -98,6 +98,8 @@ const timers = new Set<NodeJS.Timeout>();
 const pauses = new Set<() => void>();
 const uploads = new Set<string>();
 const log: Entry[] = [];
+// What the page's usage recorder posted, its batches' events in order.
+const uxEvents: { name: string; data?: Record<string, unknown> }[] = [];
 let failNext: { error: string; code?: string } | null = null;
 let delayMs = 0;
 let dropUntil = 0;
@@ -682,6 +684,10 @@ route('POST', '/api/uploads', ({ raw, headers }) => {
   uploads.add(path);
   return { path };
 });
+route('POST', '/api/ux', ({ body }) => {
+  uxEvents.push(...(body as { events: typeof uxEvents }).events);
+  return NONE;
+});
 route('GET', '/api/commands', () => COMMANDS);
 // As the server's folderDiff(): the fixture's change in every worktree of the task, each under its repository's folder.
 async function folderDiff(taskFolder: string, paths: string[] = []): Promise<FullDiff> {
@@ -803,9 +809,13 @@ route('POST', '/mock/ui-entry', ({ body }) => {
 });
 route('GET', '/mock/log', ({ url }) => {
   const entries = [...log];
-  if (url.searchParams.has('clear')) log.length = 0;
+  if (url.searchParams.has('clear')) {
+    log.length = 0;
+    uxEvents.length = 0;
+  }
   return entries;
 });
+route('GET', '/mock/ux', () => uxEvents);
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json',
@@ -873,7 +883,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const raw = await readBody(req);
   const { body, text } = parse(raw, req.headers['content-type']);
   const parts = url.pathname.match(/^\/api\/sessions\/([^/]+)\/([^/]+)/);
-  const entry: Entry | null = api ? {
+  const entry: Entry | null = api && url.pathname !== '/api/ux' ? {
     at: Date.now(), method: req.method ?? '', path: url.pathname, query: url.search, action: parts?.[2] ?? null, sessionId: parts?.[1] ?? null,
     body: body ?? { bytes: raw.length, filename: req.headers['x-filename'] ?? null }, ...(text !== undefined && { raw: text }), status: null, code: null,
   } : null;

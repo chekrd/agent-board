@@ -1,3 +1,5 @@
+import { track } from './ux.ts';
+
 export const wsUrl = (path: string) => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`;
 
 // A refusal keeps the server's code ('stale', 'answered', …), so callers can tell refusals apart.
@@ -7,6 +9,7 @@ export interface ApiError extends Error {
 }
 
 export async function api<T = void>(method: string, path: string, body?: unknown, { keepalive = false } = {}): Promise<T> {
+  if (method !== 'GET') track('api', { method, path: path.split('?')[0].replace(/\/(?:[0-9a-f-]{8,}|\d+)(?=\/|$)/g, '/:id') });
   const res = await fetch(path, {
     method,
     headers: body === undefined ? {} : { 'content-type': 'application/json' },

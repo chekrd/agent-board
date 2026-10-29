@@ -6,6 +6,7 @@ import { active, createOutbox, NO_ANSWER_MS, type Item, type Outgoing, type Requ
 import { queue } from './queue.ts';
 import { openSheet, showQueue } from './router.ts';
 import type { Session } from './types.ts';
+import { track } from './ux.ts';
 
 export const HOLD_MS = 5000;
 
@@ -118,7 +119,10 @@ function review() {
     if (i.state !== 'failed' && i.state !== 'answered') continue;
     givenBack.add(i.id);
     if (i.restore.draft) putBack(i.sessionId, i.restore.draft);
-    if (i.state === 'failed') queue.notSent(i.sessionId, i.error ?? 'the send failed');
+    if (i.state === 'failed') {
+      track('send-failed', { action: i.action });
+      queue.notSent(i.sessionId, i.error ?? 'the send failed');
+    }
     queueMicrotask(() => sends.take(i.id));
   }
   for (const [id, was] of told) {
@@ -134,6 +138,9 @@ function review() {
 export function hold(s: Session, request: Request, name: string, { dealt = false } = {}) {
   const { text, files } = request.body;
   const draft = request.action === 'answer' && (text !== undefined || !!files?.length) ? takeDraft(s.id, files ?? []) : null;
+  track('send', {
+    action: request.action, command: !!request.command, choice: request.body.choice !== undefined, text: text !== undefined, files: files?.length ?? 0, dealt,
+  });
   return sends.hold(s, request, { name, draft, dealt });
 }
 
@@ -151,6 +158,7 @@ function takeBack(id?: string) {
   const item = sends.items().filter((i) => i.state === 'held' && (id === undefined || i.id === id)).at(-1);
   if (!item) return;
   givenBack.add(item.id);
+  track('undo', { action: item.action, afterMs: HOLD_MS - (item.dueAt - Date.now()) });
   sends.undo(item.id);
   if (item.restore.draft) putBack(item.sessionId, item.restore.draft);
   if (item.restore.dealt) queue.restore(item.sessionId, () => true);

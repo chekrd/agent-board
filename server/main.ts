@@ -10,7 +10,7 @@ import { WebSocketServer } from 'ws';
 import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { ARTIFACT_CSP, artifactFile } from './artifacts.ts';
 import { HOST, PORT, USAGE_FILE, WEB_DIST } from './config.ts';
-import { repos, roots, sessions } from './db.ts';
+import { repos, roots, sessions, uxEvents } from './db.ts';
 import { listCommands } from './commands.ts';
 import { Refusal } from './decision.ts';
 import { elaborate } from './explain.ts';
@@ -22,6 +22,7 @@ import * as S from './sessions.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { watchUsage } from './usage.ts';
+import { cleanBatch, KEEP_DAYS } from './uxlog.ts';
 import { folders, notify, onChange, refreshWorkspace, repoView, snapshot, taskFolderOf, workspace } from './workspace.ts';
 import { folderDiff, makeTaskFolder } from './folderTasks.ts';
 
@@ -255,6 +256,17 @@ app.post('/api/sessions/:id/:action', async (c) => {
 app.post('/api/uploads', async (c) => {
   const path = await saveUpload(decodeURIComponent(c.req.header('x-filename') ?? 'file'), await c.req.arrayBuffer());
   return c.json({ path });
+});
+
+const pruneUx = () => uxEvents.prune(Date.now() - KEEP_DAYS * 86_400_000);
+pruneUx();
+setInterval(pruneUx, 86_400_000).unref();
+
+app.post('/api/ux', async (c) => {
+  const batch = cleanBatch(await c.req.json().catch(() => null));
+  if (!batch) return c.text('bad batch', 400);
+  if (batch.events.length) uxEvents.add(batch.page, batch.events);
+  return c.body(null, 204);
 });
 
 app.post('/api/hooks/ask-user-question', async (c) => {
