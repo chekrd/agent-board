@@ -423,7 +423,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
     id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, diffstat: null,
     lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
-    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], findings: null, parent: null, resolution: null,
+    activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
     model: o.model || null, effort: o.effort || null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
@@ -535,6 +535,8 @@ const route = (method: string, path: string, handler: Handler) =>
 
 route('GET', '/api/state', () => snapshot());
 route('POST', '/api/pick-folder', () => ({ path: '~/code/payments' }));
+// Logged only: a check must never open a real browser.
+route('POST', '/api/open', () => NONE);
 route('POST', '/api/repos', ({ body }) => {
   const path = String(body.path ?? '').trim().replace(/(.)\/$/, '$1');
   if (!path.startsWith('/') && !path.startsWith('~')) throw new Error(`not a folder: ${path}`);

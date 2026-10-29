@@ -59,6 +59,13 @@ app.post('/api/pick-folder', async (c) => {
   return c.json({ path: stdout.trim().replace(/\/$/, '') });
 });
 
+app.post('/api/open', async (c) => {
+  const url = URL.parse(String((await c.req.json()).url ?? ''));
+  if (!url || !['http:', 'https:'].includes(url.protocol)) return c.text('not a web link', 400);
+  await run('/usr/bin/open', [url.href]);
+  return c.body(null, 204);
+});
+
 app.post('/api/repos', async (c) => {
   const path = (await c.req.json<{ path: string }>()).path.trim().replace(/(.)\/$/, '$1');
   // A dotfiles repo in ~ would otherwise swallow every folder picked under it.

@@ -828,6 +828,30 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P2.links Overview lists the links Claude gave, newest first, described or by host and path; a click on one, or on a link in Claude\'s reply, opens it in the default browser through the server and the board stays put',
+    async run({ page, mock, shot }) {
+      await openSheetOf(page, mock, 's-cart');
+      const links = await page.until('the links', () => {
+        const items = [...document.querySelectorAll<HTMLAnchorElement>('#task-sheet [data-links] a')];
+        return items.length && items.map((a) => [a.querySelector('strong')!.textContent, a.querySelector('span')!.textContent, a.title]);
+      });
+      assert.deepEqual(links, [
+        ['github.com/acme/storefront/pull/481', '4m ago', 'Draft PR: https://github.com/acme/storefront/pull/481'],
+        ['Jira ticket CHK-412: carts never lose items', 'jira.example.com/browse/CHK-412 · 9m ago', 'The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).'],
+      ]);
+      await shot('links');
+
+      const where = await page.eval(() => location.href);
+      await page.click('#task-sheet [data-links] a[href="https://github.com/acme/storefront/pull/481"]');
+      const [opened] = await logged(mock, 'the open', (e) => e.path === '/api/open');
+      assert.deepEqual(opened.body, { url: 'https://github.com/acme/storefront/pull/481' });
+      await page.click('#task-sheet a[href="https://jira.example.com/browse/CHK-412"]:not([data-links] a)');
+      await until('the reply\'s link opened too', async () => (await mock.log()).filter((e) => e.path === '/api/open').length === 2);
+      assert.equal(await page.eval(() => location.href), where, 'the board navigated');
+      assert.equal(await page.eval(() => document.querySelectorAll('#task-sheet').length), 1);
+    },
+  },
+  {
     name: 'P2.4 no console errors on the board, a decision, a menu, a reply with a table, the diff or an artifact',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);

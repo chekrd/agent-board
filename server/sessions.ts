@@ -21,6 +21,8 @@ import * as terminal from './terminal.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank, trackDecisions } from './priority.ts';
 import { summarizeStale } from './summary.ts';
+import { describeLinks } from './linkAbout.ts';
+import { mergeLinks } from './links.ts';
 import { notify, refreshWorkspace, repoView, workspace, type RepoView } from './workspace.ts';
 import { checkUploads } from './uploads.ts';
 
@@ -174,6 +176,8 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
   const artifacts = await storeArtifacts(s, meta.artifacts);
   if (artifacts) patch.artifacts = artifacts;
+  const links = mergeLinks(s.links, meta.links);
+  if (links) patch.links = links;
   const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
   if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
@@ -260,6 +264,7 @@ async function syncLive() {
   if (changed) notify();
   adviseOpen();
   void summarizeStale();
+  void describeLinks();
 }
 
 export async function focus(id: string) {

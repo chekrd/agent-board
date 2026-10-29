@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
 import { tildeIn } from './home.ts';
+import { linksIn, type Found } from './links.ts';
 
 const run = promisify(execFile);
 const CLAUDE_DIR = join(homedir(), '.claude');
@@ -42,6 +43,7 @@ interface Meta {
   toolResults: string[];
   ask: ToolCall | null;
   artifacts: ToolCall[];
+  links: Found[];
   pr: Omit<PrFlow, 'url'> | null;
   turns: Turn[];
   model: string | null;
@@ -156,6 +158,15 @@ function latestAsk(entries: Record<string, any>[]): ToolCall | null {
 const artifactCalls = (entries: Record<string, any>[]): ToolCall[] =>
   entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && b.name === ARTIFACT_TOOL_NAME)
     .map((b) => ({ toolUseId: b.id, input: b.input ?? {}, at: Date.parse(e.timestamp) || Date.now() })));
+
+// The links in what Claude wrote: its messages and the questions it asked through ask_human.
+const links = (entries: Record<string, any>[]): Found[] =>
+  entries.flatMap((e) => blocks(e).flatMap((b) => {
+    const at = Date.parse(e.timestamp) || Date.now();
+    if (b.type === 'text') return linksIn(String(b.text ?? ''), at);
+    if (b.type === 'tool_use' && ASK_TOOL_NAMES.has(b.name)) return linksIn(`${b.input?.title ?? ''}\n${b.input?.details ?? ''}`, at);
+    return [];
+  }));
 
 function turns(entries: Record<string, any>[]): Turn[] {
   return entries.flatMap((e): Turn[] => {
@@ -315,6 +326,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     toolResults: toolResults(tail),
     ask: latestAsk(tail),
     artifacts: artifactCalls(tail),
+    links: links(tail),
     pr: await prFlow(tail),
     turns: turns(tail),
     ...settings(tail),

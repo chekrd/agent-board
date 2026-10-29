@@ -63,7 +63,7 @@ type Given = Pick<Session, 'id' | 'repoId' | 'worktree' | 'title' | 'firstPrompt
 export const session = (fields: Given & Partial<Session>): Session => ({
   conversation: fields.id, history: [], cwd: fields.worktree, pid: null, tty: null, question: null, rank: null, rankReason: null, diffstat: null, lastMessage: null, lastTurn: null,
   waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, answered: null, findings: null, parent: null, resolution: null,
-  model: 'claude-opus-5-5', effort: 'high', artifacts: [], archived: false, ...fields,
+  model: 'claude-opus-5-5', effort: 'high', artifacts: [], links: [], archived: false, ...fields,
 });
 
 export function queue(now: number): Session[] {
@@ -101,11 +101,15 @@ export function queue(now: number): Session[] {
         key: 'q:toolu_01Cart', state: 'done', at: now - MIN,
         text: '**Background.** `src/auth/onLogin.ts` calls `CartService.mergeOnLogin(guestId, userId)`, which returns early (`src/cart/CartService.ts:88`). The guest cart cookie `sf_guest_cart` expires after 24 h.\n\n**Merge both carts** adds `mergeCarts()` (already drafted) and calls it from `onLogin`. Quantities above stock are trimmed by `reserve()`; the toast needs one new string in `messages/cart.json`.\n\n**Keep the account cart** needs no code beyond a notice, but CHK-412\'s acceptance criterion "no items are lost" stays unmet.\n\n**Ask the shopper** needs a new dialog (`web/checkout/LoginCartDialog.tsx`) and an API flag; the mobile app would need the same dialog.',
       },
-      lastMessage: 'I drafted `mergeCarts()` in `src/cart/mergeCarts.ts` and three failing tests that pin down the cases:\n\n1. Disjoint carts → union of both\n2. Same product in both → quantities add up, capped at stock\n3. Empty guest cart → account cart unchanged\n\nBefore wiring it into `onLogin` I need your call on the merge rule, so I asked through Agent Board.',
+      lastMessage: 'I drafted `mergeCarts()` in `src/cart/mergeCarts.ts` and three failing tests that pin down the cases:\n\n1. Disjoint carts → union of both\n2. Same product in both → quantities add up, capped at stock\n3. Empty guest cart → account cart unchanged\n\nBefore wiring it into `onLogin` I need your call on the merge rule, so I asked through Agent Board. The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).',
       lastTurn: 't-cart-6', diffstat: { files: 4, insertions: 211, deletions: 8 },
       artifacts: [
         { id: 'art-cart-1', title: 'Cart merge — before and after', at: now - 6 * MIN },
         { id: 'art-cart-2', title: 'Login flow with the merge step', at: now - 5 * MIN },
+      ],
+      links: [
+        { url: 'https://jira.example.com/browse/CHK-412', text: 'CHK-412', context: 'The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).', about: 'Jira ticket CHK-412: carts never lose items', at: now - 9 * MIN },
+        { url: 'https://github.com/acme/storefront/pull/481', text: null, context: 'Draft PR: https://github.com/acme/storefront/pull/481', about: null, at: now - 4 * MIN },
       ],
     }),
     session({

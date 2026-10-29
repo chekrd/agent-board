@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, options, question, session, turn } from './testing.ts';
 import type { RepoView } from './types.ts';
-import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, modelName, openSubtasks, settledAs, tilde, tildeIn, untilde, worktreeName } from './util.ts';
+import { ancestorsOf, attentionChangesAt, attentionOf, clock, decisionOf, descendantsOf, findingPath, menuStuck, modelName, openSubtasks, settledAs, shortUrl, tilde, tildeIn, untilde, worktreeName } from './util.ts';
 
 test('a decision is the open question or end-of-turn choice, and one the board answered is closed at once', () => {
   const asked = session('s', { question: question('q1') });
@@ -102,6 +102,12 @@ test('a finding settles once rejected or marked solved, or once all its subtasks
   assert.equal(settledAs(finding, [sub('dropped')]), 'dropped');
   assert.equal(settledAs({ ...finding, rejected: { reason: '', at: 1 } }, [sub(null)]), 'rejected');
   assert.equal(settledAs({ ...finding, solved: { at: 1 } }, []), 'solved', 'fixed without a subtask');
+});
+
+test('a link reads as its host and path', () => {
+  assert.equal(shortUrl('https://www.github.com/o/r/pull/42/'), 'github.com/o/r/pull/42');
+  assert.equal(shortUrl('https://x.dev/a?b=1'), 'x.dev/a?b=1');
+  assert.equal(shortUrl('not a url'), 'not a url');
 });
 
 test('a model id reads as its family and version', () => {

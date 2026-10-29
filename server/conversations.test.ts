@@ -46,6 +46,16 @@ test('create_artifact calls are collected from the transcript', async () => {
   assert.deepEqual(m.artifacts.map((a) => [a.toolUseId, a.input.title, a.input.html]), [['v1', 'Flow', html]]);
 });
 
+test('links come from what Claude wrote and asked, not from prompts or tool results', async () => {
+  const m = await meta([
+    prompt('Look at https://prompt.dev/x'),
+    assistant([text('Opened [PR #3](https://github.com/o/r/pull/3).'), toolUse('b1', 'Bash', { command: 'curl https://tool.dev' })]),
+    toolResult('b1', 'see https://result.dev'),
+    assistant([toolUse('q1', 'mcp__agent-board__ask_human', { title: 'Which way?', details: 'Per https://docs.dev/y', category: 'plan-problem' })]),
+  ]);
+  assert.deepEqual(m.links.map((l) => l.url), ['https://github.com/o/r/pull/3', 'https://docs.dev/y']);
+});
+
 test('a custom title beats a later generated one', async () => {
   const m = await meta([
     prompt('Fix the login'),

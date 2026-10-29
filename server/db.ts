@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
 
@@ -140,6 +140,16 @@ export interface Artifact {
   at: number;
 }
 
+// A web link Claude gave in a message: its Markdown text if it had one, the line it stood on, and a few words on what
+// it is, written later by a small model ('' when it had none to give).
+export interface Link {
+  url: string;
+  text: string | null;
+  context: string;
+  about: string | null;
+  at: number;
+}
+
 // The board's last send to the session; `key` is the decision it closed (a plain message keeps the one before).
 export interface Answered {
   key: string | null;
@@ -216,6 +226,7 @@ export interface Session {
   menu: Menu | null;
   answered: Answered | null;
   artifacts: Artifact[];
+  links: Link[];
   findings: Findings | null;
   parent: Parent | null;
   resolution: Resolution | null;
@@ -267,6 +278,7 @@ const toSession = (r: Row): Session => ({
   menu: r.menu ? JSON.parse(r.menu) : null,
   answered: r.answered ? JSON.parse(r.answered) : null,
   artifacts: r.artifacts ? JSON.parse(r.artifacts) : [],
+  links: r.links ? JSON.parse(r.links) : [],
   findings: r.findings ? JSON.parse(r.findings) : null,
   parent: r.parent ? JSON.parse(r.parent) : null,
   resolution: r.resolution ? JSON.parse(r.resolution) : null,
@@ -326,6 +338,7 @@ const columns: Record<string, string> = {
   menu: 'menu',
   answered: 'answered',
   artifacts: 'artifacts',
+  links: 'links',
   findings: 'findings',
   parent: 'parent',
   resolution: 'resolution',
@@ -355,7 +368,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

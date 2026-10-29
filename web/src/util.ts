@@ -72,6 +72,12 @@ export function settledAs(finding: Finding, subtasks: readonly Session[]) {
   return subtasks.some((o) => o.resolution!.state === 'solved') ? ('solved' as const) : ('dropped' as const);
 }
 
+// A link as it reads in a list: its host without www and its path, without the scheme or a trailing slash.
+export function shortUrl(url: string) {
+  const u = URL.parse(url);
+  return u ? `${u.host.replace(/^www\./, '')}${u.pathname.replace(/\/$/, '')}${u.search}` : url;
+}
+
 // The finding numbers from the root task down, e.g. 1.2 for finding 2 of the subtask on finding 1.
 export const findingPath = (sessions: readonly Session[], s: Session) =>
   [...ancestorsOf(sessions, s).slice(1), s].map((o) => (o.parent ? o.parent.finding + 1 : '?')).join('.');

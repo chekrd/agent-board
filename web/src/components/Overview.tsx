@@ -7,7 +7,7 @@ import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
 import { hold, useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
 import type { MenuAnswer, RepoView, Session } from '../types.ts';
-import { adviceFor, ago, attentionOf, decisionOf, effortName, modelName, tilde, worktreeName } from '../util.ts';
+import { adviceFor, ago, attentionOf, decisionOf, effortName, modelName, shortUrl, tilde, worktreeName } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import { Composer, editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { Findings, Subtasks, SubtaskOf } from './Findings.tsx';
@@ -159,6 +159,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
   const working = session.status === 'working';
   const learnings = summary?.learnings ?? [];
   const artifacts = session.artifacts.toReversed();
+  const links = session.links.toReversed();
   return (
     <div className={styles.scroll}>
       <div className={styles.grid}>
@@ -257,6 +258,21 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               <dd><Copy value={session.conversation} what="Session id" title="Claude Code's session id; claude --resume takes it" /></dd>
             </dl>
           </section>
+          {links.length > 0 && (
+            <section data-links>
+              <h3 className={styles.label} title="Every web link Claude gave in this task, newest first; each opens in your default browser">Links</h3>
+              <ul className={styles.links}>
+                {links.map((l) => (
+                  <li key={l.url}>
+                    <a href={l.url} target="_blank" rel="noreferrer" title={l.context || l.url}>
+                      <strong>{l.about || l.text || shortUrl(l.url)}</strong>
+                      <span>{l.about || l.text ? `${shortUrl(l.url)} · ` : ''}{ago(l.at)}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <Subtasks session={session} />
           {session.history.length > 0 && (
             <section>
