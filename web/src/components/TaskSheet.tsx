@@ -75,8 +75,8 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
   const { open, total } = openSubtasks(useStore().sessions, session.id);
   const tabs: { key: Tab; label: string; kbd: string }[] = [
     { key: 'overview', label: 'Overview', kbd: '1' },
-    { key: 'diff', label: 'Diff', kbd: '2' },
-    { key: 'conversation', label: 'Conversation', kbd: '3' },
+    { key: 'conversation', label: 'Conversation', kbd: '2' },
+    { key: 'diff', label: 'Diff', kbd: '3' },
     ...(session.artifacts.length ? [{ key: 'artifacts' as const, label: `Artifacts (${session.artifacts.length})`, kbd: '4' }] : []),
   ];
   const current = tabs.some((t) => t.key === tab) ? tab : 'overview';

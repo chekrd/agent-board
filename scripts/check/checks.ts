@@ -1458,7 +1458,7 @@ export const checks: Check[] = [
       await page.key('Enter');
       await page.until('the sheet', sheetOpen);
       const entries = await page.eval(() => window.navigation.entries().length);
-      await page.key('2');
+      await page.key('3');
       await page.until('the file tree', () => location.pathname === '/s/s-invoice/diff' && document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
       assert.equal(await page.eval(() => window.navigation.entries().length), entries, 'the tab pushed an entry');
       await page.until('the diff', () => document.querySelectorAll('section[data-file] diffs-container').length > 0);
@@ -1724,7 +1724,7 @@ export const checks: Check[] = [
       await openFromWall(page, mock, 's-invoice');
       await page.click('#task-sheet [role="tab"]', 'Conversation');
       const shown = await page.until('the conversation with its picture', log);
-      assert.deepEqual([shown.tab, shown.tabs], ['Conversation 3', ['Overview 1', 'Diff 2', 'Conversation 3', 'Artifacts (1) 4']]);
+      assert.deepEqual([shown.tab, shown.tabs], ['Conversation 2', ['Overview 1', 'Conversation 2', 'Diff 3', 'Artifacts (1) 4']]);
       assert.equal(shown.cleared, 2);
       assert.deepEqual(shown.items.map((i) => [i.prompt, i.images, i.artifacts]), [
         ['Start with the failing test.', 0, []],
@@ -1753,7 +1753,7 @@ export const checks: Check[] = [
 
       await page.click('#task-sheet article button', 'Where the cent goes missing');
       await page.until('the artifact', () => location.pathname === '/s/s-invoice/artifacts/art-invoice-1');
-      await page.key('3');
+      await page.key('2');
       await page.until('the conversation again', () => location.pathname === '/s/s-invoice/conversation' && !!document.querySelector('#task-sheet article'));
     },
   },
@@ -2139,7 +2139,7 @@ export const checks: Check[] = [
     name: 'P4.esc-layers Esc over one file of the diff closes what is on top first: Keys, the ⋯ menu and the delete dialog each close and leave the file on its own; then Esc goes back to all files, and then closes the sheet',
     async run({ page, mock }) {
       await openFromWall(page, mock, 's-invoice');
-      await page.key('2');
+      await page.key('3');
       await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
       await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
       await page.until('server/git.ts whole', wholeFile, 'server/git.ts');
@@ -4759,7 +4759,7 @@ export const checks: Check[] = [
 
       await page.key('o');
       await page.until('Overview of s-cart', () => location.pathname === '/s/s-cart/overview' && !!document.querySelector('#task-sheet [data-queued]'));
-      await page.key('2');
+      await page.key('3');
       await page.until('the Diff', () => location.pathname === '/s/s-cart/diff' && document.querySelectorAll('section[data-file] diffs-container').length === 12);
       await page.key('j');
       await page.until('one file, whole', () => document.querySelectorAll('section[data-file]').length === 1 && !!document.querySelector('[data-theme="dark"] > div')?.textContent?.includes('← All files'));
@@ -5678,7 +5678,7 @@ export const checks: Check[] = [
       ]);
       await shot('folder-task-facts');
 
-      await page.key('2');
+      await page.key('3');
       const files = await page.until('the diff of both', () => {
         const all = [...document.querySelectorAll('section[data-file]')].map((s) => s.getAttribute('data-file')!);
         return all.length > 0 && all;

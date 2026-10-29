@@ -79,8 +79,8 @@ test('Z takes back the last send anywhere, guarded or not, in the sheet too', ()
 test('in the sheet 1 to 4 switch tabs (4 when there are artifacts), J and K act only on Diff, Esc goes back, and V, N and the card keys do nothing', () => {
   const overview = ctx({ sheet: { tab: 'overview', artifacts: false } });
   assert.deepEqual(keyAction(overview, { key: '+', code: 'Digit1' }), { type: 'tab', tab: 'overview' });
-  assert.deepEqual(keyAction(overview, key('2')), { type: 'tab', tab: 'diff' });
-  assert.deepEqual(keyAction(overview, key('3')), { type: 'tab', tab: 'conversation' });
+  assert.deepEqual(keyAction(overview, key('2')), { type: 'tab', tab: 'conversation' });
+  assert.deepEqual(keyAction(overview, key('3')), { type: 'tab', tab: 'diff' });
   assert.equal(keyAction(overview, key('4')), null);
   assert.deepEqual(keyAction(ctx({ sheet: { tab: 'overview', artifacts: true } }), key('4')), { type: 'tab', tab: 'artifacts' });
   assert.equal(keyAction(overview, key('5')), null);
