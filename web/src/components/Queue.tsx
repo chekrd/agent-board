@@ -4,6 +4,7 @@ import { arrange, queue, signature, useQueue } from '../queue.ts';
 import { useStore } from '../store.ts';
 import type { RepoView, Session } from '../types.ts';
 import { isEditable } from '../useKeys.ts';
+import { diag } from '../diag.ts'; // DIAG(paste-loss)
 import { attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
 import { AgentsDock } from './AgentsDock.tsx';
 import { Card } from './Card.tsx';
@@ -47,6 +48,10 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
   useEffect(() => {
     queue.show(shown);
   }, [shown]);
+  // DIAG(paste-loss)
+  useEffect(() => {
+    diag('queue-shown', { id: shown?.id ?? null, live: live?.id ?? null, typing });
+  }, [shown?.id]);
   useEffect(() => () => queue.show(null), []);
 
   // Focus inside a card that went lands on the page; the card that came takes it instead.
@@ -59,6 +64,7 @@ export function Queue({ deck }: { deck: readonly Session[] }) {
   // before it, so it does nothing.
   const type = (on: boolean) => {
     if (!on && typing && differs(shown, live) && pressing.current) queue.holdMoves(true);
+    if (on !== typing) diag('queue-typing', { on, held: differs(shown, live) }); // DIAG(paste-loss)
     setTyping(on);
   };
   useEffect(() => {

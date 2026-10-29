@@ -3709,6 +3709,30 @@ export const checks: Check[] = [
       assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet textarea')), true, 'focus in the box');
     },
   },
+  // DIAG(paste-loss)
+  {
+    name: 'P5.2.30 Paste missed? under a reply box keeps focus in the box, uploads the recorder\'s report and starts a Pitwall task that investigates it',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet textarea');
+      await page.type('Round');
+      await page.click('#task-sheet button', 'Paste missed?');
+      const [created] = await logged(mock, 'the investigating task', (e) => e.method === 'POST' && e.path === '/api/worktrees');
+      const [uploaded] = await logged(mock, 'the report', (e) => e.method === 'POST' && e.path === '/api/uploads');
+      assert.equal(created.status, 200);
+      assert.equal(created.body.repoId, 3);
+      assert.match(created.body.name, /^paste-loss-\d{10}$/);
+      assert.match(created.body.prompt, /\/paste-loss-\d{10}\.json \(JSON\)/);
+      assert.ok(uploaded.at <= created.at);
+      const report = JSON.parse(uploaded.raw!);
+      const types = new Set(report.events.map((e: unknown[]) => e[1]));
+      for (const t of ['load', 'composer-mount', 'claim', 'focusin', 'beforeinput', 'input', 'report']) assert.ok(types.has(t), `the report records ${t}`);
+      assert.deepEqual(report.snapshot.boxes.map((b: { focused: boolean; value: string }) => [b.focused, b.value]), [[true, 'Round']]);
+      assert.equal(report.reportedFrom, 's-invoice');
+      assert.match((await page.until('the toast', toastsOf, 'info'))[0].text, /^Started a task that investigates the missed paste/);
+      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet textarea')), true, 'focus stayed in the box');
+    },
+  },
   {
     name: 'P5.2.23 Terminal posts a send held on its session at once, before it asks for the terminal',
     async run({ page, mock }) {

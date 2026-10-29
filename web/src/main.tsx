@@ -1,4 +1,5 @@
 import './renamed.ts';
+import './diag.ts'; // DIAG(paste-loss)
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/bricolage-grotesque/opsz.css';
 import '@fontsource-variable/hanken-grotesk';

@@ -7,6 +7,7 @@ import { sends } from './sends.ts';
 import type { RepoView, Session, Usage } from './types.ts';
 import { menuOpen } from './layers.ts';
 import { isEditable } from './useKeys.ts';
+import { diag } from './diag.ts'; // DIAG(paste-loss)
 import { attentionChangesAt } from './util.ts';
 
 export type Link = 'connecting' | 'live' | 'reconnecting';
@@ -40,6 +41,7 @@ function set(next: State) {
   const key = orderKey(next.sessions);
   const animate = key !== order && state.link === 'live' && !document.hidden && reorderShows();
   order = key;
+  diagStates(state, next, animate); // DIAG(paste-loss)
   state = next;
   const notify = () => {
     for (const fn of subscribers) fn();
@@ -47,6 +49,14 @@ function set(next: State) {
   // A reorder that comes while one runs skips it, which rejects the skipped one's ready.
   if (animate) document.startViewTransition(() => flushSync(notify)).ready.catch(() => {});
   else notify();
+}
+
+// DIAG(paste-loss)
+function diagStates(before: State, next: State, animate: boolean) {
+  const shape = (s: Session) => `${s.status}|${s.waitingFor ?? ''}|${s.question?.toolUseId ?? ''}|${s.menu ? 'menu' : ''}|${s.archived}|${s.summary?.at ?? ''}`;
+  const was = new Map(before.sessions.map((s) => [s.id, shape(s)]));
+  const changed = next.sessions.flatMap((s) => (was.get(s.id) === shape(s) ? [] : [[s.id, was.get(s.id) ?? null, shape(s)]]));
+  if (changed.length || animate) diag('state', { changed, animate });
 }
 
 const PATCH_MS = 15_000;

@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { api, upload } from '../api.ts';
 import { typed } from '../deck.ts';
+import { describe, diag, reportPasteLoss } from '../diag.ts'; // DIAG(paste-loss)
 import type { Request } from '../outbox.ts';
 import { holding, undo } from '../sends.ts';
 import { useStore } from '../store.ts';
+import { toast } from './Toasts.tsx'; // DIAG(paste-loss)
 import type { Command, Session } from '../types.ts';
 import { tilde } from '../util.ts';
 import styles from './Composer.module.css';
@@ -156,7 +158,10 @@ function detach(id: string, a: Attachment) {
 // lands in it. Leaving the window keeps the claim; the field gets focus back with the window.
 let focusedBox: string | null = null;
 addEventListener('focusin', (e) => {
-  if (!(e.target instanceof HTMLTextAreaElement && e.target.dataset.draft)) focusedBox = null;
+  if (!(e.target instanceof HTMLTextAreaElement && e.target.dataset.draft)) {
+    if (focusedBox) diag('claim', { box: null, was: focusedBox }); // DIAG(paste-loss)
+    focusedBox = null;
+  }
 });
 
 const files = (e: { dataTransfer?: DataTransfer | null; clipboardData?: DataTransfer | null }) => [...((e.dataTransfer ?? e.clipboardData)?.files ?? [])];
@@ -174,6 +179,7 @@ addEventListener('paste', (e) => {
   const id = (task && [...document.querySelectorAll(task)].some(onScreen) ? focusedBox : null) ?? (boxes.length === 1 ? boxes[0].dataset.draft! : null);
   const text = e.clipboardData?.getData('text/plain') ?? '';
   const list = files(e);
+  diag('paste-on-page', { claim: focusedBox, to: id, boxes: boxes.map(describe), textLength: text.length, files: list.length }); // DIAG(paste-loss)
   if (!id || (!text && !list.length)) return;
   e.preventDefault();
   const box = boxes.find((b) => b.dataset.draft === id);
@@ -211,6 +217,15 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
   const query = /^\/\S*$/.test(draft.text) && !closed ? draft.text.slice(1).toLowerCase() : null;
   const matches = query === null || !commands ? [] : rank(commands, query);
   const listed = matches.length > 0;
+  const { sessions, repos } = useStore(); // DIAG(paste-loss)
+  const [reporting, setReporting] = useState(false); // DIAG(paste-loss)
+
+  // DIAG(paste-loss)
+  useLayoutEffect(() => {
+    const box = field.current;
+    diag('composer-mount', { box: describe(box), label, decision });
+    return () => diag('composer-unmount', { box: describe(box), label });
+  }, []);
 
   // The whole box comes into view, its hint line under the field included.
   useEffect(() => {
@@ -223,6 +238,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
     const active = document.activeElement;
     const box = field.current;
     if (!box || focusedBox !== id || (active && active !== document.body)) return;
+    diag('claim-refocus', describe(box)); // DIAG(paste-loss)
     box.focus({ preventScroll: true });
     box.setSelectionRange(box.value.length, box.value.length);
   }, [id]);
@@ -348,6 +364,7 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
           onPaste={onPaste}
           data-draft={id}
           onFocus={() => {
+            if (focusedBox !== id) diag('claim', { box: id, was: focusedBox }); // DIAG(paste-loss)
             focusedBox = id;
             setFocused(true);
           }}
@@ -355,7 +372,10 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
             const left = e.currentTarget;
             if (e.relatedTarget || !document.hasFocus()) return;
             queueMicrotask(() => {
-              if (left.isConnected && focusedBox === id) focusedBox = null;
+              if (left.isConnected && focusedBox === id) {
+                diag('claim', { box: null, was: id }); // DIAG(paste-loss)
+                focusedBox = null;
+              }
             });
           }}
         />
@@ -379,7 +399,25 @@ export function Composer({ session, decision, label, placeholder, focus, note, o
           <Icon name="paperclip" size={18} />
         </label>
       </div>
-      <p className={styles.hint}>Enter sends · Shift+Enter adds a line · / and ! go to the terminal as typed</p>
+      <p className={styles.hint}>
+        Enter sends · Shift+Enter adds a line · / and ! go to the terminal as typed
+        {/* DIAG(paste-loss) */}
+        <button
+          type="button"
+          className={styles.report}
+          disabled={reporting}
+          title="Text you pasted or dictated did not land here: starts a Pitwall task that investigates, with what the board recorded"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setReporting(true);
+            reportPasteLoss({ sessions, repos, session: id, extra: { reportedBox: describe(field.current), draft: draftOf(id), claim: focusedBox } })
+              .then(({ session }) => toast('info', 'Started a task that investigates the missed paste', { session: session ?? undefined }), (err: Error) => toast('error', `Could not report the missed paste: ${err.message}`))
+              .finally(() => setReporting(false));
+          }}
+        >
+          {reporting ? 'Reporting…' : 'Paste missed?'}
+        </button>
+      </p>
     </section>
   );
 }

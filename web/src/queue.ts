@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { decisionKey } from '../../server/decision.ts';
 import { kindOf, refreeze, resolveFront, rotate, targetOf, type Frozen } from './deck.ts';
 import type { MenuAnswer, Session } from './types.ts';
+import { diag } from './diag.ts'; // DIAG(paste-loss)
 import { adviceFor } from './util.ts';
 
 // The queue's own state, which no snapshot carries: the card being read, what ⏎ sends on each decision, the key
@@ -312,6 +313,7 @@ function viewTransition(change: () => void, deal: Deal) {
     if (dealt === token) delete root.dataset.deal;
   };
   // A deal that starts while one runs skips it, which rejects the skipped one's ready.
+  diag('deal', deal); // DIAG(paste-loss)
   const t = document.startViewTransition(() => flushSync(change));
   t.ready.catch(() => {});
   t.finished.then(done, done);

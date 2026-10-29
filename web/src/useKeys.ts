@@ -7,6 +7,7 @@ import { openPopovers } from './layers.ts';
 import { queue } from './queue.ts';
 import { closeSheet, go, showTab, viewPath, type Route } from './router.ts';
 import { holding, undo } from './sends.ts';
+import { diag } from './diag.ts'; // DIAG(paste-loss)
 
 // The reply box's paperclip counts as part of its field: focus on it is still writing a reply.
 const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"])';
@@ -53,7 +54,10 @@ export function useKeys(context: () => Omit<KeyContext, 'target' | 'modal' | 'po
     const lost = (typing: boolean) => {
       if (!field || field.isConnected) return;
       field = null;
-      if (typing && onPage()) lock.start();
+      if (typing && onPage()) {
+        diag('typing-lock'); // DIAG(paste-loss)
+        lock.start();
+      }
     };
     const onFocusIn = (e: FocusEvent) => {
       field = isEditable(e.target) ? (e.target as Element) : null;

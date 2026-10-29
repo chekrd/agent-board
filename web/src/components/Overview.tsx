@@ -19,6 +19,7 @@ import styles from './Overview.module.css';
 import { SecondOpinion } from './SecondOpinion.tsx';
 import { FocusButton } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
+import { diag } from '../diag.ts'; // DIAG(paste-loss)
 
 const COPIED_MS = 1500;
 
@@ -197,9 +198,15 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
           {(message || (writing && !archived)) && (
             <div
               className={styles.message}
-              onFocus={() => setWriting(true)}
+              onFocus={() => {
+                if (!writing) diag('overview-writing', { on: true, attention }); // DIAG(paste-loss)
+                setWriting(true);
+              }}
               onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget) && (e.relatedTarget || document.hasFocus())) setWriting(false);
+                if (!e.currentTarget.contains(e.relatedTarget) && (e.relatedTarget || document.hasFocus())) {
+                  diag('overview-writing', { on: false, attention }); // DIAG(paste-loss)
+                  setWriting(false);
+                }
               }}
             >
               <Composer
