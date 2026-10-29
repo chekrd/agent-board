@@ -40,8 +40,10 @@ function TaskLinks({ tasks }: { tasks: Session[] }) {
 }
 
 function Preparing({ safeAt, sessions }: { safeAt: number | null; sessions: Session[] }) {
-  const live = sessions.filter((s) => s.status !== 'exited');
-  const working = live.filter((s) => s.status === 'working');
+  const running = sessions.filter((s) => s.status !== 'exited');
+  // An archived Claude still at work would be cut short too, but Resume all brings back only the tasks on the board.
+  const working = running.filter((s) => s.status === 'working');
+  const live = running.filter((s) => !s.archived);
   const longest = working.reduce<Session | null>((a, s) => (!a || (s.activity?.since ?? Infinity) < (a.activity?.since ?? Infinity) ? s : a), null);
   const cancel = () => api('POST', '/api/restart/prepare', { on: false }).catch(reportError);
   return (
@@ -53,7 +55,7 @@ function Preparing({ safeAt, sessions }: { safeAt: number | null; sessions: Sess
         </p>
       ) : (
         <p>
-          <strong>Getting ready to restart</strong> · {live.length - working.length} of {plural(live.length, 'task')} safe · waiting on <TaskLinks tasks={working} />
+          <strong>Getting ready to restart</strong> · {live.filter((s) => s.status !== 'working').length} of {plural(live.length, 'task')} safe · waiting on <TaskLinks tasks={working} />
           {longest?.activity && <> (the longest turn has run <Clock since={longest.activity.since} />)</>}
         </p>
       )}

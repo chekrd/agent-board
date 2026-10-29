@@ -5808,8 +5808,11 @@ export const checks: Check[] = [
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);
       await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
-      const all = (await mock.get('/api/state')).sessions as { id: string; status: string; title: string | null }[];
-      const live = all.filter((s) => s.status !== 'exited');
+      const all = (await mock.get('/api/state')).sessions as { id: string; status: string; title: string | null; archived: boolean }[];
+      // Archived, its Claude still runs, but Resume all would not bring it back.
+      const shelved = all.find((s) => s.status === 'idle' && !s.archived)!;
+      await mock.post('/mock/patch', { id: shelved.id, patch: { archived: true } });
+      const live = all.filter((s) => s.status !== 'exited' && !s.archived && s !== shelved);
       const working = live.filter((s) => s.status === 'working');
       assert.ok(working.length > 1);
       await page.click('header button[data-prepare-restart]');
