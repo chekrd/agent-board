@@ -5599,7 +5599,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'M1 New task across a folder of repos: the picker lists the folder first, which hides the worktree options and says where Claude starts; ⌘↵ starts it in an empty task folder; the worktrees Claude opens show in the facts, the Diff groups them by repository, the tile names the folder, and Clear task names each worktree and its loss and clears them all',
+    name: 'M1 New task across a folder of repos: the picker lists the folder first, which hides the worktree options and says where Claude starts; ⌘↵ starts it in an empty task folder; the worktrees Claude opens show in the facts, each PR it opens shows as its own chip named by its repository and linked, the Diff groups them by repository, the tile names the folder, and Clear task names each worktree and its loss and clears them all',
     async run({ page, mock, shot }) {
       const submit = () => document.querySelector('dialog#new-task textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }));
       await page.goto(`${mock.url}/wall`);
@@ -5648,6 +5648,18 @@ export const checks: Check[] = [
       assert.deepEqual(after, [
         'storefront ~/code/worktrees/cart-api/storefront on cart-api',
         'billing-api ~/code/worktrees/cart-api/billing-api on cart-api',
+      ]);
+      await mock.post('/mock/patch', { id, patch: { prs: [
+        { id: 101, url: 'https://github.com/acme/storefront/pull/101', repo: 'storefront', result: 'PASSED all 9 checks', watching: false, at: Date.now() - 60_000 },
+        { id: 57, url: 'https://github.com/acme/billing-api/pull/57', repo: 'billing-api', result: 'RUNNING 4 checks', watching: true, at: Date.now() },
+      ] } });
+      const chips = await page.until('a chip per PR', () => {
+        const all = [...document.querySelectorAll('#task-sheet header [data-state][data-label]')];
+        return all.length === 2 && all.map((c) => [c.textContent, c.getAttribute('href')]);
+      });
+      assert.deepEqual(chips, [
+        ['storefront PR 101 · green', 'https://github.com/acme/storefront/pull/101'],
+        ['billing-api PR 57 · checks running', 'https://github.com/acme/billing-api/pull/57'],
       ]);
       await shot('folder-task-facts');
 

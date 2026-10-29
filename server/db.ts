@@ -113,6 +113,8 @@ export interface Advice {
 export interface PrFlow {
   id: number | null;
   url: string | null;
+  // The repository's folder name, in a task across a folder of repos; null in a task in one repository.
+  repo: string | null;
   result: string | null;
   watching: boolean;
   at: number;
@@ -237,7 +239,8 @@ export interface Session {
   waitingFor: string | null;
   dismissedAsk: string | null;
   advice: Advice | null;
-  pr: PrFlow | null;
+  // Every PR the latest turns opened or watched, oldest first.
+  prs: PrFlow[];
   summary: Summary | null;
   explanation: Explanation | null;
   activity: Activity | null;
@@ -291,7 +294,8 @@ const toSession = (r: Row): Session => ({
   waitingFor: r.waiting_for,
   dismissedAsk: r.dismissed_ask,
   advice: r.advice ? toAdvice(JSON.parse(r.advice)) : null,
-  pr: r.pr ? JSON.parse(r.pr) : null,
+  // Stored as one PR before a task could have several.
+  prs: r.pr ? [JSON.parse(r.pr)].flat().map((p: PrFlow) => ({ ...p, repo: p.repo ?? null })) : [],
   summary: r.summary ? JSON.parse(r.summary) : null,
   explanation: r.explanation ? JSON.parse(r.explanation) : null,
   activity: r.activity ? JSON.parse(r.activity) : null,
@@ -353,7 +357,7 @@ const columns: Record<string, string> = {
   waitingFor: 'waiting_for',
   dismissedAsk: 'dismissed_ask',
   advice: 'advice',
-  pr: 'pr',
+  prs: 'pr',
   summary: 'summary',
   explanation: 'explanation',
   activity: 'activity',
@@ -390,7 +394,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'priority' | 'diffstat' | 'lastMessage' | 'lastPrompt' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'priority' | 'diffstat' | 'lastMessage' | 'lastPrompt' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'prs' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');

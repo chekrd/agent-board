@@ -229,9 +229,9 @@ test('pr-to-green: the created PR and the last watch-pr.sh result', async () => 
     assistant([toolUse('w', 'Bash', { command: 'FOO=1 ~/.claude/skills/pr-to-green/watch-pr.sh 23784 "RUNNING 3 checks"' })]),
     toolResult('w', 'PASSED all 12 checks'),
   ]);
-  assert.equal(m.pr?.id, 23784);
-  assert.equal(m.pr?.result, 'PASSED all 12 checks');
-  assert.equal(m.pr?.watching, false);
+  assert.equal(m.prs[0]?.id, 23784);
+  assert.equal(m.prs[0]?.result, 'PASSED all 12 checks');
+  assert.equal(m.prs[0]?.watching, false);
 });
 
 test('a watcher still running in the background keeps watching', async () => {
@@ -240,10 +240,10 @@ test('a watcher still running in the background keeps watching', async () => {
     assistant([toolUse('w', 'Bash', { command: 'pr-to-green/watch-pr.sh 1 "RUNNING"' })]),
     toolResult('w', 'Command running in background with ID: b1'),
   ]);
-  assert.equal(m.pr?.id, 1);
-  assert.equal(m.pr?.result, 'RUNNING');
-  assert.equal(m.pr?.watching, true);
-  assert.equal(m.greenWatch, null);
+  assert.equal(m.prs[0]?.id, 1);
+  assert.equal(m.prs[0]?.result, 'RUNNING');
+  assert.equal(m.prs[0]?.watching, true);
+  assert.deepEqual(m.greenWatches, []);
 });
 
 test('a watcher waiting on checks already green is a green watch; one waiting on a fix is not', async () => {
@@ -253,10 +253,31 @@ test('a watcher waiting on checks already green is a green watch; one waiting on
     { ...toolResult('w', 'Command running in background with ID: b1'), toolUseResult: { stdout: '', backgroundTaskId: 'b1' } },
   ]);
   const green = await watch('PASSED iteration 5 commit d2a7d6ef91');
-  assert.equal(green.pr?.watching, true);
+  assert.equal(green.prs[0]?.watching, true);
   assert.deepEqual(green.background, [['b1', 'Bash · pr-to-green/watch-pr.sh 1 "PASSED iteration 5 commit d2a7d6ef91"']]);
-  assert.equal(green.greenWatch, 'b1');
-  assert.equal((await watch('FAILED: e2e')).greenWatch, null);
+  assert.deepEqual(green.greenWatches, ['b1']);
+  assert.deepEqual((await watch('FAILED: e2e')).greenWatches, []);
+});
+
+test('pr-to-green in a task across repos: each PR on its own, with where its command ran and the repository az named', async () => {
+  const at = (cwd: string, e: Record<string, any>) => ({ ...e, cwd });
+  const m = await meta([
+    prompt('ship both'),
+    assistant([toolUse('s', 'Skill', { skill: 'pr-to-green' })]),
+    at('/t', assistant([toolUse('c1', 'Bash', { command: 'cd api && az repos pr create --title x' })])),
+    toolResult('c1', '{ "pullRequestId": 11, "repository": { "id": "r1", "name": "api" } }'),
+    at('/t', assistant([toolUse('c2', 'Bash', { command: 'az repos pr create --repository web --title y' })])),
+    toolResult('c2', '{ "pullRequestId": 12 }'),
+    at('/t', assistant([toolUse('w1', 'Bash', { command: 'cd "/t/api" && pr-to-green/watch-pr.sh 11 "RUNNING"', run_in_background: true })])),
+    { ...toolResult('w1', 'Command running in background with ID: b1'), toolUseResult: { stdout: '', backgroundTaskId: 'b1' } },
+    at('/t/web', assistant([toolUse('w2', 'Bash', { command: 'pr-to-green/watch-pr.sh 12 "PASSED iteration 1"', run_in_background: true })])),
+    { ...toolResult('w2', 'Command running in background with ID: b2'), toolUseResult: { stdout: '', backgroundTaskId: 'b2' } },
+  ]);
+  assert.deepEqual(m.prs.map(({ id, dir, repository, watching }) => ({ id, dir, repository, watching })), [
+    { id: 11, dir: '/t/api', repository: 'api', watching: true },
+    { id: 12, dir: '/t/web', repository: 'web', watching: true },
+  ]);
+  assert.deepEqual(m.greenWatches, ['b2']);
 });
 
 test('huge inline lines are skipped and the tail grows back to the last prompt', async () => {

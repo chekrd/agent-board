@@ -63,3 +63,14 @@ export async function folderDiff(taskFolder: string, opts: { statOnly?: boolean;
     }), NO_CHANGES),
   };
 }
+
+// The worktree a PR belongs to: in a task across a folder of repos, the one its command ran in, else the one whose
+// repository az named, else the only one there is.
+export function prWorktree(s: { repoId: number | null; worktree: string }, dir: string | null, repository: string | null) {
+  if (s.repoId !== null) return { path: s.worktree, repo: null };
+  const opened = taskWorktrees(s.worktree).map(({ repo, worktree }) => ({ path: worktree.path, repo: repo.name }));
+  const named = repository?.toLowerCase();
+  return opened.find((w) => dir && (dir === w.path || dir.startsWith(`${w.path}/`)))
+    ?? opened.find((w) => named && w.repo.toLowerCase() === named)
+    ?? (opened.length === 1 ? opened[0] : undefined);
+}

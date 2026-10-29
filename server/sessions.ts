@@ -24,7 +24,7 @@ import { summarizeStale } from './summary.ts';
 import { describeLinks } from './linkAbout.ts';
 import { mergeLinks } from './links.ts';
 import { notify, refreshWorkspace, repoView, taskFolderOf, taskWorktrees, workspace, type RepoView } from './workspace.ts';
-import { folderArgs, folderDiff } from './folderTasks.ts';
+import { folderArgs, folderDiff, prWorktree } from './folderTasks.ts';
 import { checkUploads } from './uploads.ts';
 
 const run = promisify(execFile);
@@ -174,7 +174,7 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;
   const lastTurn = meta.turns.at(-1)?.id ?? null;
   if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
-  const background = meta.background.filter(([id]) => id !== meta.greenWatch).map(([, what]) => what);
+  const background = meta.background.filter(([id]) => !meta.greenWatches.includes(id)).map(([, what]) => what);
   const activity = activityOf(p, meta.activity, background);
   if (JSON.stringify(activity) !== JSON.stringify(s.activity)) patch.activity = activity;
   const status = p && statusOf(p, background.length);
@@ -184,8 +184,11 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (artifacts) patch.artifacts = artifacts;
   const links = mergeLinks(s.links, meta.links);
   if (links) patch.links = links;
-  const pr = meta.pr && { ...meta.pr, url: meta.pr.id ? await pullRequestUrl(s.worktree, meta.pr.id) : null };
-  if (JSON.stringify(pr) !== JSON.stringify(s.pr)) patch.pr = pr;
+  const prs = await Promise.all(meta.prs.map(async ({ dir, repository, ...pr }) => {
+    const worktree = prWorktree(s, dir, repository);
+    return { ...pr, url: pr.id && worktree ? await pullRequestUrl(worktree.path, pr.id) : null, repo: s.repoId === null ? worktree?.repo ?? null : null };
+  }));
+  if (JSON.stringify(prs) !== JSON.stringify(s.prs)) patch.prs = prs;
   const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
   if (ask?.toolUseId !== s.question?.toolUseId) {
     const input = ask && askInput.safeParse(ask.input);

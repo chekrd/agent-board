@@ -11,7 +11,7 @@ import { ParentCrumb } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChip, STATE_HINTS, STATE_LABELS } from './Status.tsx';
+import { PrChips, STATE_HINTS, STATE_LABELS } from './Status.tsx';
 import styles from './WallTile.module.css';
 
 function textOf(s: Session, attention: Attention) {
@@ -97,7 +97,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
           <span className={styles.where}>{place} · {branch}</span>
           {tag && <span className={styles.tag}>{tag}</span>}
           {!!session.summary?.learnings?.length && <span className={styles.know} title="Claude found something notable; open the task to read it">Worth knowing</span>}
-          <PrChip pr={session.pr} status={session.status} />
+          <PrChips prs={session.prs} status={session.status} />
         </footer>
       )}
     </article>

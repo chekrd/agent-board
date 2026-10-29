@@ -14,7 +14,7 @@ import { Overview } from './Overview.tsx';
 import { BranchMark } from './Parts.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChip, STATE_HINTS } from './Status.tsx';
+import { PrChips, STATE_HINTS } from './Status.tsx';
 import { TaskName } from './TaskName.tsx';
 import styles from './TaskSheet.module.css';
 import { toast } from './Toasts.tsx';
@@ -102,7 +102,7 @@ function Body({ session, name, repos, tab, item, back }: BodyProps) {
               {open.length ? `${open.length} of ${total} ${total === 1 ? 'subtask' : 'subtasks'} open` : <><Icon name="check" size={13} />{total === 1 ? 'Subtask' : `All ${total} subtasks`} solved or dropped</>}
             </span>
           )}
-          <PrChip pr={session.pr} status={session.status} />
+          <PrChips prs={session.prs} status={session.status} />
         </div>
         <nav className={styles.tabs} role="tablist" aria-label="Task">
           {tabs.map((t) => (

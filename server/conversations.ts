@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
@@ -50,9 +50,9 @@ interface Meta {
   ask: ToolCall | null;
   artifacts: ToolCall[];
   links: Found[];
-  pr: Omit<PrFlow, 'url'> | null;
-  // The background task of a PR watcher that waits on checks already green, so nothing will come of it but a change.
-  greenWatch: string | null;
+  prs: (Omit<PrFlow, 'url' | 'repo'> & { dir: string | null; repository: string | null })[];
+  // The background tasks of PR watchers that wait on checks already green, so nothing will come of them but a change.
+  greenWatches: string[];
   turns: Turn[];
   model: string | null;
   effort: string | null;
@@ -345,71 +345,115 @@ function background(entries: Record<string, any>[], carried: readonly [string, s
   return [...open];
 }
 
-const ENV_PREFIX = String.raw`^\s*(?:\w+=\S*\s+)*`;
+// A command may first change into the repository it is for: `cd <dir> && …` or `cd <dir>; …`.
+const ENV_PREFIX = String.raw`^\s*(?:cd\s+("[^"]+"|'[^']+'|[^\s;&]+)\s*(?:&&|;)\s*)?(?:\w+=\S*\s+)*`;
 const WATCH_PR = new RegExp(`${ENV_PREFIX}\\S*pr-to-green/watch-pr\\.sh\\s+(\\d+)(?:\\s+"([^"]*)")?`);
 const CREATE_PR = new RegExp(`${ENV_PREFIX}az repos pr create\\b`);
+const REPOSITORY_ARG = /\s(?:--repository|-r)\s+("[^"]+"|'[^']+'|\S+)/;
 const RESULT_LINE = /^(RUNNING|PASSED|FAILED|CLOSED|ERROR)\b.*$/m;
+
+const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2');
+
+// Where the command ran: the folder it changed into, else the session's working directory then.
+const dirOf = (entry: Record<string, any>, cd: string | undefined) => {
+  const cwd = typeof entry.cwd === 'string' ? entry.cwd : null;
+  if (!cd) return cwd;
+  return cwd ? resolve(cwd, unquote(cd)) : isAbsolute(unquote(cd)) ? unquote(cd) : null;
+};
 
 const resultText = (entry: Record<string, any>, block: Record<string, any>) =>
   entry.toolUseResult?.stdout ?? (typeof block.content === 'string' ? block.content : block.content?.map?.((c: any) => c.text ?? '').join('\n') ?? '');
 
-// Follows the pr-to-green skill: the PR it creates and the last result its watch-pr.sh reported.
-async function prFlow(entries: Record<string, any>[]): Promise<{ flow: Meta['pr']; watcherTask: string | null }> {
-  let flow = null as Meta['pr'];
-  let watcher: string | null = null;
-  let watcherTask: string | null = null;
-  let creator: string | null = null;
-  let outputFile: string | null = null;
-  const start = (at: string) => (flow ??= { id: null, result: null, watching: false, at: Date.parse(at) || Date.now() });
+export type PrRead = Meta['prs'][number];
+
+// Follows the pr-to-green skill: each PR it creates or watches, by id, with the last result its watch-pr.sh reported,
+// where the command ran and the repository az named, so the PR can be told to its repository.
+async function prFlows(entries: Record<string, any>[]): Promise<{ flows: PrRead[]; greenWatches: string[] }> {
+  const flows: PrRead[] = [];
+  // The PR being opened, until az says its id.
+  let opening: PrRead | null = null;
+  const creators = new Map<string, PrRead>();
+  // The watcher of each PR: its tool call, its background task and the file it wrote when it ended.
+  const watchers = new Map<PrRead, { call: string; task: string | null; output: string | null }>();
+  const open = (at: string) => {
+    if (!opening) flows.push(opening = { id: null, result: null, watching: false, at: Date.parse(at) || Date.now(), dir: null, repository: null });
+    return opening;
+  };
+  const withId = (id: number, at: string) => {
+    const known = flows.find((f) => f.id === id);
+    if (known) return known;
+    const f = open(at);
+    f.id = id;
+    opening = null;
+    return f;
+  };
   for (const entry of entries) {
     for (const b of blocks(entry)) {
       if (b.type !== 'tool_use') continue;
-      if (b.name === 'Skill' && String(b.input?.skill ?? '').endsWith('pr-to-green')) start(entry.timestamp);
+      if (b.name === 'Skill' && String(b.input?.skill ?? '').endsWith('pr-to-green') && !flows.length) open(entry.timestamp);
       const command = b.name === 'Bash' ? String(b.input?.command ?? '') : '';
       const watch = command.match(WATCH_PR);
       if (watch) {
-        const f = start(entry.timestamp);
-        Object.assign(f, { id: Number(watch[1]), result: watch[2] ?? f.result, watching: true });
-        watcher = b.id;
-        watcherTask = null;
-        outputFile = null;
-      } else if (CREATE_PR.test(command)) {
-        start(entry.timestamp);
-        creator = b.id;
+        const f = withId(Number(watch[2]), entry.timestamp);
+        Object.assign(f, { result: watch[3] ?? f.result, watching: true, dir: dirOf(entry, watch[1]) ?? f.dir });
+        watchers.set(f, { call: b.id, task: null, output: null });
+        continue;
+      }
+      const create = command.match(CREATE_PR);
+      if (create) {
+        const f = open(entry.timestamp);
+        f.dir = dirOf(entry, create[1]) ?? f.dir;
+        const repository = command.match(REPOSITORY_ARG)?.[1];
+        if (repository) f.repository = unquote(repository);
+        creators.set(b.id, f);
       }
     }
-    if (!flow || entry.type !== 'user') continue;
+    if (!flows.length || entry.type !== 'user') continue;
     const content = entry.message?.content;
-    if (typeof content === 'string' && content.startsWith('<task-notification>') && content.includes(`<tool-use-id>${watcher}</tool-use-id>`)) {
-      flow.watching = false;
-      outputFile = content.match(/<output-file>([^<]+)<\/output-file>/)?.[1] ?? null;
+    if (typeof content === 'string' && content.startsWith('<task-notification>')) {
+      for (const [f, w] of watchers) {
+        if (!content.includes(`<tool-use-id>${w.call}</tool-use-id>`)) continue;
+        f.watching = false;
+        w.output = content.match(/<output-file>([^<]+)<\/output-file>/)?.[1] ?? null;
+      }
     }
     if (!Array.isArray(content)) continue;
     for (const b of content) {
       if (b.type !== 'tool_result') continue;
       const text = resultText(entry, b);
-      if (b.tool_use_id === creator) flow.id = Number(text.match(/"pullRequestId":\s*(\d+)/)?.[1]) || flow.id;
-      if (b.tool_use_id !== watcher) continue;
-      const task = entry.toolUseResult?.backgroundTaskId ?? (text.includes('running in background') ? text.match(/with ID: (\S+)/)?.[1] : null);
-      if (task) {
-        watcherTask = String(task);
-      } else if (!text.includes('running in background')) {
-        flow.watching = false;
-        flow.result = text.match(RESULT_LINE)?.[0] ?? flow.result;
+      const created = creators.get(b.tool_use_id);
+      const id = created && Number(text.match(/"pullRequestId":\s*(\d+)/)?.[1]);
+      if (created && id) {
+        const repository = created.repository ?? text.match(/"repository":\s*\{[^{}]*?"name":\s*"([^"]+)"/)?.[1] ?? null;
+        const f = created.id === null && !flows.some((o) => o.id === id) ? created : withId(id, entry.timestamp);
+        if (f !== created && created.id === null) flows.splice(flows.indexOf(created), 1);
+        if (opening === created) opening = null;
+        Object.assign(f, { id, dir: f.dir ?? created.dir, repository: f.repository ?? repository });
+      }
+      for (const [f, w] of watchers) {
+        if (b.tool_use_id !== w.call) continue;
+        const task = entry.toolUseResult?.backgroundTaskId ?? (text.includes('running in background') ? text.match(/with ID: (\S+)/)?.[1] : null);
+        if (task) {
+          w.task = String(task);
+        } else if (!text.includes('running in background')) {
+          f.watching = false;
+          f.result = text.match(RESULT_LINE)?.[0] ?? f.result;
+        }
       }
     }
   }
-  if (flow && outputFile) {
-    const out = await readFile(outputFile, 'utf8').catch(() => '');
-    flow.result = out.match(RESULT_LINE)?.[0] ?? flow.result;
+  for (const [f, w] of watchers) {
+    if (!w.output) continue;
+    const out = await readFile(w.output, 'utf8').catch(() => '');
+    f.result = out.match(RESULT_LINE)?.[0] ?? f.result;
   }
-  return { flow, watcherTask };
+  const greenWatches = [...watchers].flatMap(([f, w]) => (f.watching && w.task && /^PASSED\b/.test(f.result ?? '') ? [w.task] : []));
+  return { flows, greenWatches };
 }
 
 async function prMeta(tail: Record<string, any>[], cached: Meta | undefined) {
-  const { flow, watcherTask } = await prFlow(tail);
-  const green = flow?.watching && /^PASSED\b/.test(flow.result ?? '');
-  return { pr: flow, greenWatch: green ? watcherTask : flow ? null : cached?.greenWatch ?? null };
+  const { flows, greenWatches } = await prFlows(tail);
+  return { prs: flows, greenWatches: flows.length ? greenWatches : cached?.greenWatches ?? [] };
 }
 
 async function readMeta(file: string, mtime: number): Promise<Meta> {

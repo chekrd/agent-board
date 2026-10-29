@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { repos } from './db.ts';
-import { folderArgs, folderDiff, makeTaskFolder, openWorktree } from './folderTasks.ts';
+import { folderArgs, folderDiff, makeTaskFolder, openWorktree, prWorktree } from './folderTasks.ts';
 import { folders, placeOf, refreshWorkspace, taskFolderOf, taskWorktrees } from './workspace.ts';
 
 const env = {
@@ -84,4 +84,16 @@ test('a Claude in a task folder starts with the layout explained and the folder 
   assert.ok(args.includes(`Read(/${folder}/**)`));
   assert.deepEqual(folderArgs(join(folder, 'web')), []);
   assert.ok(existsSync(task));
+});
+
+test('a PR of a task across repos belongs to the worktree its command ran in, else the repository az named, else the only one', async () => {
+  const { folder } = await folderOfTwo();
+  const task = { repoId: null, worktree: await makeTaskFolder(folder, 'prs') };
+  const web = (await openWorktree({ repo: 'web', task_folder: task.worktree })).path;
+  assert.deepEqual(prWorktree(task, null, null), { path: web, repo: 'web' });
+  const api = (await openWorktree({ repo: 'api', task_folder: task.worktree })).path;
+  assert.deepEqual(prWorktree(task, join(api, 'src'), 'web'), { path: api, repo: 'api' });
+  assert.deepEqual(prWorktree(task, task.worktree, 'WEB'), { path: web, repo: 'web' });
+  assert.equal(prWorktree(task, task.worktree, null), undefined);
+  assert.deepEqual(prWorktree({ repoId: 1, worktree: '/w' }, '/elsewhere', 'web'), { path: '/w', repo: null });
 });

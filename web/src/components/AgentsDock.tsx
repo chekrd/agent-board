@@ -10,7 +10,7 @@ import { attentionOf, locate, sessionLabel } from '../util.ts';
 import styles from './AgentsDock.module.css';
 import { Clock } from './Clock.tsx';
 import { StateMark } from './StateMark.tsx';
-import { PrChip, PrDot } from './Status.tsx';
+import { PrChips, PrDots } from './Status.tsx';
 
 const HOVER_MS = 150;
 const narrow = matchMedia('(max-width: 760px)');
@@ -111,7 +111,7 @@ function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: Re
         <span className={styles.text}>
           <span className={styles.head}>
             <strong className={styles.name}>{name}</strong>
-            <PrDot pr={s.pr} status={s.status} />
+            <PrDots prs={s.prs} status={s.status} />
             {know && <span className={styles.know} data-know aria-hidden />}
           </span>
           {c.send ? <span className={styles.line}><Line capsule={c} /></span> : <code className={styles.line}><Line capsule={c} /></code>}
@@ -132,7 +132,7 @@ function CapsuleView({ capsule: c, repos, fresh }: { capsule: Capsule; repos: Re
           <span className={styles.step}><Line capsule={c} /></span>
           {clock}
         </span>
-        <PrChip pr={s.pr} status={s.status} />
+        <PrChips prs={s.prs} status={s.status} />
         {know && <p className={styles.worth}>Worth knowing: {know}</p>}
         {answered && <p className={styles.answered}>{answered}</p>}
         {summary && <p className={styles.summary}>{summary}</p>}

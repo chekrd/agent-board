@@ -36,8 +36,7 @@ function prState(pr: PrFlow, status: SessionStatus) {
   return { result, label, state: !pr.id ? 'RUNNING' : result ?? 'RUNNING' };
 }
 
-export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatus }) {
-  if (!pr) return null;
+export function PrChip({ pr, status }: { pr: PrFlow; status: SessionStatus }) {
   const { result, label, state } = prState(pr, status);
   const failed = result === 'FAILED' ? pr.result!.split(': ').slice(1).join(': ') : '';
   const title = [
@@ -46,13 +45,20 @@ export function PrChip({ pr, status }: { pr: PrFlow | null; status: SessionStatu
     failed && `Failed: ${failed}`,
     pr.watching ? 'pr-to-green is watching the checks' : 'Not watching right now',
   ].filter(Boolean).join('\n');
-  const text = <>PR{pr.id ? ` ${pr.id}` : ''} · {label}</>;
+  const text = <>{pr.repo && `${pr.repo} `}PR{pr.id ? ` ${pr.id}` : ''} · {label}</>;
   const marks = { className: styles.pr, 'data-state': state, 'data-label': label, 'data-watching': pr.watching || undefined, title };
   return pr.url ? <a {...marks} href={pr.url} target="_blank" rel="noreferrer">{text}</a> : <span {...marks}>{text}</span>;
 }
 
-export function PrDot({ pr, status }: { pr: PrFlow | null; status: SessionStatus }) {
-  if (!pr) return null;
+export function PrDot({ pr, status }: { pr: PrFlow; status: SessionStatus }) {
   const { label, state } = prState(pr, status);
   return <span className={styles.dot} data-pr data-state={state} data-label={label} data-watching={pr.watching || undefined} aria-hidden />;
 }
+
+export const prKey = (pr: PrFlow) => `${pr.repo ?? ''}#${pr.id ?? 'opening'}`;
+
+export const PrChips = ({ prs, status }: { prs: PrFlow[]; status: SessionStatus }) =>
+  prs.map((pr) => <PrChip key={prKey(pr)} pr={pr} status={status} />);
+
+export const PrDots = ({ prs, status }: { prs: PrFlow[]; status: SessionStatus }) =>
+  prs.map((pr) => <PrDot key={prKey(pr)} pr={pr} status={status} />);
