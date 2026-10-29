@@ -5102,7 +5102,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile shows the ones that want you, leading to them, and its page lists them all; Mark solved and Drop settle a subtask and open its task in its place, and the task counts the ones still open',
+    name: 'P8.findings a review lists its findings on the task page: #2 rejected, #1 with its subtask at work; Accept with a note on #3 starts a subtask under it, Reject and Reopen mark only; a subtask names its task above its title and atop its Overview, with the finding, the answer and its sibling, and leads back; the Your turn card lists them in place of the reply; on the Wall a subtask has no tile: its task\'s tile lists none and reads In progress while one works, and its page lists them all; Mark solved and Drop settle a subtask and open its task in its place, and the task counts the ones still open',
     scenario: 'findings',
     async run({ themes, page, mock, shot }) {
       const items = () => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-finding]')].map((f) => ({
@@ -5168,13 +5168,18 @@ export const checks: Check[] = [
       await page.click('a[href="/wall"]');
       await page.until('the Wall', () => !!document.querySelector('[data-tile][data-session="s-review"]'));
       assert.equal(await page.eval(() => document.querySelectorAll('[data-tile] [data-parent], [data-tile][data-session^="s-review-"]').length), 0, 'no subtask has a tile');
-      assert.equal(await text('[data-tile][data-session="s-review"] [data-subtasks]'), 'Second look #1 DECIDE Explain #1.1 YOUR TURN 4 of 4 subtasks open');
-      assert.equal(await page.eval(() => document.querySelector<HTMLElement>('[data-tile][data-session="s-review"]')!.dataset.wants), 'decide');
+      // The task itself is idle, but its subtask #1 works, so its tile reads In progress and lists no subtasks.
+      assert.deepEqual(await page.eval(() => {
+        const tile = document.querySelector<HTMLElement>('[data-tile][data-session="s-review"]')!;
+        return { attention: tile.dataset.attention, wants: tile.dataset.wants, state: tile.querySelector('header')!.innerText.split('\n')[0], listed: !!tile.querySelector('[data-subtasks], [data-subtask]') };
+      }), { attention: 'working', wants: 'decide', state: 'IN PROGRESS', listed: false });
       await shot('findings-wall');
-      await page.click('[data-tile][data-session="s-review"] [data-subtask="s-review-2"]');
-      await page.until('the subtask from its task tile', () => location.pathname === '/s/s-review-2/overview');
-      await page.click('#task-sheet header [data-parent] button');
+      await page.click('[data-tile][data-session="s-review"]');
       await page.until('the review', () => location.pathname === '/s/s-review/overview');
+      await page.click('#task-sheet [data-subtask-list] [data-subtask="s-review-2"]');
+      await page.until('the subtask from its task page', () => location.pathname === '/s/s-review-2/overview');
+      await page.click('#task-sheet header [data-parent] button');
+      await page.until('the review again', () => location.pathname === '/s/s-review/overview');
       const listed = await page.eval(() => [...document.querySelectorAll<HTMLElement>('#task-sheet [data-subtask-list] [data-subtask]')].map((b) => `${b.dataset.subtask}:${b.dataset.attention}`));
       assert.equal(listed.length, 4);
       assert.deepEqual(listed.slice(0, 3), ['s-review-2:decide', 's-review-1:working', 's-review-1-1:idle']);

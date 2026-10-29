@@ -5,10 +5,9 @@ import { openSheet, sessionPath } from '../router.ts';
 import type { RepoView, Session } from '../types.ts';
 import { useBusy } from '../sends.ts';
 import { useStore } from '../store.ts';
-import { adviceFor, ago, attentionOf, decisionOf, findingPath, openSubtasks, locate, sessionLabel, shownOf, type Attention, type Shown } from '../util.ts';
+import { adviceFor, ago, attentionOf, decisionOf, openSubtasks, locate, sessionLabel, shownOf, type Attention, type Shown } from '../util.ts';
 import { Clock } from './Clock.tsx';
-import { Icon } from './Icon.tsx';
-import { ParentCrumb, SUBTASK_LABELS } from './Findings.tsx';
+import { ParentCrumb } from './Findings.tsx';
 import { SessionMenu } from './SessionMenu.tsx';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
@@ -37,15 +36,17 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const { repo, worktree, branch } = locate(repos, session);
   const name = sessionLabel(session, branch);
   const attention = attentionOf(session);
-  const shown = shownOf(session, useBusy());
   const archived = session.archived;
+  const { sessions } = useStore();
+  const busy = useBusy();
+  const { open: unsettled } = openSubtasks(sessions, session.id);
+  const own = shownOf(session, busy);
+  // A task that waits on its subtasks is in progress while any of them works.
+  const shown = !archived && (own === 'idle' || own === 'exited') && unsettled.some((o) => !o.archived && shownOf(o, busy) === 'working') ? 'working' : own;
   const label = archived ? 'Archived' : STATE_LABELS[shown];
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
-  const { sessions } = useStore();
-  const { open: unsettled, total } = openSubtasks(sessions, session.id);
-  const busy = useBusy();
   const wanting = unsettled.filter((o) => !o.archived && WANTS.includes(shownOf(o, busy))).sort((a, b) => WANTS.indexOf(shownOf(a, busy)) - WANTS.indexOf(shownOf(b, busy)));
   const wants = wanting.length && !archived && WANTS.indexOf(shownOf(wanting[0], busy)) < rank(shown) ? shownOf(wanting[0], busy) : undefined;
 
@@ -85,23 +86,6 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       <BranchMark session={session} branch={branch} />
       <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
-      {total > 0 && !archived && (
-        <div className={styles.subtasks} data-subtasks aria-label="Subtasks">
-          {wanting.map((o) => {
-            const state = shownOf(o, busy);
-            return (
-              <button key={o.id} type="button" data-subtask={o.id} data-attention={state} title={`${sessionLabel(o, branch)}; opens the subtask`} onClick={() => openSheet(o.id)}>
-                <StateMark state={state} size={8} />
-                <span>{SUBTASK_LABELS[o.parent!.kind]} #{findingPath(sessions, o)}</span>
-                <span className={styles.subtaskState}>{STATE_LABELS[state]}</span>
-              </button>
-            );
-          })}
-          <span className={styles.subtaskRest} data-open-count data-settled={!unsettled.length || undefined}>
-            {unsettled.length ? `${unsettled.length} of ${total} ${total === 1 ? 'subtask' : 'subtasks'} open` : <><Icon name="check" size={13} />{total === 1 ? 'Its subtask is' : `All ${total} subtasks are`} solved or dropped</>}
-          </span>
-        </div>
-      )}
       {working && (
         <div className={styles.work}>
           <code>{session.activity?.step ?? 'Starting'}</code>
