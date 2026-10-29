@@ -43,6 +43,8 @@ async function scanRoots() {
   }
 }
 
+const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true }).compare;
+
 let started = 0;
 let applied = 0;
 
@@ -62,11 +64,13 @@ export async function refreshWorkspace({ scan = false } = {}) {
         ...w,
         conversations: await listConversations(w.path, live),
       })));
+      worktrees.sort((a, b) => Number(b.isMain) - Number(a.isMain) || byName(a.branch ?? a.path, b.branch ?? b.path));
       return { ...view, base: repo.baseBranch ?? await detectBase(repo.path), worktrees };
     } catch (err) {
       return { ...view, base: repo.baseBranch ?? 'master', worktrees: [], error: String(err) };
     }
   }));
+  next.sort((a, b) => byName(a.name, b.name) || byName(a.path, b.path));
   if (generation < applied) return;
   applied = generation;
   cache = next;
