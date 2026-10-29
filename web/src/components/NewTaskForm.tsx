@@ -390,6 +390,11 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
       />
       <div className={styles.row}>
         <RepoPicker repos={sorted} repo={repo} pick={(id) => edit({ repoId: id, branch: f.existing ? defaultBranch(repos.find((r) => r.id === id)!) : '' })} />
+        <fieldset className={styles.mode}>
+          <legend>Where Claude runs</legend>
+          <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
+          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Current checkout</label>
+        </fieldset>
         {f.existing ? (
           <BranchPicker branches={list} value={f.branch} pick={(b) => edit({ branch: b })} where={where} />
         ) : (
@@ -398,11 +403,6 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
             <input value={f.name} onChange={(e) => edit({ name: e.currentTarget.value.replace(/\s+/g, '-') })} placeholder="fix-login-redirect" spellCheck={false} autoComplete="off" />
           </label>
         )}
-        <fieldset className={styles.mode}>
-          <legend>Where Claude runs</legend>
-          <label><input type="radio" name="mode" checked={!f.existing} onChange={() => edit({ existing: false, branch: '' })} />New worktree</label>
-          <label><input type="radio" name="mode" checked={f.existing} onChange={() => edit({ existing: true, branch: defaultBranch(repo) })} />Current checkout</label>
-        </fieldset>
         <button type="submit" className={styles.create} disabled={!valid || pending}>
           {pending ? 'Creating…' : 'Create'} <kbd>⌘↵</kbd>
         </button>
