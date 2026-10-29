@@ -1397,7 +1397,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.4.2 Claude\'s latest reply on Overview shows the prompt it answers above it, cut to three lines until Show all; a task whose prompt is unknown shows the reply alone',
+    name: 'P4.4.2 Claude\'s latest reply on Overview shows the prompt it answers above it, cut to three lines until Show all; a task whose prompt is unknown shows the reply alone; a long reply shows whole, with nothing to fold it',
     async run({ page, mock, shot }) {
       const reply = () => {
         const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
@@ -1424,6 +1424,14 @@ export const checks: Check[] = [
         const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
         return section?.innerText.includes('Pushed again.') ? (section.querySelector('[data-prompt]') ? 'with a prompt' : 'alone') : null;
       }), 'alone');
+
+      const essay = Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1} of the reply.`).join('\n\n');
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { lastPrompt: null, lastMessage: essay } });
+      assert.deepEqual(await page.until('the long reply whole', () => {
+        const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
+        const body = section?.querySelector<HTMLElement>(':scope > div');
+        return body?.innerText.includes('Paragraph 40') ? { clipped: body.scrollHeight > body.clientHeight, buttons: section!.querySelectorAll('button').length } : null;
+      }), { clipped: false, buttons: 0 });
     },
   },
   {

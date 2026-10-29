@@ -35,19 +35,16 @@
   }
 
   .body {
-    max-height: 16lh;
-    overflow: hidden;
     font-size: 15.5px;
     line-height: 1.6;
     color: var(--text-2);
-    &[data-folded] { mask-image: linear-gradient(to bottom, black calc(100% - 3lh), transparent); }
-    &[data-full] { max-height: none; }
   }
 
   .more {
     align-self: flex-start;
-    height: 28px;
-    padding: 0 10px;
+    height: 24px;
+    margin-left: -8px;
+    padding: 0 8px;
     border-radius: 8px;
     background: none;
     color: var(--text-2);
