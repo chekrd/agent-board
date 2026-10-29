@@ -45,8 +45,8 @@ function Copy({ value, what, title, shown = value }: { value: string; what: stri
 }
 
 // A decision answered on its task page: the same options, second opinion and reply box as on its card. A send is held
-// with its Undo as from the card, and the box goes with it.
-function Queued({ session, name }: { session: Session; name: string }) {
+// with its Undo as from the card, and the box goes with it. `box` is off while Message Claude stays for the writing in it.
+function Queued({ session, name, box: ownBox }: { session: Session; name: string; box: boolean }) {
   const q = useQueue();
   const key = decisionKey(session);
   const menu = session.menu;
@@ -111,7 +111,7 @@ function Queued({ session, name }: { session: Session; name: string }) {
             onAccept={() => send(acceptance(session))}
             onEdit={edit}
           />
-          <Composer
+          {ownBox && <Composer
             session={session}
             decision={decision.key}
             label="Your own answer"
@@ -120,7 +120,7 @@ function Queued({ session, name }: { session: Session; name: string }) {
             note={note}
             onSend={send}
             onEscape={closeSheet}
-          />
+          />}
         </>
       )}
       {menu && (
@@ -157,6 +157,12 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
   const attention = attentionOf(session);
   const { archived } = session;
   const working = session.status === 'working';
+  const message = !archived && (attention === 'working' || attention === 'idle');
+  // Message Claude stays while focus is in it, also with the window away, whatever the state turns to: a dictation app
+  // inserts into the field it started on, and a new box would not be that field. The server refuses a message while
+  // Claude shows a prompt, and the text comes back.
+  const [writing, setWriting] = useState(false);
+  if (archived && writing) setWriting(false);
   const learnings = summary?.learnings ?? [];
   const artifacts = session.artifacts.toReversed();
   const links = session.links.toReversed();
@@ -180,7 +186,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               {activity && <span className={styles.clock} title="Time since your last message"><Clock since={activity.since} /></span>}
             </section>
           )}
-          {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} name={name} />}
+          {!archived && attention === 'decide' && !busy.has(session.id) && <Queued session={session} name={name} box={!writing} />}
           <Findings session={session} />
           {!archived && attention === 'focus' && (
             <section className={styles.blocked}>
@@ -188,16 +194,24 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               <FocusButton session={session} />
             </section>
           )}
-          {!archived && (attention === 'working' || attention === 'idle') && (
-            <Composer
-              session={session}
-              decision={null}
-              label="Message Claude"
-              placeholder="Reply, / for commands, paste or drop files…"
-              focus={0}
-              onSend={(r) => void hold(session, r, name)}
-              onEscape={closeSheet}
-            />
+          {(message || (writing && !archived)) && (
+            <div
+              className={styles.message}
+              onFocus={() => setWriting(true)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget) && (e.relatedTarget || document.hasFocus())) setWriting(false);
+              }}
+            >
+              <Composer
+                session={session}
+                decision={null}
+                label="Message Claude"
+                placeholder="Reply, / for commands, paste or drop files…"
+                focus={0}
+                onSend={(r) => void hold(session, r, name)}
+                onEscape={closeSheet}
+              />
+            </div>
           )}
           <section className={styles.status}>
             <h3 className={styles.label} title="A short summary of the session, rewritten by a model after each of Claude's messages">

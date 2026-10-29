@@ -364,6 +364,9 @@ const actions = async (mock: Mock) => (await mock.log()).filter((e) => e.method 
 
 const stateOf = async (mock: Mock, id: string) => (await mock.get('/api/state')).sessions.find((s: { id: string }) => s.id === id);
 
+// A send the page has posted and the mock answered.
+const sent = (e: Entry) => e.method === 'POST' && e.action !== null;
+
 const unguarded = () => !document.querySelector('[data-primary][data-guarded]');
 
 // `id` is the card, and the guard that came with it is over, so an answer key counts.
@@ -3088,6 +3091,7 @@ export const checks: Check[] = [
       await page.until('the guard to end', unguarded);
       await page.key('Enter');
       await wait(HELD_MS);
+      await logged(mock, 'the send', sent, POSTED_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['answer', { key: 'q:toolu_01Cart', choice: 'Merge both carts' }]]);
     },
   },
@@ -3103,6 +3107,7 @@ export const checks: Check[] = [
       await page.until('the guard to end', unguarded);
       await page.key('3');
       await wait(HELD_MS);
+      await logged(mock, 'the send', sent, POSTED_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['accept-advice', { key: 'q:toolu_01Cart', adviceAt: advice.at }]]);
     },
   },
@@ -3123,6 +3128,7 @@ export const checks: Check[] = [
       assert.ok(held > 700 && held < 1600, `the guard ended ${held} ms after the advice changed`);
       await page.key('Enter');
       await sleep(HELD_MS);
+      await logged(mock, 'the send', sent, POSTED_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.body]), [['answer', { key: 'q:toolu_01Cart', choice: 'Merge both carts' }]]);
     },
   },
@@ -3569,38 +3575,37 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.2.27 the sheet\'s reply box stays where you write: a task that starts asking while you are in its box swaps the box for the decision\'s, and focus moves into that one, so a paste or dictation that comes next lands there',
+    name: 'P5.2.27 the sheet\'s reply box stays the field you write in: a task that starts asking while you are in Message Claude keeps that very box, with focus, so a dictation that started in it still lands; the decision\'s own box comes once you leave it',
     async run({ page, mock }) {
       await openFromWall(page, mock, 's-invoice');
       await page.click('#task-sheet textarea');
       await page.type('Round');
+      await page.eval(() => void (document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!.dataset.mark = 'first'));
       await mock.post('/mock/patch', {
         id: 's-invoice',
         patch: { status: 'idle', activity: null, question: { toolUseId: 'toolu_inv', category: 'plan-problem', askedAt: Date.now(), title: 'Round half cents to even?', details: '', options: [{ label: 'Yes' }, { label: 'No' }] } },
       });
-      await page.until('the decision\'s box', () => !!document.querySelector('#task-sheet [data-queued] textarea'));
+      await page.until('the decision', () => !!document.querySelector('#task-sheet [data-queued] h3'));
       await page.type(' half up');
-      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet [data-queued] textarea')), true, 'focus moved into the new box');
-      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet [data-queued] textarea')!.value), 'Round half up');
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLTextAreaElement>('#task-sheet textarea')].map((t) => [t.dataset.mark ?? null, t.value, t === document.activeElement])), [['first', 'Round half up', true]]);
+      await page.eval(() => document.getElementById('task-sheet')!.focus());
+      await page.until('the decision\'s own box', () => document.querySelector<HTMLTextAreaElement>('#task-sheet [data-queued] textarea')?.value === 'Round half up');
+      assert.equal(await page.eval(() => document.querySelectorAll('#task-sheet textarea').length), 1, 'Message Claude gone once left');
     },
   },
   {
-    name: 'P5.2.28 a paste while a permission prompt has taken the sheet\'s reply box away is kept, and shows in the box when it comes back, with focus',
+    name: 'P5.2.28 a permission prompt while you are in Message Claude keeps that very box, with focus and its text, until you leave it',
     async run({ page, mock }) {
       await openFromWall(page, mock, 's-invoice');
       await page.click('#task-sheet textarea');
       await page.type('Round');
+      await page.eval(() => void (document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!.dataset.mark = 'first'));
       await mock.post('/mock/patch', { id: 's-invoice', patch: { status: 'waiting', waitingFor: 'a permission prompt for Bash(pnpm test)' } });
-      await page.until('the box gone', () => !document.querySelector('#task-sheet textarea'));
-      await page.eval(() => {
-        const clipboardData = new DataTransfer();
-        clipboardData.setData('text/plain', ' half up');
-        document.activeElement!.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
-      });
-      await mock.post('/mock/patch', { id: 's-invoice', patch: { status: 'working', waitingFor: null } });
-      await page.until('the box back', () => !!document.querySelector('#task-sheet textarea'));
-      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!.value), 'Round half up');
-      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet textarea')), true, 'focus back in the box');
+      await page.until('the prompt notice', () => !!document.querySelector('#task-sheet p strong')?.textContent?.includes('pnpm test'));
+      await page.type(' half');
+      assert.deepEqual(await page.eval(() => [...document.querySelectorAll<HTMLTextAreaElement>('#task-sheet textarea')].map((t) => [t.dataset.mark ?? null, t.value, t === document.activeElement])), [['first', 'Round half', true]]);
+      await page.eval(() => document.getElementById('task-sheet')!.focus());
+      await page.until('the box gone once left', () => !document.querySelector('#task-sheet textarea'));
     },
   },
   {
@@ -4939,6 +4944,7 @@ export const checks: Check[] = [
       });
       await page.until('s-group back at the front', frontIs, 's-group');
       await wait(HELD_MS);
+      await logged(mock, 'the send', sent, POSTED_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
 
       await ready(page, 's-group');
@@ -4951,6 +4957,7 @@ export const checks: Check[] = [
       assert.deepEqual(kept.filter((id) => id === 's-group'), [], 'the send was still held when its Undo had run');
       await page.until('s-group back at the front', frontIs, 's-group');
       await wait(HELD_MS);
+      await logged(mock, 'the send', sent, POSTED_MS);
       assert.deepEqual((await actions(mock)).map((e) => [e.action, e.sessionId]), [['accept-advice', 's-cart']]);
     },
   },
