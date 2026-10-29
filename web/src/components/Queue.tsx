@@ -12,7 +12,6 @@ import styles from './Queue.module.css';
 import { BranchMark } from './Parts.tsx';
 import { StateMark } from './StateMark.tsx';
 import { STATE_LABELS } from './Status.tsx';
-import { toast } from './Toasts.tsx';
 
 function peekText(s: Session) {
   const kind = kindOf(s);
@@ -193,15 +192,8 @@ function Peek({ session, slot, repos, mark, enter }: { session: Session; slot: n
 }
 
 // The queue follows the deck on every view, so what arrives is told apart from what was there at the first snapshot.
-// On the queue, the card being read that stops waiting for a reason outside this page is named in a toast.
-export function useDeckSync(deck: readonly Session[], { live, onQueue, sessions, repos }: { live: boolean; onQueue: boolean; sessions: readonly Session[]; repos: RepoView[] }) {
-  const names = useRef(new Map<string, string>());
+export function useDeckSync(deck: readonly Session[], live: boolean) {
   useEffect(() => {
-    if (!live) return;
-    const named = new Map(sessions.map((s) => [s.id, sessionLabel(s, locate(repos, s).branch)]));
-    for (const { id } of queue.sync(deck)) {
-      if (onQueue) toast('info', `${named.get(id) ?? names.current.get(id) ?? 'A task'} no longer waits`, { session: id });
-    }
-    names.current = named;
-  }, [deck, live, onQueue, sessions, repos]);
+    if (live) queue.sync(deck);
+  }, [deck, live]);
 }

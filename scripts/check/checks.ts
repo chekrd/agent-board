@@ -2516,14 +2516,15 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P5.1.13 when s-hooks, at the front, stops waiting for a reason outside the page, the card after it comes up and a toast says Retry failed webhooks no longer waits',
+    name: 'P5.1.13 when s-hooks, at the front, stops waiting for a reason outside the page, the card after it comes up, with no toast',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.key('ArrowRight');
       await page.until('s-hooks at the front', frontIs, 's-hooks');
       await mock.post('/mock/patch', { id: 's-hooks', patch: { menu: null, status: 'working' } });
       await page.until('s-group at the front', frontIs, 's-group');
-      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'Retry failed webhooks no longer waits', inSheet: false, hit: true }]);
+      await sleep(300);
+      assert.equal(await page.eval(toastsOf, 'info'), null);
     },
   },
   {
@@ -2845,7 +2846,7 @@ export const checks: Check[] = [
       }, tile);
     },
   },  {
-    name: 'P5.1.n1-card typing in the reply box holds the card as it is: a new decision on it waits, then updates it in place with the same box and draft; the card leaving waits too, with word that it no longer waits, until focus leaves',
+    name: 'P5.1.n1-card typing in the reply box holds the card as it is: a new decision on it waits, then updates it in place with the same box and draft; the card leaving waits too, until focus leaves',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.until('the guard to end', () => !document.querySelector('[data-primary][data-guarded]'));
@@ -2872,8 +2873,8 @@ export const checks: Check[] = [
       await page.click('[data-card] textarea');
       await page.type(' allows');
       await mock.post('/mock/patch', { id: 's-cart', patch: { question: null, status: 'working' } });
-      assert.deepEqual(await page.until('the toast', toastsOf, 'info'), [{ kind: 'info', text: 'Merge guest cart on login no longer waits', inSheet: false, hit: true }]);
-      await sleep(300);
+      await until('s-cart working in the snapshot', async () => (await mock.get('/api/state')).sessions.find((x: { id: string }) => x.id === 's-cart').status === 'working');
+      await sleep(500);
       assert.deepEqual(await page.eval(box), { session: 's-cart', key: 'q:toolu_02', value: 'only if stock allows', focused: true, same: true });
       // Not on the card, which goes as the pointer goes down.
       await page.click('[data-wordmark]');
@@ -4275,7 +4276,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P7.contrast-queue every text on the queue, its dock, hover card, peeks, meter chips and toasts reads at 4.5:1 or more: an ask with its reply box, command list and Elaborate, a menu, an end-of-turn choice with its failed Elaborate and a running and a failed second opinion, Needs focus, Your turn, a send held, a refusal and a card that no longer waits',
+    name: 'P7.contrast-queue every text on the queue, its dock, hover card, peeks, meter chips and toasts reads at 4.5:1 or more: an ask with its reply box, command list and Elaborate, a menu, an end-of-turn choice with its failed Elaborate and a running and a failed second opinion, Needs focus, Your turn, a send held, a refusal and a card that leaves',
     expectedErrors: [/status of 400/],
     async run({ themes, page, mock }) {
       const fails: string[] = [];
@@ -4340,8 +4341,8 @@ export const checks: Check[] = [
       await mock.post('/mock/add', { template: 'ask', id: 's-new', rank: 9 });
       await page.until('Just in', () => !!document.querySelector('[data-justin]'));
       await mock.post('/mock/patch', { id: 's-cart', patch: { question: null, status: 'working', activity: { step: 'Edit src/cart/mergeCarts.ts', since: Date.now() } } });
-      await page.until('the word that it no longer waits', toastsOf, 'info');
-      await audit('Just in, no longer waits');
+      await page.until('s-cart off the queue', () => !document.querySelector('[data-segment][data-session="s-cart"]'));
+      await audit('Just in, s-cart gone');
       assert.deepEqual(fails, []);
     },
   },

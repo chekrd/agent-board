@@ -83,13 +83,13 @@ test('the view draws what it can: a card drawn late, after typing held it back, 
   assert.equal(q.state().shown, null);
 });
 
-test('when the card being read leaves for an outside reason the one after it comes up, with word that it no longer waits; the page\'s own send says nothing', () => {
+test('when the card being read leaves the one after it comes up', () => {
   const { q, deals } = world();
   q.sync([a, b, c]);
-  assert.deepEqual(q.sync([b, c]), [{ type: 'left', id: 'a' }]);
+  q.sync([b, c]);
   assert.equal(q.state().front, 'b');
   q.deal('down', () => {});
-  assert.deepEqual(q.sync([c]), []);
+  q.sync([c]);
   assert.equal(q.state().front, 'c');
   assert.deepEqual(deals, ['down']);
   q.sync([]);
@@ -213,15 +213,15 @@ test('while moves are held, skip and previous do nothing and a jump still goes',
   assert.deepEqual(deals, ['enter', 'back']);
 });
 
-test('a session the page takes out of the deck leaves sideways from the front, and quietly from elsewhere; neither says it no longer waits', () => {
+test('a session the page takes out of the deck leaves sideways from the front, and quietly from elsewhere', () => {
   const { q, deals } = world();
   q.sync([a, b, c]);
   const changes: string[] = [];
   assert.equal(q.leave('c', () => changes.push('c')), false);
-  assert.deepEqual(q.sync([a, b]), []);
+  q.sync([a, b]);
   assert.equal(q.leave('a', () => changes.push('a')), true);
   assert.equal(q.guarded(), true);
-  assert.deepEqual(q.sync([b]), []);
+  q.sync([b]);
   assert.equal(q.state().front, 'b');
   assert.deepEqual(changes, ['c', 'a']);
   assert.deepEqual(deals, ['side']);

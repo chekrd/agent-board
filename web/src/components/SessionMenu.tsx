@@ -27,7 +27,6 @@ const failed = (id: string) => (err: unknown) => {
 };
 
 // The session leaves the queue at once, its card sideways when it is the one being read, and Undo brings it back.
-// Taking a card out of the queue from this page needs no word that it no longer waits.
 export function archive(session: Session, name: string) {
   const { id } = session;
   const front = queue.leave(id, () => patchSession(id, { archived: true }));

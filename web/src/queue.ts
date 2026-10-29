@@ -43,12 +43,6 @@ export interface QueueState {
   notSent: ReadonlyMap<string, NotSent>;
 }
 
-// The card at the front left the deck for a reason outside this page: answered in the terminal, Claude moved on.
-export interface Left {
-  type: 'left';
-  id: string;
-}
-
 interface Storage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -110,8 +104,6 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     return map;
   };
   const subscribers = new Set<() => void>();
-  // Fronts leaving through this page's own send, archive or quit, which need no "no longer waits".
-  const own = new Set<string>();
   // The front card as last arranged, to tell an outside change of it.
   let arranged: { id: string; sig: string; target: string; offer: string } | null = null;
   // The card as the view last drew it.
@@ -147,14 +139,11 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   // Arranges the deck around `pinned`, the card wanted at the front: it keeps the pin, or moves it to the card that
   // followed it, and restarts the guard when the card at the front, its decision or what ⏎ sends changes, and when
   // its second opinion finishes or changes, which changes what its own option sends.
-  function arrangeAround(pinned: string | null): Left[] {
+  function arrangeAround(pinned: string | null) {
     const at = now();
-    const events: Left[] = [];
     let { guardUntil, updated, frozen, notSent } = state;
     const seen = state.seen ?? new Set(deck.flatMap((s) => decisionKey(s) ?? []));
     const front = resolveFront(deck, pinned, state.order);
-    if (pinned && front !== pinned && !own.has(pinned)) events.push({ type: 'left', id: pinned });
-    for (const id of own) if (!deck.some((s) => s.id === id)) own.delete(id);
 
     const card = deck.find((s) => s.id === front) ?? null;
     const key = card && decisionKey(card);
@@ -190,10 +179,9 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     const same = front === state.front && order.join() === state.order.join() && seen === state.seen && frozen === state.frozen &&
       updated === state.updated && notSent === state.notSent && guardUntil === state.guardUntil;
     if (!same) commit({ ...state, front, order, seen, frozen, updated, notSent, guardUntil });
-    return events;
   }
 
-  const move = (front: string, deal: Deal) => transition(() => void arrangeAround(front), deal);
+  const move = (front: string, deal: Deal) => transition(() => arrangeAround(front), deal);
 
   // Skip and previous are off for the rest of the press that ended a wait for typing: the card that waited has just
   // come up, and the press was aimed at the one before it.
@@ -205,7 +193,6 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
   const afterDeals: (() => void)[] = [];
 
   function deal(way: Deal, change: () => void) {
-    if (state.front && (way === 'down' || way === 'side')) own.add(state.front);
     const guardUntil = guard();
     commit({ ...state, guardUntil });
     dealing++;
@@ -227,9 +214,9 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
     guarded: () => now() < state.guardUntil,
 
     // Call with every new deck once the first snapshot is in.
-    sync(next: readonly Session[]): Left[] {
+    sync(next: readonly Session[]) {
       deck = next;
-      return arrangeAround(state.front);
+      arrangeAround(state.front);
     },
 
     skip() {
@@ -270,13 +257,9 @@ export function createQueue({ now = Date.now, storage = null, transition = (chan
       if (dealing) afterDeals.push(fn);
       else fn();
     },
-    own(id: string) {
-      own.add(id);
-    },
     // Takes a session out of the deck from this page, as an archive, a quit or a deleted worktree does: its card
     // leaves sideways when it is the one being read. Returns whether it was.
     leave(id: string, change: () => void) {
-      own.add(id);
       if (state.front !== id) {
         change();
         return false;

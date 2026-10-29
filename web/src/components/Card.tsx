@@ -148,7 +148,6 @@ export function Card({ session, repos, deck, enter }: CardProps) {
       return;
     }
     if (article.current?.contains(document.activeElement)) focusCard();
-    queue.own(session.id);
     queue.deal(r.action === 'dismiss' ? 'side' : 'down', () => void hold(session, r, name, { dealt: true }));
   };
   const press = (p: Request | Intent | null) => {
