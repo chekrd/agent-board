@@ -243,10 +243,10 @@ const toastsOf = (kind: string) => {
   return shown.length ? shown : null;
 };
 
-// One file of the diff on its own, whole, with the way back to all files.
+// One file of the diff on its own, whole, with the way back to all files or its folder.
 const wholeFile = (path: string) =>
   document.querySelector('[data-theme="dark"] code')?.textContent === path && document.querySelectorAll('section[data-file]').length === 1 &&
-  !!document.querySelector('[data-theme="dark"] > div')?.textContent?.includes('← All files');
+  !!document.querySelector('[data-theme="dark"] > div button')?.textContent?.startsWith('← ');
 
 // The connection pill once it reads `link` and, while reconnecting, says since when.
 const pillAt = (link: string) => {
@@ -729,7 +729,7 @@ export const checks: Check[] = [
       await sleep(300);
       const frames = await page.eval(() => (window as unknown as { seen: string[] }).seen);
       assert.equal(frames.length, 1, `the file changed after it showed, as its hunks alone or scrolled elsewhere: ${frames.join(' → ')}`);
-      assert.equal(await page.eval(() => document.querySelector('nav[aria-label="Changed files"] button')?.getAttribute('aria-pressed')), 'false');
+      assert.equal(await page.eval(() => document.querySelector('nav[aria-label="Changed files"] > button')?.getAttribute('aria-pressed')), 'false');
       await shot('diff-whole-file');
       // The file opens at its first change and renders only the lines near the viewport, so look at both ends.
       await page.until('line 1 at the top of server/git.ts', edgeLine, 'top', 1);
@@ -1403,9 +1403,9 @@ export const checks: Check[] = [
       await page.until('the file before whole', wholeFile, 'server/git.ts');
       await shot('sheet-diff-file');
 
-      await page.click('nav[aria-label="Changed files"] button[aria-pressed="false"]');
+      await page.click('nav[aria-label="Changed files"] > button');
       await page.until('all files from the tree', () => document.querySelectorAll('section[data-file]').length === 12 &&
-        document.querySelector('nav[aria-label="Changed files"] button')?.getAttribute('aria-pressed') === 'true');
+        document.querySelector('nav[aria-label="Changed files"] > button')?.getAttribute('aria-pressed') === 'true');
       await page.click('nav[aria-label="Changed files"] a[title="server/git.ts"]');
       await page.until('server/git.ts whole again', wholeFile, 'server/git.ts');
 
@@ -1415,6 +1415,46 @@ export const checks: Check[] = [
       await page.key('Escape');
       await page.until('the sheet to close', () => !document.querySelector('#task-sheet') && location.pathname === '/wall');
       assert.equal(await page.eval(() => document.activeElement?.closest('[data-tile]')?.getAttribute('data-session') + ' ' + document.activeElement?.tagName), 's-invoice A');
+    },
+  },
+  {
+    name: 'P4.5b Diff: a folder in the tree shows only its files, with their count and ± in the toolbar; a file in it opens whole and Esc goes back to the folder, then to all files',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('every file', () => document.querySelectorAll('section[data-file]').length === 12);
+      const view = () => ({
+        sections: [...document.querySelectorAll('section[data-file]')].map((s) => s.getAttribute('data-file')),
+        toolbar: document.querySelector('[data-theme="dark"] > div')?.textContent ?? '',
+        current: [...document.querySelectorAll('nav[aria-label="Changed files"] [aria-current], nav[aria-label="Changed files"] [aria-pressed="true"]')].map((e) => e.textContent?.trim()),
+      });
+
+      await page.click('nav[aria-label="Changed files"] button[title="Show only the changes in web/src/"]');
+      await page.until('web/src alone', () => document.querySelectorAll('section[data-file]').length === 2);
+      const folder = await page.eval(view);
+      assert.deepEqual(folder.sections, ['web/src/components/MenuCard.tsx', 'web/src/types.ts']);
+      assert.match(folder.toolbar, /← All filesweb\/src\/2 files · \+2 −6/);
+      assert.ok(folder.current.includes('web/src'), `the folder is not current: ${folder.current}`);
+      assert.ok(!folder.current.some((c) => c?.startsWith('All files')), 'All files is still pressed');
+      await shot('diff-folder');
+
+      await page.click('nav[aria-label="Changed files"] a[title="web/src/types.ts"]');
+      await page.until('types.ts whole', wholeFile, 'web/src/types.ts');
+      assert.match(await page.eval(() => document.querySelector('[data-theme="dark"] > div button')?.textContent ?? ''), /^← web\/src\/$/);
+      await page.key('j');
+      await page.until('J stays in the folder', wholeFile, 'web/src/types.ts');
+      await page.key('k');
+      await page.until('K steps to the file before in the folder', wholeFile, 'web/src/components/MenuCard.tsx');
+      await page.key('Escape');
+      await page.until('back to the folder', () => document.querySelectorAll('section[data-file]').length === 2);
+      await page.key('Escape');
+      await page.until('back to all files', () => document.querySelectorAll('section[data-file]').length === 12 &&
+        document.querySelector('nav[aria-label="Changed files"] > button')?.getAttribute('aria-pressed') === 'true');
+      assert.ok(await page.eval(() => !!document.querySelector('#task-sheet') || location.pathname === '/s/s-cart/diff'), 'Esc left the diff');
+
+      await page.click('nav[aria-label="Changed files"] button[title="Show only the changes in server/"]');
+      await page.until('server alone', () => document.querySelectorAll('section[data-file]').length === 8);
+      await page.click('nav[aria-label="Changed files"] > button');
+      await page.until('all files from the tree', () => document.querySelectorAll('section[data-file]').length === 12);
     },
   },
   {

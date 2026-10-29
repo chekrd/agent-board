@@ -1,19 +1,21 @@
 import type { FileDiffMetadata } from '@pierre/diffs';
 import styles from './FileTree.module.css';
+import { Icon } from './Icon.tsx';
 
 interface Dir {
   name: string;
+  path: string;
   dirs: Map<string, Dir>;
   files: FileDiffMetadata[];
 }
 
 function build(files: FileDiffMetadata[]) {
-  const root: Dir = { name: '', dirs: new Map(), files: [] };
+  const root: Dir = { name: '', path: '', dirs: new Map(), files: [] };
   for (const f of files) {
     const parts = f.name.split('/');
     let dir = root;
     for (const part of parts.slice(0, -1)) {
-      if (!dir.dirs.has(part)) dir.dirs.set(part, { name: part, dirs: new Map(), files: [] });
+      if (!dir.dirs.has(part)) dir.dirs.set(part, { name: part, path: dir.path ? `${dir.path}/${part}` : part, dirs: new Map(), files: [] });
       dir = dir.dirs.get(part)!;
     }
     dir.files.push(f);
@@ -32,7 +34,7 @@ const typeHints = { A: 'Added', D: 'Deleted', R: 'Renamed', M: 'Modified' };
 
 const letter = (f: FileDiffMetadata) => (f.type === 'new' ? 'A' : f.type === 'deleted' ? 'D' : f.type.startsWith('rename') ? 'R' : 'M');
 
-const counts = (f: FileDiffMetadata) =>
+export const counts = (f: FileDiffMetadata) =>
   f.hunks.reduce((sum, h) => ({ add: sum.add + h.additionLines, del: sum.del + h.deletionLines }), { add: 0, del: 0 });
 
 const sortedDirs = (dir: Dir) => [...dir.dirs.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -44,17 +46,28 @@ export const treeOrder = (files: FileDiffMetadata[]) => flatten(build(files));
 
 export const fileAnchor = (name: string) => `file-${encodeURIComponent(name)}`;
 
-function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null; onSelect: (name: string) => void }) {
-  const dirs = sortedDirs(dir);
-  const files = sortedFiles(dir);
+export const inDir = (dir: string | null) => (f: FileDiffMetadata) => !dir || f.name.startsWith(`${dir}/`);
+
+interface Picks {
+  selected: string | null;
+  dir: string | null;
+  onSelect: (name: string) => void;
+  onDir: (path: string) => void;
+}
+
+function Folder({ node, ...picks }: Picks & { node: Dir }) {
+  const { selected, dir, onSelect, onDir } = picks;
+  const dirs = sortedDirs(node);
+  const files = sortedFiles(node);
   return (
     <ul role="group">
       {dirs.map((d) => (
         <li key={d.name}>
-          <details open>
-            <summary title={d.name}>{d.name}</summary>
-            <Folder dir={d} selected={selected} onSelect={onSelect} />
-          </details>
+          <button type="button" className={styles.dir} aria-pressed={dir === d.path} title={`Show only the changes in ${d.path}/`} onClick={() => onDir(d.path)}>
+            <Icon name="folder" size={14} />
+            <span className={styles.name}>{d.name}</span>
+          </button>
+          <Folder node={d} {...picks} />
         </li>
       ))}
       {files.map((f) => {
@@ -82,19 +95,13 @@ function Folder({ dir, selected, onSelect }: { dir: Dir; selected: string | null
   );
 }
 
-export function FileTree(props: {
-  files: FileDiffMetadata[];
-  selected: string | null;
-  whole: boolean;
-  onSelect: (name: string) => void;
-  onAll: () => void;
-}) {
+export function FileTree({ files, all, onAll, ...picks }: Picks & { files: FileDiffMetadata[]; all: boolean; onAll: () => void }) {
   return (
     <nav className={styles.tree} aria-label="Changed files">
-      <button type="button" className={styles.all} aria-pressed={!props.whole} onClick={props.onAll}>
-        All files <span>{props.files.length}</span>
+      <button type="button" className={styles.all} aria-pressed={all} onClick={onAll}>
+        All files <span>{files.length}</span>
       </button>
-      <Folder dir={build(props.files)} selected={props.selected} onSelect={props.onSelect} />
+      <Folder node={build(files)} {...picks} />
     </nav>
   );
 }

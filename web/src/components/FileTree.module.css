@@ -10,47 +10,34 @@
     ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
     ul ul { padding-left: 14px; }
 
-    summary, a {
+    a, .dir {
       display: flex;
       align-items: center;
       gap: 8px;
       height: 28px;
-      padding-right: 8px;
+      padding: 0 8px 0 30px;
       border-radius: 7px;
       white-space: nowrap;
       cursor: pointer;
-      &:hover { background: #2e2e2e; }
-    }
-
-    summary {
-      list-style: none;
-      padding-left: 10px;
-      color: #9d9d9d;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      &::-webkit-details-marker { display: none; }
-      &::before {
-        content: "";
-        flex: none;
-        width: 6px;
-        height: 6px;
-        margin: 0 3px 0 1px;
-        border: solid currentColor;
-        border-width: 0 1.5px 1.5px 0;
-        rotate: -45deg;
-        transition: rotate 0.15s;
-      }
-    }
-    details[open] > summary::before { rotate: 45deg; }
-
-    a {
-      padding-left: 30px;
       color: #d0d0d0;
       font-family: Menlo, var(--mono);
       font-size: 12.5px;
       text-decoration: none;
-      &[aria-current] { background: #38404c; color: #ffffff; }
+      &:hover { background: #2e2e2e; }
+      &[aria-current], &[aria-pressed="true"] { background: #38404c; color: #ffffff; }
       &:focus-visible { outline-color: #e6e6e6; outline-offset: -2px; }
+    }
+
+    .dir {
+      width: 100%;
+      gap: 6px;
+      padding-left: 10px;
+      border: 0;
+      background: none;
+      color: #9d9d9d;
+      font: inherit;
+      text-align: left;
+      svg { flex: none; }
     }
   }
 
