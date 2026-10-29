@@ -1,4 +1,5 @@
 import type { FileDiffMetadata } from '@pierre/diffs';
+import { useState } from 'react';
 import styles from './FileTree.module.css';
 import { Icon } from './Icon.tsx';
 
@@ -53,21 +54,35 @@ interface Picks {
   dir: string | null;
   onSelect: (name: string) => void;
   onDir: (path: string) => void;
+  collapsed: Set<string>;
+  onToggle: (path: string) => void;
 }
 
 function Folder({ node, ...picks }: Picks & { node: Dir }) {
-  const { selected, dir, onSelect, onDir } = picks;
+  const { selected, dir, onSelect, onDir, collapsed, onToggle } = picks;
   const dirs = sortedDirs(node);
   const files = sortedFiles(node);
   return (
     <ul role="group">
       {dirs.map((d) => (
         <li key={d.name}>
-          <button type="button" className={styles.dir} aria-pressed={dir === d.path} title={`Show only the changes in ${d.path}/`} onClick={() => onDir(d.path)}>
-            <Icon name="folder" size={14} />
-            <span className={styles.name}>{d.name}</span>
-          </button>
-          <Folder node={d} {...picks} />
+          <div className={styles.folder}>
+            <button
+              type="button"
+              className={styles.twisty}
+              aria-expanded={!collapsed.has(d.path)}
+              aria-label={`${collapsed.has(d.path) ? 'Expand' : 'Collapse'} ${d.path}/`}
+              title={collapsed.has(d.path) ? 'Expand' : 'Collapse'}
+              onClick={() => onToggle(d.path)}
+            >
+              <Icon name={collapsed.has(d.path) ? 'chevron-right' : 'chevron-down'} size={14} />
+            </button>
+            <button type="button" className={styles.dir} aria-pressed={dir === d.path} title={`Show only the changes in ${d.path}/`} onClick={() => onDir(d.path)}>
+              <Icon name="folder" size={14} />
+              <span className={styles.name}>{d.name}</span>
+            </button>
+          </div>
+          {!collapsed.has(d.path) && <Folder node={d} {...picks} />}
         </li>
       ))}
       {files.map((f) => {
@@ -95,13 +110,20 @@ function Folder({ node, ...picks }: Picks & { node: Dir }) {
   );
 }
 
-export function FileTree({ files, all, onAll, ...picks }: Picks & { files: FileDiffMetadata[]; all: boolean; onAll: () => void }) {
+export function FileTree({ files, all, onAll, ...picks }: Omit<Picks, 'collapsed' | 'onToggle'> & { files: FileDiffMetadata[]; all: boolean; onAll: () => void }) {
+  const [collapsed, setCollapsed] = useState(() => new Set<string>());
+  const onToggle = (path: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
   return (
     <nav className={styles.tree} aria-label="Changed files">
       <button type="button" className={styles.all} aria-pressed={all} onClick={onAll}>
         All files <span>{files.length}</span>
       </button>
-      <Folder node={build(files)} {...picks} />
+      <Folder node={build(files)} {...picks} collapsed={collapsed} onToggle={onToggle} />
     </nav>
   );
 }

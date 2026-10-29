@@ -831,7 +831,22 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P2.links Overview lists the links Claude gave, newest first, described or by host and path; a click on one, or on a link in Claude\'s reply, opens it in the default browser through the server and the board stays put',
+    name: 'P2.3b a folder in the diff\'s file tree collapses and expands with its chevron, leaving the diff and the folder filter alone',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('the file tree', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+      await page.click('nav[aria-label="Changed files"] button[aria-label="Collapse server/"]');
+      await page.until('server/ collapsed to its row', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 4);
+      assert.equal(await page.eval(() => document.querySelector('nav[aria-label="Changed files"] button[aria-label="Expand server/"]')?.getAttribute('aria-expanded')), 'false');
+      assert.equal(await page.eval(() => document.querySelectorAll('section[data-file]').length), 12);
+      assert.equal(await page.eval(() => document.querySelector('nav[aria-label="Changed files"] > button')?.getAttribute('aria-pressed')), 'true');
+      await shot('diff-folder-collapsed');
+      await page.click('nav[aria-label="Changed files"] button[aria-label="Expand server/"]');
+      await page.until('server/ expanded again', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+    },
+  },
+  {
+    name: 'P2.linksOverview lists the links Claude gave, newest first, described or by host and path; a click on one, or on a link in Claude\'s reply, opens it in the default browser through the server and the board stays put',
     async run({ page, mock, shot }) {
       await openSheetOf(page, mock, 's-cart');
       const links = await page.until('the links', () => {
