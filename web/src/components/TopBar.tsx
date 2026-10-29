@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueue } from '../queue.ts';
 import type { Route } from '../router.ts';
+import { api } from '../api.ts';
 import { reloadNow, useStore, type Link } from '../store.ts';
 import type { Session } from '../types.ts';
 import { clock } from '../util.ts';
@@ -30,7 +31,7 @@ function ConnectionPill({ link }: { link: Link }) {
 }
 
 export function TopBar({ route, deck }: { route: Route; deck: readonly Session[] }) {
-  const { repos, link, newVersion } = useStore();
+  const { repos, link, newVersion, restart } = useStore();
   const { shown } = useQueue();
   const onQueue = route.view === 'queue';
   return (
@@ -50,6 +51,18 @@ export function TopBar({ route, deck }: { route: Route; deck: readonly Session[]
       <div className={styles.usage}><Usage /></div>
       <div className={styles.theme}><ThemeMenu /></div>
       <div className={styles.end}>
+        <button
+          type="button"
+          className={`${styles.ghost} ${styles.restart}`}
+          data-prepare-restart
+          aria-label="Get ready to restart"
+          aria-pressed={!!restart.preparing}
+          title="Get ready to restart the Mac: the board tells you once no Claude is in the middle of a turn"
+          onClick={() => api('POST', '/api/restart/prepare', { on: !restart.preparing }).catch(reportError)}
+        >
+          <Icon name="power" size={17} />
+          <span className={styles.label}>Restart</span>
+        </button>
         <button type="button" className={styles.ghost} data-repos aria-label="Repos" onClick={openRepos}>
           <Icon name="folder" size={17} />
           <span className={styles.label}>Repos</span>

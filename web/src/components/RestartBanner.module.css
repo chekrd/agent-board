@@ -1,0 +1,37 @@
+@layer components {
+  .banner {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin: 0 24px 10px;
+    padding: 10px 14px 10px 16px;
+    border: 1.5px solid var(--prompt-line);
+    border-radius: 14px;
+    background: var(--prompt-tint);
+    p { flex: 1; min-width: 240px; font-size: 14.5px; line-height: 1.5; }
+    strong { font-weight: 700; }
+    button { height: 34px; padding: 0 14px; border-radius: 10px; font-size: 14px; }
+    &[data-restart="safe"] { border-color: var(--ok); background: var(--ok-ring); }
+    @media (max-width: 760px) { margin: 0 16px 10px; }
+  }
+
+  .banner .task {
+    height: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    font: inherit;
+    font-weight: 650;
+    color: inherit;
+    white-space: normal;
+    text-decoration: underline;
+    text-decoration-color: var(--prompt-line);
+    text-underline-offset: 3px;
+    &:hover { text-decoration-color: currentColor; }
+  }
+}

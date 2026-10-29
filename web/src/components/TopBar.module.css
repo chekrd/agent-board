@@ -82,6 +82,7 @@
     color: var(--text-2);
     font-size: 13px;
     &:hover { background: var(--hover); color: var(--text); }
+    &[aria-pressed="true"] { background: var(--prompt-tint); color: var(--prompt); }
   }
 
   .toggle {
@@ -140,5 +141,7 @@
     .theme { grid-area: theme; justify-content: flex-end; margin: 0; }
     .label, .linkText { display: none; }
     .ghost, .toggle a, .newTask { padding: 0 9px; }
+    /* A phone-sized window leaves no room for it beside the reload pill; its banner still shows. */
+    .restart { display: none; }
   }
 }

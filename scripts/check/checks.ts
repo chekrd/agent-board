@@ -5738,4 +5738,111 @@ export const checks: Check[] = [
       assert.ok(label && !JSON.stringify(events).includes(label), `the option's text "${label}" is not recorded`);
     },
   },
+  {
+    name: 'R1 after a restart the banner counts the tasks it ended; Resume all brings them back, the ones cut short mid-turn stay marked until Continue the turn',
+    scenario: 'restarted',
+    clock: 'fast',
+    async run({ page, mock, shot, wait }) {
+      const before = (await mock.get('/api/state')).sessions as { id: string; status: string; archived: boolean; interrupted: { status: string } | null }[];
+      const ended = before.filter((s) => s.interrupted && !s.archived);
+      const midTurn = ended.filter((s) => s.interrupted!.status !== 'idle');
+      assert.ok(ended.length > 3 && midTurn.length > 1 && midTurn.length < ended.length, 'the scenario has tasks of every kind');
+      await page.goto(`${mock.url}/wall`);
+      const banner = await page.until('the recovery banner', () => document.querySelector<HTMLElement>('[data-restart="recover"]')?.innerText ?? null);
+      assert.match(banner, new RegExp(`The Mac restarted and ended ${ended.length} tasks with it: .*\\d+ in progress`));
+      const labels = await page.eval(() => [...document.querySelectorAll('[data-tile]')].map((t) => t.getAttribute('aria-label') ?? ''));
+      assert.equal(labels.filter((l) => l.endsWith(', Ended by restart')).length, ended.length);
+      assert.equal(labels.filter((l) => l.endsWith(', Ended')).length, 2, 'the two that had ended before the restart');
+      await shot('restart-recover');
+
+      await page.click('[data-restart="recover"] button', 'Resume all');
+      const [resumed] = await logged(mock, 'the resume', (e) => e.path === '/api/restart/resume');
+      assert.equal(resumed.status, 200);
+      const cut = await page.until('the mid-turn banner', () => {
+        const b = document.querySelector<HTMLElement>('[data-restart="recover"]');
+        return b?.innerText.includes('cut short mid-turn') ? [...b.querySelectorAll('button')].map((x) => x.textContent) : null;
+      });
+      assert.deepEqual(cut.slice(-1), ['Dismiss']);
+      assert.equal(cut.length, midTurn.length + 1, 'a link to each task cut short, and Dismiss');
+      const state = (await mock.get('/api/state')).sessions as typeof before;
+      assert.equal(state.filter((s) => ended.some((e) => e.id === s.id) && s.status === 'exited').length, 0, 'every task came back');
+      assert.equal(state.filter((s) => s.interrupted).length, midTurn.length, 'the ones that only waited for you are as they were');
+      await shot('restart-cut-short');
+
+      await page.click('[data-restart="recover"] button', cut[0]!);
+      const id = await page.until('its page', () => location.pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null);
+      assert.ok(midTurn.some((s) => s.id === id));
+      await page.click('#task-sheet [data-interrupted="cut-short"] button', 'Continue the turn');
+      await wait(5500);
+      const [sent] = await logged(mock, 'the continue', (e) => e.action === 'answer' && e.sessionId === id);
+      assert.match(String(sent.body.text), /The Mac restarted while you were working/);
+      await page.until('the note to go once Claude works', () => !document.querySelector('#task-sheet [data-interrupted]'));
+      const left = await page.until('one fewer in the banner', (n: number) => {
+        const b = document.querySelector<HTMLElement>('[data-restart="recover"]');
+        return b && b.querySelectorAll('button').length === n ? true : null;
+      }, midTurn.length);
+      assert.ok(left);
+    },
+  },
+  {
+    name: 'R2 a task Resume all cannot bring back says why in a toast and stays ended; Dismiss forgets the rest',
+    scenario: 'restartedFails',
+    async run({ page, mock }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.click('[data-restart="recover"] button', 'Resume all');
+      const message = await page.until('the toast', () => document.querySelector<HTMLElement>('[data-toast]')?.innerText ?? null);
+      assert.match(message, /Not resumed: conversation not found in this worktree/);
+      const text = await page.until('the banner for the one left', () => {
+        const b = document.querySelector<HTMLElement>('[data-restart="recover"]');
+        return b?.innerText.includes('ended 1 task with it') ? b.innerText : null;
+      });
+      assert.match(text, /Resume all/);
+      await page.click('[data-restart="recover"] button', 'Dismiss');
+      await page.until('the banner to go', () => !document.querySelector('[data-restart]'));
+      const state = (await mock.get('/api/state')).sessions as { interrupted: unknown }[];
+      assert.equal(state.filter((s) => s.interrupted).length, 0);
+    },
+  },
+  {
+    name: 'R3 Restart in the top bar waits for every turn to end, names the tasks still working, and says Safe to restart once none is',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('the tiles', () => document.querySelectorAll('[data-tile]').length > 0);
+      const all = (await mock.get('/api/state')).sessions as { id: string; status: string; title: string | null }[];
+      const live = all.filter((s) => s.status !== 'exited');
+      const working = live.filter((s) => s.status === 'working');
+      assert.ok(working.length > 1);
+      await page.click('header button[data-prepare-restart]');
+      const text = await page.until('the preparing banner', () => document.querySelector<HTMLElement>('[data-restart="preparing"]')?.innerText ?? null);
+      assert.match(text, new RegExp(`Getting ready to restart · ${live.length - working.length} of ${live.length} tasks safe · waiting on `));
+      for (const s of working) if (s.title) assert.ok(text.includes(s.title), `names ${s.title}`);
+      assert.equal(await page.eval(() => document.querySelector('header button[data-prepare-restart]')?.getAttribute('aria-pressed')), 'true');
+      await shot('restart-preparing');
+      for (const s of working) await mock.post('/mock/patch', { id: s.id, patch: { status: 'idle', activity: null } });
+      const safe = await page.until('Safe to restart', () => document.querySelector<HTMLElement>('[data-restart="safe"]')?.innerText ?? null);
+      assert.match(safe, new RegExp(`Safe to restart\\. No Claude is in the middle of a turn; after the restart, Resume all brings the ${live.length} tasks back\\.`));
+      await shot('restart-safe');
+      await mock.post('/mock/patch', { id: working[0].id, patch: { status: 'working' } });
+      await page.until('waiting again on a new turn', () => document.querySelector('[data-restart="preparing"]') !== null);
+      await page.click('[data-restart] button', 'Cancel');
+      await page.until('the banner to go', () => !document.querySelector('[data-restart]'));
+      assert.equal(await page.eval(() => document.querySelector('header button[data-prepare-restart]')?.getAttribute('aria-pressed')), 'false');
+    },
+  },
+  {
+    name: 'R4 narrow: the restart banners fit the window, Resume all and Cancel stay in reach',
+    narrow: true,
+    scenario: 'restarted',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/wall`);
+      await page.until('Resume all in reach', reachable, '[data-restart] button', 'Resume all');
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+      await shot('narrow-restart-recover');
+      await mock.post('/api/restart/prepare', { on: true });
+      const safe = await page.until('Done in reach', () => document.querySelector<HTMLElement>('[data-restart="safe"]')?.innerText ?? null);
+      assert.match(safe, /Safe to restart\. No Claude is running\./, 'every task had ended');
+      await page.until('Done in reach', reachable, '[data-restart] button', 'Done');
+      assert.deepEqual(await page.eval(sidewaysScroll), []);
+    },
+  },
 ];

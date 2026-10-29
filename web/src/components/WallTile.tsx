@@ -43,7 +43,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const own = shownOf(session, busy);
   // A task that waits on its subtasks is in progress while any of them works.
   const shown = !archived && (own === 'idle' || own === 'exited') && unsettled.some((o) => !o.archived && shownOf(o, busy) === 'working') ? 'working' : own;
-  const label = archived ? 'Archived' : STATE_LABELS[shown];
+  const label = archived ? 'Archived' : shown === 'exited' && session.interrupted ? 'Ended by restart' : STATE_LABELS[shown];
   const working = !archived && attention === 'working';
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { decisionKey } from '../../../server/decision.ts';
-import { acceptance, choose, dismissal, freeze, kindOf, menuAnswer, primary as primaryOf, type Composer as Note } from '../deck.ts';
+import { sessionAction } from '../api.ts';
+import { acceptance, choose, dismissal, freeze, kindOf, menuAnswer, primary as primaryOf, typed, type Composer as Note } from '../deck.ts';
 import type { Request } from '../outbox.ts';
 import { queue, useQueue } from '../queue.ts';
 import { closeSheet, closeSheetToQueue, showTab } from '../router.ts';
@@ -15,8 +16,10 @@ import { Icon } from './Icon.tsx';
 import { LatestReply } from './LatestReply.tsx';
 import { MenuBody } from './MenuBody.tsx';
 import { Options } from './Options.tsx';
+import { interruptedAs } from './RestartBanner.tsx';
 import styles from './Overview.module.css';
 import { SecondOpinion } from './SecondOpinion.tsx';
+import { STATE_LABELS } from './Status.tsx';
 import { FocusButton } from './SessionMenu.tsx';
 import { toast } from './Toasts.tsx';
 import { diag } from '../diag.ts'; // DIAG(paste-loss)
@@ -151,6 +154,29 @@ function Queued({ session, name, box: ownBox }: { session: Session; name: string
   );
 }
 
+const CONTINUE_TURN = 'The Mac restarted while you were working and cut your last turn short. Check where you got to, then carry on.';
+
+function Interrupted({ session, name }: { session: Session; name: string }) {
+  const was = STATE_LABELS[interruptedAs(session)].toLowerCase();
+  const { waitingFor, menu } = session.interrupted!;
+  const asked = waitingFor ?? (menu && `its question “${menu.questions.map((q) => q.question).join(' · ')}”`);
+  if (session.status === 'exited') {
+    return (
+      <section className={styles.blocked} data-interrupted="ended">
+        <p>The Mac restarted while this task was <strong>{was}</strong>{asked && <> ({asked})</>}, and its Claude ended with it.</p>
+        <button type="button" data-variant="primary" onClick={() => sessionAction(session.id, 'focus').catch(reportError)}>Continue</button>
+      </section>
+    );
+  }
+  if (session.status === 'working') return null;
+  return (
+    <section className={styles.blocked} data-interrupted="cut-short">
+      <p>The restart cut Claude's turn short{asked && <>, at {asked}</>}. It waits for you: <strong>Continue the turn</strong> asks it to check where it got to and carry on.</p>
+      <button type="button" data-variant="primary" onClick={() => void hold(session, typed(null, CONTINUE_TURN, [], null), name)}>Continue the turn</button>
+    </section>
+  );
+}
+
 export function Overview({ session, name, branch, repo }: { session: Session; name: string; branch?: string; repo?: RepoView }) {
   const { home, repos } = useStore();
   const task = folderTaskOf(repos, session);
@@ -173,6 +199,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
       <div className={styles.grid}>
         <div className={styles.main}>
           <SubtaskOf session={session} />
+          {session.interrupted && !archived && <Interrupted session={session} name={name} />}
           {working && (
             <section className={styles.working}>
               <span className={styles.spinner} aria-hidden />

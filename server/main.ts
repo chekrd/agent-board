@@ -19,6 +19,7 @@ import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import { ALIASES, EFFORTS, resolver, settingsFor } from './models.ts';
 import * as S from './sessions.ts';
+import { prepare, restartState } from './restart.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { watchUsage } from './usage.ts';
@@ -49,7 +50,7 @@ app.onError((err, c) => {
 });
 
 const usage = watchUsage(USAGE_FILE, notify);
-const state = () => ({ ...snapshot(), usage: usage.current() });
+const state = () => ({ ...snapshot(), usage: usage.current(), restart: restartState() });
 
 app.get('/api/state', (c) => c.json(state()));
 
@@ -250,6 +251,20 @@ app.post('/api/sessions/:id/:action', async (c) => {
     case 'finding': return c.json({ id: await respond(id, body) });
     default: return c.text('unknown action', 404);
   }
+  return c.body(null, 204);
+});
+
+app.post('/api/restart/prepare', async (c) => {
+  const { on } = await c.req.json().catch(() => ({}));
+  prepare(on !== false, sessions.all());
+  notify();
+  return c.body(null, 204);
+});
+
+app.post('/api/restart/resume', async (c) => c.json(await S.resumeInterrupted()));
+
+app.post('/api/restart/dismiss', (c) => {
+  S.dismissInterrupted();
   return c.body(null, 204);
 });
 

@@ -5,7 +5,7 @@ import type { Advice, Menu, Question, QuestionOption, Session, Summary } from '.
 export const session = (id: string, patch: Partial<Session> = {}): Session => ({
   id, conversation: id, history: [], repoId: 1, worktree: `/w/${id}`, cwd: `/w/${id}`, pid: 1, tty: '/dev/ttys001', title: id, firstPrompt: null, status: 'idle',
   question: null, rank: null, rankReason: null, priority: null, diffstat: null, lastMessage: null, lastPrompt: null, lastTurn: 't1', waitingFor: null,
-  dismissedAsk: null, advice: null, prs: [], summary: null, explanation: null, activity: null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null, model: null, effort: null, archived: false,
+  dismissedAsk: null, advice: null, prs: [], summary: null, explanation: null, activity: null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null, model: null, effort: null, interrupted: null, archived: false,
   createdAt: 0, updatedAt: 0, ...patch,
 });
 

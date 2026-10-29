@@ -20,6 +20,7 @@ import * as ghostty from './ghostty.ts';
 import * as terminal from './terminal.ts';
 import { askInput } from './mcp.ts';
 import { scheduleRerank, trackDecisions } from './priority.ts';
+import { bootTime, interruption, pickedUp, watch } from './restart.ts';
 import { summarizeStale } from './summary.ts';
 import { describeLinks } from './linkAbout.ts';
 import { mergeLinks } from './links.ts';
@@ -90,6 +91,26 @@ export async function continueConversation(opts: { repoId: number | null; worktr
   await launch(id, cwd, ['--resume', id]);
   notify();
   return id;
+}
+
+// After a restart of the Mac, every task it cut short comes back in a hidden terminal, as Continue would bring it.
+export async function resumeInterrupted() {
+  const failed: { id: string; error: string }[] = [];
+  const tasks = sessions.all().filter((s) => s.status === 'exited' && s.interrupted && !s.archived);
+  for (const s of tasks) {
+    try {
+      await continueConversation({ repoId: s.repoId, worktree: s.worktree, cwd: s.cwd, continueId: s.conversation });
+    } catch (err) {
+      failed.push({ id: s.id, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { resumed: tasks.length - failed.length, failed };
+}
+
+// Ended ones stay ended as any other, and resumed ones wait for you as any other.
+export function dismissInterrupted() {
+  for (const s of sessions.all()) if (s.interrupted) sessions.update(s.id, { interrupted: null });
+  notify();
 }
 
 export async function openShell(worktree: string) {
@@ -239,6 +260,10 @@ async function syncLive() {
       changed = true;
     }
     const status = statusOf(p, s.activity?.background?.length);
+    if (s.interrupted && pickedUp(s.interrupted, status)) {
+      sessions.update(s.id, { interrupted: null });
+      changed = true;
+    }
     if (s.pid !== p.pid || s.status !== status || s.waitingFor !== p.waitingFor) {
       sessions.update(s.id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
       if (s.status === 'working' && status !== 'working') void refreshDiffstat(s.id);
@@ -263,13 +288,16 @@ async function syncLive() {
     }
     if (s.pid === null && Date.now() - s.updatedAt < STARTUP_GRACE_MS) continue;
     // The process lives on in another conversation after a /resume; this task is done. A /clear took the task with it.
-    const replaced = s.pid !== null && livePids.has(s.pid);
-    sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, ...(replaced && { archived: true }) });
+    // After a restart the pid may be another process's.
+    const interrupted = interruption(s, await bootTime());
+    const replaced = !interrupted && s.pid !== null && livePids.has(s.pid);
+    sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, ...(interrupted && { interrupted }), ...(replaced && { archived: true }) });
     await readTranscript(s);
     void refreshDiffstat(s.id);
     changed = true;
   }
   trackDecisions();
+  if (watch(sessions.all())) changed = true;
   if (changed) notify();
   adviseOpen();
   void summarizeStale();

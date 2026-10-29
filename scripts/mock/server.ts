@@ -14,6 +14,7 @@ import type { Session, SubtaskKind } from '../../server/db.ts';
 import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/decision.ts';
 import { handOver, taskOf } from '../../server/handover.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
+import { busy, pickedUp, type Preparing } from '../../server/restart.ts';
 import { readEntry, watchEntry } from '../../server/uiEntry.ts';
 import type { FolderView, RepoView } from '../../server/workspace.ts';
 import { prefixRenames } from '../../server/git.ts';
@@ -104,6 +105,7 @@ let failNext: { error: string; code?: string } | null = null;
 let delayMs = 0;
 let dropUntil = 0;
 let announced: string | null = null;
+let preparing: Preparing | null = null;
 
 const clients = new Set<WebSocket>();
 let pushing = false;
@@ -126,8 +128,15 @@ const taskWorktrees = (taskFolder: string) =>
 
 const snapshot = () => ({
   home: '/Users/me', roots: state.roots, repos: state.repos, ...(!args.legacy && { folders: folders() }), sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
-  ...(!args.legacy && { usage: state.usage }),
+  ...(!args.legacy && { usage: state.usage, restart: { preparing } }),
 });
+
+// As the server's restart.watch, without the notification.
+function watchRestart() {
+  if (!preparing) return;
+  const safe = busy(state.sessions).length === 0;
+  if (safe !== (preparing.safeAt !== null)) preparing = { ...preparing, safeAt: safe ? Date.now() : null };
+}
 
 // As in server/main.ts: every snapshot names the entry the polls have taken, and a socket that opens first reads
 // index.html, which can only cast doubt on it. On --legacy only a socket that opens is told an entry, what that read
@@ -141,6 +150,7 @@ function push() {
   pushing = true;
   queueMicrotask(() => {
     pushing = false;
+    watchRestart();
     const message = JSON.stringify({ ...snapshot(), ...(!args.legacy && { uiEntry: announced ?? ui.settled() }) });
     for (const ws of clients) ws.send(message);
   });
@@ -157,6 +167,7 @@ function load(name: string) {
   delayMs = 0;
   dropUntil = 0;
   announced = null;
+  preparing = null;
   state = make(Date.now());
   if (args.legacy) for (const s of state.sessions) s.answered = null;
   answers = answeringFor(state);
@@ -199,7 +210,14 @@ function update(id: string, patch: Partial<Session>) {
   const s = find(id);
   if (!s) return;
   Object.assign(s, patch, { updatedAt: Date.now() });
+  if (s.interrupted && s.status !== 'exited' && pickedUp(s.interrupted, s.status)) s.interrupted = null;
   push();
+}
+
+// As the server's continueConversation: the conversation comes back in a hidden terminal, waiting for you.
+function resume(s: Session) {
+  if (s.status !== 'exited') return;
+  update(s.id, { status: 'idle', pid: 42_000 + state.sessions.indexOf(s), tty: '/dev/ttys042', archived: false });
 }
 
 const flagged = (id: string, flag: Flag) => !!state.flags[id]?.includes(flag);
@@ -366,7 +384,7 @@ const actions: Record<string, (s: Session, body: any) => unknown> = {
   'retry-advice': (s) => retryAdvice(s),
   'stop-advice': (s) => stopAdvice(s),
   elaborate: (s) => elaborate(s),
-  focus: (s) => answers.settled(s.id),
+  focus: (s) => (s.status === 'exited' ? resume(s) : answers.settled(s.id)),
   finder: () => {},
   vscode: () => {},
   quit: (s) => later(300, () => update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null })),
@@ -463,7 +481,7 @@ function startSession(repoId: number | null, worktree: string, o: { id?: string;
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, priority: null, diffstat: null,
     lastMessage: null, lastPrompt: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, prs: [], summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
-    model: o.model || null, effort: o.effort || null, archived: false, createdAt: now, updatedAt: now,
+    model: o.model || null, effort: o.effort || null, interrupted: null, archived: false, createdAt: now, updatedAt: now,
   });
   push();
   return id;
@@ -725,6 +743,22 @@ route('GET', '/api/diff', async ({ url }) => {
   return diff;
 });
 
+route('POST', '/api/restart/prepare', ({ body }) => {
+  preparing = body.on === false ? null : { since: Date.now(), safeAt: null };
+  push();
+  return NONE;
+});
+route('POST', '/api/restart/resume', () => {
+  const tasks = state.sessions.filter((s) => s.status === 'exited' && s.interrupted && !s.archived);
+  const failed = tasks.filter((s) => flagged(s.id, 'resumeFails')).map((s) => ({ id: s.id, error: 'conversation not found in this worktree' }));
+  for (const s of tasks) if (!flagged(s.id, 'resumeFails')) resume(s);
+  return { resumed: tasks.length - failed.length, failed };
+});
+route('POST', '/api/restart/dismiss', () => {
+  for (const s of state.sessions) s.interrupted = null;
+  push();
+  return NONE;
+});
 route('GET', '/mock', () => ({ scenario: scenarioName, scenarios: Object.keys(scenarios), templates: TEMPLATES, legacy: args.legacy }));
 route('POST', '/mock/scenario/:name', ({ params }) => {
   load(params[0]);

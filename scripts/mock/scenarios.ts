@@ -4,7 +4,7 @@ import { menuAnswerText } from '../../server/decision.ts';
 import type { RepoView } from '../../server/workspace.ts';
 import { addFromTemplate, queue, repos, ROOTS, session, titleOf, type Template } from './fixtures.ts';
 
-export type Flag = 'explainFails' | 'lossFails';
+export type Flag = 'explainFails' | 'lossFails' | 'resumeFails';
 
 export interface Scenario {
   roots: string[];
@@ -45,6 +45,17 @@ function crowd(now: number, counts: { decide: number; prompt: number; idle: numb
       else make(kind as Template, null);
     }
   }
+  return scenario;
+}
+
+function restarted(now: number, fails: boolean): Scenario {
+  const sessions = queue(now).map((s): Session => (s.status === 'exited' || s.archived ? s : {
+    ...s, status: 'exited', pid: null, waitingFor: null, menu: null,
+    interrupted: { at: now - MIN, status: s.status, waitingFor: s.waitingFor, menu: s.menu },
+  }));
+  const scenario = base(now, sessions);
+  const first = sessions.find((s) => s.interrupted)!;
+  if (fails) scenario.flags[first.id] = [...(scenario.flags[first.id] ?? []), 'resumeFails'];
   return scenario;
 }
 
@@ -237,6 +248,11 @@ export const scenarios: Record<string, (now: number) => Scenario> = {
       parent: { id: 's-review', basis, finding: 0, title: 'Reviews load twice on a fast scroll', kind: 'second-look', text: '' },
     })]);
   },
+
+  // The Mac restarted: every task that was running ended with it and remembers what it was doing; the two that had
+  // ended before stay as they were. `restartedFails` also has one that cannot be resumed.
+  restarted: (now) => restarted(now, false),
+  restartedFails: (now) => restarted(now, true),
 
   zero: (now) => base(now, queue(now).filter((s) => s.status === 'working' || (s.status === 'exited' && !s.archived))),
   empty: (now) => base(now, []),
