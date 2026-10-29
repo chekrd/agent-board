@@ -142,6 +142,7 @@ function startedByClear(head: Record<string, any>[]) {
 const blocks = (entry: Record<string, any>): Record<string, any>[] =>
   entry.type === 'assistant' && !entry.isSidechain && Array.isArray(entry.message?.content) ? entry.message.content : [];
 
+const MENU_TOOL_NAME = 'AskUserQuestion';
 const ASK_TOOL_NAMES = new Set([ASK_TOOL_NAME, ...OLD_MCP_SERVER_NAMES.map((n) => `mcp__${n}__${ASK_TOOL}`)]);
 
 // An ask_human call stays open until the user sends a prompt after it.
@@ -185,15 +186,17 @@ function settings(entries: Record<string, any>[]) {
   return { model: model ?? null, effort: request?.output_config?.effort ?? null };
 }
 
-// All Claude wrote since the developer's last prompt, or in the turn before while the current one has no text yet. A
-// long turn keeps its end, where Claude says how it came out.
+// What Claude wrote after its last tool call in the latest turn that has such text, so the narration between tool
+// calls stays out; a question or menu does not count as a tool call, as the text before it is for the developer.
 function lastMessage(entries: Record<string, any>[]) {
   const replies: string[][] = [[]];
   for (const e of entries) {
     if (promptText(e)) replies.push([]);
     else if (e.message?.model !== '<synthetic>' && !e.isApiErrorMessage) {
-      const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      if (text) replies.at(-1)!.push(text);
+      for (const b of blocks(e)) {
+        if (b.type === 'text' && String(b.text ?? '').trim()) replies.at(-1)!.push(String(b.text).trim());
+        else if (b.type === 'tool_use' && !ASK_TOOL_NAMES.has(b.name) && b.name !== MENU_TOOL_NAME) replies.at(-1)!.length = 0;
+      }
     }
   }
   const text = replies.findLast((r) => r.length)?.join('\n\n');

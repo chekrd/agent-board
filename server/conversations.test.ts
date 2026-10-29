@@ -67,7 +67,7 @@ test('a custom title beats a later generated one', async () => {
   assert.equal(m.firstPrompt, 'Fix the login');
 });
 
-test('the last message is all Claude wrote since the last prompt, or the turn before while the current one has no text', async () => {
+test('the last message is what Claude wrote after its last tool call, or the turn before while the current one has none', async () => {
   const entries = [
     prompt('first', 0),
     assistant([text('Old reply.')], 1),
@@ -75,9 +75,15 @@ test('the last message is all Claude wrote since the last prompt, or the turn be
     assistant([text('Reading the code.'), toolUse('t1', 'Read', { file_path: '/repo/a.ts' })], 3),
     toolResult('t1', 'file'),
   ];
-  assert.equal((await meta(entries)).lastMessage, 'Reading the code.');
-  assert.equal((await meta([...entries, assistant([text('Fixed it.')], 4)])).lastMessage, 'Reading the code.\n\nFixed it.');
-  assert.equal((await meta([...entries, prompt('third', 5)])).lastMessage, 'Reading the code.');
+  assert.equal((await meta(entries)).lastMessage, 'Old reply.');
+  assert.equal((await meta([...entries, assistant([text('Fixed it.')], 4), assistant([text('Tests pass.')], 4)])).lastMessage, 'Fixed it.\n\nTests pass.');
+  assert.equal((await meta([...entries, prompt('third', 5)])).lastMessage, 'Old reply.');
+});
+
+test('the text before a question or a menu stays in the last message', async () => {
+  const m = await meta([prompt('Fix it'), assistant([text('Two ways to fix it.'), toolUse('m1', 'AskUserQuestion', { questions: [] })])]);
+  assert.equal(m.lastMessage, 'Two ways to fix it.');
+  assert.equal((await meta([prompt('Fix it'), assistant([text('Found two ways.'), ask('q1')])])).lastMessage, 'Found two ways.');
 });
 
 test('turns and the last message skip synthetic and API error messages', async () => {
@@ -93,7 +99,13 @@ test('turns and the last message skip synthetic and API error messages', async (
     ['claude', 'Looking.'],
     ['claude', 'Done: the redirect was wrong.'],
   ]);
-  assert.equal(m.lastMessage, 'Looking.\n\nDone: the redirect was wrong.');
+  const after = await meta([
+    prompt('Fix the login'),
+    assistant([text('Done.')]),
+    { ...assistant([text('API Error')]), isApiErrorMessage: true },
+    { type: 'assistant', uuid: 'syn2', timestamp: at(0), message: { model: '<synthetic>', content: [text('No response requested.')] } },
+  ]);
+  assert.equal(after.lastMessage, 'Done.');
 });
 
 test('the current step is the latest block, timed from the last prompt', async () => {
