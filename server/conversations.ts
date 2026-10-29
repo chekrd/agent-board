@@ -185,9 +185,20 @@ function settings(entries: Record<string, any>[]) {
   return { model: model ?? null, effort: request?.output_config?.effort ?? null };
 }
 
+// All Claude wrote since the developer's last prompt, or in the turn before while the current one has no text yet. A
+// long turn keeps its end, where Claude says how it came out.
 function lastMessage(entries: Record<string, any>[]) {
-  const text = entries.map((e) => blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n')).findLast(Boolean);
-  return text ? text.trim().slice(0, MAX_MESSAGE) : null;
+  const replies: string[][] = [[]];
+  for (const e of entries) {
+    if (promptText(e)) replies.push([]);
+    else if (e.message?.model !== '<synthetic>' && !e.isApiErrorMessage) {
+      const text = blocks(e).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+      if (text) replies.at(-1)!.push(text);
+    }
+  }
+  const text = replies.findLast((r) => r.length)?.join('\n\n');
+  if (!text) return null;
+  return text.length > MAX_MESSAGE ? `…${text.slice(-MAX_MESSAGE)}` : text;
 }
 
 export function describeTool(tool: Record<string, any>) {

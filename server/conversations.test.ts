@@ -67,7 +67,20 @@ test('a custom title beats a later generated one', async () => {
   assert.equal(m.firstPrompt, 'Fix the login');
 });
 
-test('turns skip synthetic and API error messages; the last message is the latest text', async () => {
+test('the last message is all Claude wrote since the last prompt, or the turn before while the current one has no text', async () => {
+  const entries = [
+    prompt('first', 0),
+    assistant([text('Old reply.')], 1),
+    prompt('second', 2),
+    assistant([text('Reading the code.'), toolUse('t1', 'Read', { file_path: '/repo/a.ts' })], 3),
+    toolResult('t1', 'file'),
+  ];
+  assert.equal((await meta(entries)).lastMessage, 'Reading the code.');
+  assert.equal((await meta([...entries, assistant([text('Fixed it.')], 4)])).lastMessage, 'Reading the code.\n\nFixed it.');
+  assert.equal((await meta([...entries, prompt('third', 5)])).lastMessage, 'Reading the code.');
+});
+
+test('turns and the last message skip synthetic and API error messages', async () => {
   const m = await meta([
     prompt('Fix the login'),
     assistant([text('Looking.')]),
@@ -80,7 +93,7 @@ test('turns skip synthetic and API error messages; the last message is the lates
     ['claude', 'Looking.'],
     ['claude', 'Done: the redirect was wrong.'],
   ]);
-  assert.equal(m.lastMessage, 'Done: the redirect was wrong.');
+  assert.equal(m.lastMessage, 'Looking.\n\nDone: the redirect was wrong.');
 });
 
 test('the current step is the latest block, timed from the last prompt', async () => {
