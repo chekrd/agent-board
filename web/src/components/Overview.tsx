@@ -244,12 +244,6 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
                   <dd><Copy value={branch} what="Branch" /></dd>
                 </>
               )}
-              {session.pr?.result && (
-                <>
-                  <dt>Pull request</dt>
-                  <dd><code>{session.pr.result}</code></dd>
-                </>
-              )}
               <dt title="The model Claude runs on now and its effort, as its last request named them; /model and /effort change them">Model</dt>
               <dd>{session.model ? modelName(session.model) : '—'}{session.effort && ` @ ${effortName(session.effort).toLowerCase()}`}</dd>
               <dt title="The terminal device Claude runs on">Terminal</dt>

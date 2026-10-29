@@ -1341,7 +1341,7 @@ export const checks: Check[] = [
       assert.deepEqual([overview.values.Repository, overview.values.Worktree, overview.values.Path], ['billing-api', 'invoice-rounding', '~/code/worktrees/invoice-rounding/billing-api']);
       assert.deepEqual({ ...overview, status: undefined, values: undefined }, {
         working: true, know: true, composer: true, status: undefined, values: undefined, reply: true,
-        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Pull request', 'Model', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
+        facts: ['Task', 'Repository', 'Worktree', 'Path', 'Branch', 'Model', 'Terminal', 'Session'], artifacts: ['Where the cent goes missing'],
       });
       assert.match(overview.status ?? '', /^Session summary · updated \d+m ago$/);
       await wait(1100);
