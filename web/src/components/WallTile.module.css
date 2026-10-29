@@ -90,6 +90,31 @@
     [data-archived] & { font-size: 14px; font-weight: 400; }
   }
 
+  .restarted {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    button {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+      padding: 4px 8px;
+      border: 1px dashed var(--prompt-line);
+      border-radius: 8px;
+      background: var(--prompt-tint);
+      text-align: left;
+      font-weight: 500;
+    }
+  }
+
+  .restartedLabel { flex: none; font-size: 10.5px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--prompt); }
+
+  .restartedName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+
   .work {
     display: flex;
     align-items: flex-end;

@@ -48,6 +48,7 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
   const asked = attention === 'decide' ? openDecision(session)?.askedAt : undefined;
   const tag = shown === 'decide' && !archived ? adviceTag(session) : null;
   const wanting = unsettled.filter((o) => !o.archived && WANTS.includes(shownOf(o, busy))).sort((a, b) => WANTS.indexOf(shownOf(a, busy)) - WANTS.indexOf(shownOf(b, busy)));
+  const restarted = unsettled.filter((o) => o.status === 'exited' && o.interrupted && !o.archived);
   const wants = wanting.length && !archived && WANTS.indexOf(shownOf(wanting[0], busy)) < rank(shown) ? shownOf(wanting[0], busy) : undefined;
 
   const show = () => openSheet(session.id);
@@ -86,6 +87,18 @@ export function WallTile({ session, repos }: { session: Session; repos: RepoView
       <BranchMark session={session} branch={branch} />
       <a className={styles.name} href={sessionPath(session.id)} onClick={follow}>{name}</a>
       <p className={styles.text}>{textOf(session, attention)}</p>
+      {restarted.length > 0 && (
+        <ul className={styles.restarted} aria-label="Subtasks ended by restart">
+          {restarted.map((o) => (
+            <li key={o.id} data-restart-subtask={o.id}>
+              <button type="button" title="Open this subtask; Resume all or Continue brings it back" onClick={() => openSheet(o.id)}>
+                <span className={styles.restartedLabel}>Ended by restart</span>
+                <span className={styles.restartedName}>{sessionLabel(o, locate(repos, o).branch)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {working && (
         <div className={styles.work}>
           <code>{session.activity?.step ?? 'Starting'}</code>

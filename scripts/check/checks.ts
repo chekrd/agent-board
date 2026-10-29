@@ -5743,15 +5743,16 @@ export const checks: Check[] = [
     scenario: 'restarted',
     clock: 'fast',
     async run({ page, mock, shot, wait }) {
-      const before = (await mock.get('/api/state')).sessions as { id: string; status: string; archived: boolean; interrupted: { status: string } | null }[];
+      const before = (await mock.get('/api/state')).sessions as { id: string; status: string; archived: boolean; parent: unknown; interrupted: { status: string } | null }[];
       const ended = before.filter((s) => s.interrupted && !s.archived);
+      const subtasks = ended.filter((s) => s.parent).length;
       const midTurn = ended.filter((s) => s.interrupted!.status !== 'idle');
       assert.ok(ended.length > 3 && midTurn.length > 1 && midTurn.length < ended.length, 'the scenario has tasks of every kind');
       await page.goto(`${mock.url}/wall`);
       const banner = await page.until('the recovery banner', () => document.querySelector<HTMLElement>('[data-restart="recover"]')?.innerText ?? null);
-      assert.match(banner, new RegExp(`The Mac restarted and ended ${ended.length} tasks with it: .*\\d+ in progress`));
+      assert.match(banner, new RegExp(`The Mac restarted and ended ${ended.length - subtasks} tasks and ${subtasks} subtasks with it: .*\\d+ in progress`));
       const labels = await page.eval(() => [...document.querySelectorAll('[data-tile]')].map((t) => t.getAttribute('aria-label') ?? ''));
-      assert.equal(labels.filter((l) => l.endsWith(', Ended by restart')).length, ended.length);
+      assert.equal(labels.filter((l) => l.endsWith(', Ended by restart')).length, ended.length - subtasks, 'subtasks have no tile of their own');
       assert.equal(labels.filter((l) => l.endsWith(', Ended')).length, 2, 'the two that had ended before the restart');
       await shot('restart-recover');
 
@@ -5846,6 +5847,45 @@ export const checks: Check[] = [
       assert.match(safe, /Safe to restart\. No Claude is running\./, 'every task had ended');
       await page.until('Done in reach', reachable, '[data-restart] button', 'Done');
       assert.deepEqual(await page.eval(sidewaysScroll), []);
+    },
+  },
+  {
+    name: 'R5 subtasks the restart ended show on their root task\'s tile as Ended by restart, until resumed or archived; the banner counts them apart and names each one\'s task',
+    scenario: 'restarted',
+    async run({ page, mock, shot }) {
+      const all = (await mock.get('/api/state')).sessions as { id: string; title: string; parent: { id: string } | null }[];
+      const fix = all.find((s) => s.id === 's-restart-fix')!;
+      const task = all.find((s) => s.id === fix.parent!.id)!;
+      await page.goto(`${mock.url}/wall`);
+      const listed = () => [...document.querySelectorAll('[data-tile] [data-restart-subtask]')].map((li) => ({
+        tile: li.closest('[data-tile]')!.getAttribute('data-session'), id: li.getAttribute('data-restart-subtask'), text: (li as HTMLElement).innerText.replace(/\s+/g, ' '),
+      }));
+      const shown = await page.until('the subtasks on their task\'s tile', () => {
+        const l = [...document.querySelectorAll('[data-tile] [data-restart-subtask]')];
+        return l.length === 2 ? true : null;
+      });
+      assert.ok(shown);
+      assert.deepEqual(await page.eval(listed), [
+        { tile: task.id, id: 's-restart-fix', text: 'ENDED BY RESTART Fix #1 retry backoff' },
+        { tile: task.id, id: 's-restart-look', text: 'ENDED BY RESTART Second look #1.1 backoff cap' },
+      ]);
+      assert.match(await page.eval(() => document.querySelector<HTMLElement>('[data-restart="recover"]')!.innerText), / tasks and 2 subtasks with it: /);
+      await shot('restart-subtasks-tile');
+
+      await mock.post('/mock/patch', { id: 's-restart-look', patch: { archived: true } });
+      await page.until('the archived one to leave the tile', () => document.querySelectorAll('[data-restart-subtask]').length === 1);
+      await page.click('[data-tile] [data-restart-subtask] button', 'Fix #1 retry backoff');
+      await page.until('the subtask\'s page', () => location.pathname.startsWith('/s/s-restart-fix'));
+      await page.goto(`${mock.url}/wall`);
+
+      await page.click('[data-restart="recover"] button', 'Resume all');
+      const cut = await page.until('the mid-turn banner', () => {
+        const b = document.querySelector<HTMLElement>('[data-restart="recover"]');
+        return b?.innerText.includes('cut short mid-turn') ? b.innerText : null;
+      });
+      assert.match(cut, /^\d+ tasks and 1 subtask were cut short mid-turn by the restart: /);
+      assert.ok(cut.includes(`Fix #1 retry backoff (subtask of ${task.title})`), cut);
+      await page.until('the tile to drop it once resumed', () => !document.querySelector('[data-restart-subtask]'));
     },
   },
 ];

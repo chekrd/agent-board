@@ -3,7 +3,7 @@ import { api } from '../api.ts';
 import { openSheet } from '../router.ts';
 import { useStore } from '../store.ts';
 import type { Session } from '../types.ts';
-import { attentionOf, locate, sessionLabel, type Shown } from '../util.ts';
+import { ancestorsOf, attentionOf, locate, sessionLabel, type Shown } from '../util.ts';
 import { Clock } from './Clock.tsx';
 import styles from './RestartBanner.module.css';
 import { STATE_LABELS } from './Status.tsx';
@@ -19,6 +19,13 @@ export const cutShort = (s: Session) => !!s.interrupted && s.status !== 'exited'
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+// "2 tasks and 3 subtasks", either left out when there are none.
+function tally(list: Session[]) {
+  const subtasks = list.filter((s) => s.parent).length;
+  const tasks = list.length - subtasks;
+  return [tasks && plural(tasks, 'task'), subtasks && plural(subtasks, 'subtask')].filter(Boolean).join(' and ');
+}
+
 const ORDER: Shown[] = ['decide', 'focus', 'idle', 'working'];
 
 function counts(tasks: Session[]) {
@@ -30,13 +37,18 @@ function counts(tasks: Session[]) {
 }
 
 function TaskLinks({ tasks }: { tasks: Session[] }) {
-  const { repos } = useStore();
-  return tasks.map((s, i) => (
-    <span key={s.id}>
-      {i > 0 && ', '}
-      <button type="button" className={styles.task} onClick={() => openSheet(s.id)}>{sessionLabel(s, locate(repos, s).branch)}</button>
-    </span>
-  ));
+  const { repos, sessions } = useStore();
+  const name = (s: Session) => sessionLabel(s, locate(repos, s).branch);
+  return tasks.map((s, i) => {
+    const parent = s.parent && ancestorsOf(sessions, s).at(-1);
+    return (
+      <span key={s.id}>
+        {i > 0 && ', '}
+        <button type="button" className={styles.task} onClick={() => openSheet(s.id)}>{name(s)}</button>
+        {parent && <span data-subtask-of> (subtask of {name(parent)})</span>}
+      </span>
+    );
+  });
 }
 
 function Preparing({ safeAt, sessions }: { safeAt: number | null; sessions: Session[] }) {
@@ -89,12 +101,12 @@ export function RestartBanner() {
     <section className={styles.banner} data-restart="recover" aria-live="polite">
       {ended.length > 0 ? (
         <p>
-          <strong>The Mac restarted</strong> and ended {plural(ended.length, 'task')} with it: {counts(ended)}.
+          <strong>The Mac restarted</strong> and ended {tally(ended)} with it: {counts(ended)}.
           {' '}Resume all continues each one in a hidden terminal, where it was.
         </p>
       ) : (
         <p>
-          <strong>{plural(midTurn.length, 'task was', 'tasks were')} cut short mid-turn</strong> by the restart: <TaskLinks tasks={midTurn} />.
+          <strong>{tally(midTurn)} {midTurn.length === 1 ? 'was' : 'were'} cut short mid-turn</strong> by the restart: <TaskLinks tasks={midTurn} />.
           {' '}Each waits for you; Continue the turn on its page picks it up.
         </p>
       )}

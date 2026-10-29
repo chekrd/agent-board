@@ -53,6 +53,15 @@ function restarted(now: number, fails: boolean): Scenario {
     ...s, status: 'exited', pid: null, waitingFor: null, menu: null,
     interrupted: { at: now - MIN, status: s.status, waitingFor: s.waitingFor, menu: s.menu },
   }));
+  // Two subtasks of one task, a fix cut off mid-turn and a review of it nested under the fix, which had finished.
+  const parent = sessions.find((s) => s.interrupted && s.interrupted.status === 'idle' && !s.parent)!;
+  const subtask = (id: string, of: Session, title: string, status: 'working' | 'idle'): Session => ({
+    ...of, id, conversation: id, title, firstPrompt: title, rank: null, question: null, summary: null, lastMessage: null, lastPrompt: null, findings: null, prs: [], links: [], artifacts: [],
+    parent: { id: of.id, basis: `t-${of.id}`, finding: 0, title, kind: status === 'working' ? 'accept' : 'second-look', text: '' },
+    interrupted: { at: now - MIN, status, waitingFor: null, menu: null },
+  });
+  const fix = subtask('s-restart-fix', parent, 'Fix #1 retry backoff', 'working');
+  sessions.push(fix, subtask('s-restart-look', fix, 'Second look #1.1 backoff cap', 'idle'));
   const scenario = base(now, sessions);
   const first = sessions.find((s) => s.interrupted)!;
   if (fails) scenario.flags[first.id] = [...(scenario.flags[first.id] ?? []), 'resumeFails'];
