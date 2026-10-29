@@ -5,14 +5,14 @@ import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { serve, upgradeWebSocket } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { WebSocketServer } from 'ws';
 import { handleAdvisorMcp, retryAdvice, stopAdvice } from './advisor.ts';
 import { ARTIFACT_CSP, artifactFile } from './artifacts.ts';
 import { HOST, PORT, USAGE_FILE, WEB_DIST } from './config.ts';
 import { repos, roots, sessions, uxEvents } from './db.ts';
 import { listCommands } from './commands.ts';
-import { Refusal } from './decision.ts';
+import { openDecision, Refusal } from './decision.ts';
 import { elaborate } from './explain.ts';
 import { respond } from './findings.ts';
 import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
@@ -23,7 +23,7 @@ import { prepare, restartState } from './restart.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { watchUsage } from './usage.ts';
-import { cleanBatch, KEEP_DAYS } from './uxlog.ts';
+import { boardAnswer, boardTracker, cleanBatch, cleanEvent, KEEP_DAYS, type Data } from './uxlog.ts';
 import { folders, notify, onChange, refreshWorkspace, repoView, snapshot, taskFolderOf, workspace } from './workspace.ts';
 import { folderDiff, makeTaskFolder } from './folderTasks.ts';
 
@@ -230,6 +230,27 @@ app.post('/api/sessions/:id/:action', async (c) => {
   const action = c.req.param('action');
   const body = await c.req.json().catch(() => ({}));
   if (onDecision.has(action)) S.expectDecision(id, body.key);
+  const before = sessions.get(id);
+  const answered = before && answering.has(action) ? boardAnswer(before, action, body) : null;
+  if (answered) tracker.answeredOnBoard(answered.decision as string);
+  try {
+    return await act(c, id, action, body);
+  } finally {
+    if (answered) settleAnswer(id, answered);
+  }
+});
+
+const answering = new Set(['answer', 'answer-menu', 'accept-advice', 'dismiss']);
+
+// A board answer that left its decision open, such as a slash command or a send that failed, answered nothing.
+function settleAnswer(id: string, answered: Data) {
+  const s = sessions.get(id);
+  const still = !!s && openDecision(s)?.key === answered.decision;
+  if (still) tracker.unmark(answered.decision as string);
+  else recordServer('decision-answer', answered);
+}
+
+async function act(c: Context, id: string, action: string, body: any) {
   switch (action) {
     case 'answer': await S.answer(id, body); break;
     case 'dismiss': S.dismiss(id, body.key); break;
@@ -252,7 +273,7 @@ app.post('/api/sessions/:id/:action', async (c) => {
     default: return c.text('unknown action', 404);
   }
   return c.body(null, 204);
-});
+}
 
 app.post('/api/restart/prepare', async (c) => {
   const { on } = await c.req.json().catch(() => ({}));
@@ -277,10 +298,19 @@ const pruneUx = () => uxEvents.prune(Date.now() - KEEP_DAYS * 86_400_000);
 pruneUx();
 setInterval(pruneUx, 86_400_000).unref();
 
+function recordServer(name: string, data: Data) {
+  const event = cleanEvent(name, data, Date.now());
+  if (event) uxEvents.add('server', 'server', [event]);
+}
+
+const tracker = boardTracker(recordServer);
+tracker.observe(sessions.all());
+onChange(() => tracker.observe(sessions.all()));
+
 app.post('/api/ux', async (c) => {
   const batch = cleanBatch(await c.req.json().catch(() => null));
   if (!batch) return c.text('bad batch', 400);
-  if (batch.events.length) uxEvents.add(batch.page, batch.events);
+  if (batch.events.length) uxEvents.add('page', batch.page, batch.events);
   return c.body(null, 204);
 });
 

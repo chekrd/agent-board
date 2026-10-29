@@ -14,6 +14,7 @@ import { useRoute } from './router.ts';
 import { useBusy } from './sends.ts';
 import { useStore } from './store.ts';
 import { useBoardKeys } from './useKeys.ts';
+import { setBoard } from './ux.ts';
 
 export function App() {
   const store = useStore();
@@ -24,6 +25,11 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.view = route.view;
   }, [route.view]);
+
+  useEffect(() => {
+    const live = store.sessions.filter((s) => !s.archived);
+    setBoard({ tasks: live.length, deck: deck.length, names: store.sessions.flatMap((s) => [s.title, s.worktree.split('/').at(-1)]).filter((n): n is string => !!n) });
+  }, [store.sessions, deck.length]);
 
   useDeckSync(deck, store.link !== 'connecting');
   useBoardKeys({ route, deck: deck.length, repos: store.repos.length > 0, artifacts: !!sheetSession?.artifacts.length });

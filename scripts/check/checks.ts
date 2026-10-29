@@ -5718,7 +5718,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'UX the usage recorder posts the screens, a board key, a key the board has no use for and a click, but not what the option said',
+    name: 'UX the usage recorder posts the screens, a board key, a key the board has no use for, a click and the cards shown, but not what the option said',
     async run({ page, mock }) {
       await openQueue(page, mock);
       await page.key('ArrowRight');
@@ -5735,6 +5735,7 @@ export const checks: Check[] = [
       assert.ok(events.some((e) => e.name === 'key' && e.data?.action === 'skip' && e.data.keys === '→'), 'the skip key');
       assert.ok(events.some((e) => e.name === 'key-miss' && e.data?.key === 'q'), 'the unused key');
       assert.ok(events.some((e) => e.name === 'click' && e.data?.control === 'option' && e.data.area === 'queue/menu'), 'the option clicked');
+      assert.ok(events.some((e) => e.name === 'card-shown' && e.data?.task === 's-cart' && e.data.decision && e.data.deck > 0), 'the card shown, with its decision and the deck size');
       assert.ok(label && !JSON.stringify(events).includes(label), `the option's text "${label}" is not recorded`);
     },
   },

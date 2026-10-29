@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useNow } from '../now.ts';
-import { track } from '../ux.ts';
+import { redact, track } from '../ux.ts';
 import { Icon } from './Icon.tsx';
 import styles from './Toasts.module.css';
 
@@ -44,7 +44,7 @@ export function dismissToast(id: number) {
 export function toast(kind: ToastKind, message: string, o: { session?: string; action?: ToastAction; lasts?: number; until?: number } = {}) {
   const t: Toast = { id: ++nextId, kind, message, session: o.session, action: o.action, until: o.until, at: Date.now() };
   change([...toasts, t].slice(-SHOWN));
-  if (kind === 'error') track('error', { message: message.slice(0, 160) });
+  if (kind === 'error') track('error', { error: redact(message).slice(0, 160), task: o.session });
   setTimeout(() => dismissToast(t.id), o.lasts ?? LASTS_MS[kind]);
   return t.id;
 }

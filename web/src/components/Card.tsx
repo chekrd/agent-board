@@ -9,6 +9,7 @@ import { hold } from '../sends.ts';
 import type { MenuAnswer, RepoView, Session } from '../types.ts';
 import { useFront } from '../useKeys.ts';
 import { adviceFor, attentionOf, decisionOf, locate, sessionLabel } from '../util.ts';
+import { track } from '../ux.ts';
 import styles from './Card.module.css';
 import { editDraft, readyPaths, uploading, useDraft } from './Composer.tsx';
 import { DecisionBody } from './DecisionBody.tsx';
@@ -110,6 +111,10 @@ export function Card({ session, repos, deck, enter }: CardProps) {
     const timer = setTimeout(() => setNote(null), NOTE_MS);
     return () => clearTimeout(timer);
   }, [note]);
+
+  useEffect(() => {
+    track('card-shown', { task: session.id, decision: key ?? undefined, kind, advice: done ? done.confidence : null, deck });
+  }, [session.id, key]);
 
   // An outside change brings the card in; a deal runs its own transition.
   useLayoutEffect(() => {

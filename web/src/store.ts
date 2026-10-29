@@ -9,6 +9,7 @@ import { menuOpen } from './layers.ts';
 import { isEditable } from './useKeys.ts';
 import { diag } from './diag.ts'; // DIAG(paste-loss)
 import { attentionChangesAt } from './util.ts';
+import { track } from './ux.ts';
 
 export type Link = 'connecting' | 'live' | 'reconnecting';
 
@@ -44,6 +45,7 @@ function set(next: State) {
   const animate = key !== order && state.link === 'live' && !document.hidden && reorderShows();
   order = key;
   diagStates(state, next, animate); // DIAG(paste-loss)
+  if (next.link !== state.link && state.link !== 'connecting') track('link', { state: next.link });
   state = next;
   const notify = () => {
     for (const fn of subscribers) fn();
@@ -134,6 +136,7 @@ function reloadedFor() {
 }
 
 const offer = (newVersion: boolean) => {
+  if (newVersion && !state.newVersion) track('reload-offered');
   if (state.newVersion !== newVersion) set({ ...state, newVersion });
 };
 
@@ -171,6 +174,7 @@ function check() {
 // A reload into a new build notes the build, so a tab that comes back on the same entry offers it in the top bar
 // instead of reloading for it again.
 export function reloadNow() {
+  track('reload', { build: !!armedFor });
   if (armedFor) {
     try {
       sessionStorage.setItem(RELOADED_FOR, `${entry} ${armedFor}`);

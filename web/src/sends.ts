@@ -139,7 +139,7 @@ export function hold(s: Session, request: Request, name: string, { dealt = false
   const { text, files } = request.body;
   const draft = request.action === 'answer' && (text !== undefined || !!files?.length) ? takeDraft(s.id, files ?? []) : null;
   track('send', {
-    action: request.action, command: !!request.command, choice: request.body.choice !== undefined, text: text !== undefined, files: files?.length ?? 0, dealt,
+    task: s.id, decision: request.body.key ?? undefined, action: request.action, command: !!request.command, option: request.body.choice !== undefined, ownText: !!text?.trim(), files: files?.length ?? 0, dealt,
   });
   return sends.hold(s, request, { name, draft, dealt });
 }
@@ -158,7 +158,7 @@ function takeBack(id?: string) {
   const item = sends.items().filter((i) => i.state === 'held' && (id === undefined || i.id === id)).at(-1);
   if (!item) return;
   givenBack.add(item.id);
-  track('undo', { action: item.action, afterMs: HOLD_MS - (item.dueAt - Date.now()) });
+  track('undo', { task: item.sessionId, decision: item.body.key ?? undefined, action: item.action, afterMs: HOLD_MS - (item.dueAt - Date.now()) });
   sends.undo(item.id);
   if (item.restore.draft) putBack(item.sessionId, item.restore.draft);
   if (item.restore.dealt) queue.restore(item.sessionId, () => true);

@@ -1,5 +1,6 @@
 import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ToggleEvent } from 'react';
 import { api } from '../api.ts';
+import { track } from '../ux.ts';
 import { keepUnderLayer } from '../layers.ts';
 import { openSheet } from '../router.ts';
 import type { FolderView, RepoView } from '../types.ts';
@@ -353,12 +354,17 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
 
   const [error, create, pending] = useActionState(async () => {
     const now = fields;
+    const chose = {
+      mode: pickedFolder ? 'folder' : now.existing ? 'existing-branch' : 'worktree', model: !!now.model, effort: !!now.effort,
+      branch: !!now.branch.trim(), path: !!now.path.trim(), promptChars: now.prompt.trim().length,
+    };
     try {
       if (pickedFolder) {
         const result = await api<{ path: string; sessionId: string }>('POST', '/api/folder-tasks', {
           folder: pickedFolder.path, name: now.name.trim(), prompt: now.prompt, model: now.model, effort: now.effort,
         });
         edit({ ...EMPTY, folder: pickedFolder.path, model: now.model, effort: now.effort });
+        track('new-task', { ...chose, ok: true });
         done?.();
         openSheet(result.sessionId);
         return null;
@@ -374,10 +380,12 @@ function NewTaskForm({ repos, done }: { repos: RepoView[]; done?: () => void }) 
         effort: now.effort,
       });
       edit({ ...EMPTY, repoId: repo.id, existing: now.existing, branch: now.existing ? defaultBranch(repo) : '', model: now.model, effort: now.effort });
+      track('new-task', { ...chose, ok: true });
       done?.();
       if (result.sessionId) openSheet(result.sessionId);
       return null;
     } catch (err) {
+      track('new-task', { ...chose, ok: false });
       return (err as Error).message;
     }
   }, null);
