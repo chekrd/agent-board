@@ -3585,6 +3585,43 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P5.2.28 a paste while a permission prompt has taken the sheet\'s reply box away is kept, and shows in the box when it comes back, with focus',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet textarea');
+      await page.type('Round');
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { status: 'waiting', waitingFor: 'a permission prompt for Bash(pnpm test)' } });
+      await page.until('the box gone', () => !document.querySelector('#task-sheet textarea'));
+      await page.eval(() => {
+        const clipboardData = new DataTransfer();
+        clipboardData.setData('text/plain', ' half up');
+        document.activeElement!.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+      });
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { status: 'working', waitingFor: null } });
+      await page.until('the box back', () => !!document.querySelector('#task-sheet textarea'));
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!.value), 'Round half up');
+      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet textarea')), true, 'focus back in the box');
+    },
+  },
+  {
+    name: 'P5.2.29 a paste on the task\'s page, with focus outside any field, goes into its only reply box at the caret',
+    async run({ page, mock }) {
+      await openFromWall(page, mock, 's-invoice');
+      await page.click('#task-sheet textarea');
+      await page.type('Round half up');
+      await page.eval(() => {
+        const box = document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!;
+        box.setSelectionRange(5, 5);
+        document.getElementById('task-sheet')!.focus();
+        const clipboardData = new DataTransfer();
+        clipboardData.setData('text/plain', ' every cent');
+        document.activeElement!.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+      });
+      assert.equal(await page.eval(() => document.querySelector<HTMLTextAreaElement>('#task-sheet textarea')!.value), 'Round every cent half up');
+      assert.equal(await page.eval(() => document.activeElement === document.querySelector('#task-sheet textarea')), true, 'focus in the box');
+    },
+  },
+  {
     name: 'P5.2.23 Terminal posts a send held on its session at once, before it asks for the terminal',
     async run({ page, mock }) {
       await openQueue(page, mock);

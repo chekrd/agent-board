@@ -52,7 +52,7 @@ export function TaskSheet({ route }: { route: Route }) {
 
   if (!sheet) return null;
   return (
-    <section id={SHEET_DIALOG} ref={page} tabIndex={-1} className={styles.page} aria-label={name}>
+    <section id={SHEET_DIALOG} ref={page} tabIndex={-1} className={styles.page} data-session={id} aria-label={name}>
       {link === 'connecting' && <p className={styles.connecting}>Connecting…</p>}
       {session && <Body key={session.id} session={session} name={name} repos={repos} tab={sheet.tab} item={sheet.item} back={route.view} />}
     </section>

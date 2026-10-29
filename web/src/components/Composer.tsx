@@ -161,6 +161,27 @@ addEventListener('focusin', (e) => {
 
 const files = (e: { dataTransfer?: DataTransfer | null; clipboardData?: DataTransfer | null }) => [...((e.dataTransfer ?? e.clipboardData)?.files ?? [])];
 
+const onScreen = (el: Element) => !el.closest('[inert]') && el.checkVisibility();
+
+// A paste that lands on the page belongs in the reply box: a change of state takes the box away for a moment (a
+// permission prompt between two turns), and a dictation app's Cmd+V can come before the window has given focus back
+// to the field. It goes to the box that had focus while its task is on screen, even one not back yet, else to the
+// only box there is.
+addEventListener('paste', (e) => {
+  if (e.defaultPrevented || (e.target instanceof Element && e.target.closest('textarea, input, [contenteditable]:not([contenteditable="false"])'))) return;
+  const boxes = [...document.querySelectorAll<HTMLTextAreaElement>('textarea[data-draft]')].filter(onScreen);
+  const task = focusedBox && `[data-card][data-session="${CSS.escape(focusedBox)}"], #task-sheet[data-session="${CSS.escape(focusedBox)}"]`;
+  const id = (task && [...document.querySelectorAll(task)].some(onScreen) ? focusedBox : null) ?? (boxes.length === 1 ? boxes[0].dataset.draft! : null);
+  const text = e.clipboardData?.getData('text/plain') ?? '';
+  const list = files(e);
+  if (!id || (!text && !list.length)) return;
+  e.preventDefault();
+  const box = boxes.find((b) => b.dataset.draft === id);
+  box?.focus({ preventScroll: true });
+  if (list.length) attach(id, list);
+  else if (!box || !document.execCommand('insertText', false, text)) editDraft(id, (d) => ({ ...d, text: d.text + text }));
+});
+
 export interface ComposerProps {
   session: Session;
   // The key of the decision the card shows, which Enter answers; null for a plain message.
