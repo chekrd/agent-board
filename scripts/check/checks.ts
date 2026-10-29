@@ -1500,12 +1500,12 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.7 Artifacts: 3 opens the list as a column beside a sandboxed frame of the newest artifact, with Open in new tab as a link; another artifact replaces the entry',
+    name: 'P4.7 Artifacts: 4 opens the list as a column beside a sandboxed frame of the newest artifact, with Open in new tab as a link; another artifact replaces the entry',
     async run({ page, mock, shot }) {
       await openSheetOf(page, mock, 's-cart');
       const entries = await page.eval(() => window.navigation.entries().length);
       await page.until('the Artifacts tab', () => [...document.querySelectorAll('#task-sheet [role="tab"]')].some((t) => t.textContent?.startsWith('Artifacts')));
-      await page.key('3');
+      await page.key('4');
       await page.until('the artifacts', () => location.pathname === '/s/s-cart/artifacts' && document.querySelector('#task-sheet iframe') !== null);
       const shown = await page.eval(() => {
         const frame = document.querySelector('#task-sheet iframe')!;
@@ -1562,10 +1562,10 @@ export const checks: Check[] = [
         await page.click(`[data-tile][data-session="${id}"] button[aria-label="Session actions"]`);
         return page.until(`the menu of ${id}`, menuItems);
       };
-      assert.deepEqual(await open('s-stripe'), ['Continue', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Clear task…']);
+      assert.deepEqual(await open('s-stripe'), ['Continue', 'Open in Finder', 'Open in VS Code', 'Archive', 'Remove from list', 'Clear task…']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
-      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Clear task…']);
+      assert.deepEqual(await open('s-invoice'), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Archive', 'Clear task…']);
       await shot('session-menu');
 
       const asked = () => {
@@ -1652,34 +1652,47 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P4.9.conversation Conversation in the ⋯ menu opens a tab of the task page with each prompt and Claude\'s reply to it, oldest first, earlier conversations before a /clear line; it reads the transcript again after a new reply; Overview and 4 switch away and back',
+    name: 'P4.9.conversation Conversation, the third tab, shows each prompt with its pictures and Claude\'s reply to it with the artifacts it made, oldest first, earlier conversations before a /clear line; a picture grows on a click and an artifact opens in Artifacts; it reads the transcript again after a new reply; 3 comes back to it',
     async run({ page, mock, shot }) {
       const log = () => {
         const tab = document.querySelector('#task-sheet [role="tab"][aria-selected="true"]')?.textContent;
-        const items = [...document.querySelectorAll<HTMLElement>('#task-sheet article')].map((a) => [a.querySelector<HTMLElement>('[data-prompt] p')!.innerText, a.querySelector<HTMLElement>('[data-reply]:is(p), [data-reply] > :not(h3)')!.innerText.trim()]);
-        return items.length ? { tab, items, cleared: document.querySelectorAll('#task-sheet section[data-conversation]').length } : null;
+        const tabs = [...document.querySelectorAll('#task-sheet [role="tab"]')].map((t) => t.textContent);
+        const items = [...document.querySelectorAll<HTMLElement>('#task-sheet article')].map((a) => ({
+          prompt: a.querySelector<HTMLElement>('[data-prompt] p')!.innerText,
+          images: [...a.querySelectorAll<HTMLImageElement>('[data-prompt] img')].filter((i) => i.complete && i.naturalWidth > 0).length,
+          reply: a.querySelector<HTMLElement>('[data-reply]:is(p), [data-reply] > :not(h3)')!.innerText.trim(),
+          artifacts: [...a.querySelectorAll('button strong')].map((s) => s.textContent),
+        }));
+        return items.length && items[2]?.images ? { tab, tabs, items, cleared: document.querySelectorAll('#task-sheet section[data-conversation]').length } : null;
       };
       await mock.post('/mock/clear', { id: 's-invoice', conversation: 'c-fresh' });
       await openFromWall(page, mock, 's-invoice');
-      await page.click('#task-sheet button[aria-label="Session actions"]');
-      await page.until('the menu', menuItems);
-      await page.click(':popover-open button', 'Conversation');
-      const shown = await page.until('the conversation', log);
-      assert.equal(shown.tab, 'Conversation 4');
+      await page.click('#task-sheet [role="tab"]', 'Conversation');
+      const shown = await page.until('the conversation with its picture', log);
+      assert.deepEqual([shown.tab, shown.tabs], ['Conversation 3', ['Overview 1', 'Diff 2', 'Conversation 3', 'Artifacts (1) 4']]);
       assert.equal(shown.cleared, 2);
-      assert.deepEqual(shown.items.map(([prompt]) => prompt), ['Start with the failing test.', 'Invoice PDFs are sometimes off by a cent (BILL-91). Find out why, fix it, and get the PR green.', 'Keep it small.', 'Go on, and tell me when it is done.']);
-      assert.match(shown.items[0][1], /^The cent goes missing in LineItem\.total\(\)/);
-      assert.deepEqual(shown.items.slice(2).map(([, reply]) => reply), Array(2).fill('No reply from Claude: still working, or stopped.'));
+      assert.deepEqual(shown.items.map((i) => [i.prompt, i.images, i.artifacts]), [
+        ['Start with the failing test.', 0, []],
+        ['Invoice PDFs are sometimes off by a cent (BILL-91). Find out why, fix it, and get the PR green.', 0, []],
+        ['[Image #1] Keep it small; this is what the PDF shows.', 1, []],
+        ['Go on, and tell me when it is done.', 0, ['Where the cent goes missing']],
+      ]);
+      assert.match(shown.items[0].reply, /^The cent goes missing in LineItem\.total\(\)/);
+      assert.deepEqual(shown.items.slice(2).map((i) => i.reply), Array(2).fill('No reply from Claude: still working, or stopped.'));
       assert.equal(await page.eval(() => location.pathname), '/s/s-invoice/conversation');
       await shot('conversation');
+
+      const height = () => document.querySelector<HTMLImageElement>('#task-sheet [data-prompt] img')!.getBoundingClientRect().height;
+      const small = await page.eval(height);
+      await page.click('#task-sheet [data-prompt] button');
+      await page.until('the picture larger', (h: number) => document.querySelector<HTMLImageElement>('#task-sheet [data-prompt] img')!.getBoundingClientRect().height > h, small);
 
       await mock.post('/mock/patch', { id: 's-invoice', patch: { lastMessage: 'Checks are green.' } });
       await page.until('the new reply', () => [...document.querySelectorAll<HTMLElement>('#task-sheet article')].at(-1)?.innerText.includes('Checks are green.'));
 
-      await page.click('#task-sheet [role="tab"]', 'Overview');
-      await page.until('Overview without the Conversation tab', () => document.querySelector('#task-sheet [role="tab"][aria-selected="true"]')?.textContent === 'Overview 1'
-        && ![...document.querySelectorAll('#task-sheet [role="tab"]')].some((t) => t.textContent?.startsWith('Conversation')));
-      await page.key('4');
+      await page.click('#task-sheet article button', 'Where the cent goes missing');
+      await page.until('the artifact', () => location.pathname === '/s/s-invoice/artifacts/art-invoice-1');
+      await page.key('3');
       await page.until('the conversation again', () => location.pathname === '/s/s-invoice/conversation' && !!document.querySelector('#task-sheet article'));
     },
   },
@@ -5371,7 +5384,7 @@ export const checks: Check[] = [
       await page.until('the subtask page', () => location.pathname === '/s/s-review-1/overview' && !!document.querySelector('#task-sheet [aria-label="Subtask of"]'));
       await shot('subtask');
       await page.click('#task-sheet header button[aria-label="Session actions"]');
-      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Conversation', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Mark solved', 'Drop']);
+      assert.deepEqual(await page.until('the subtask menu', menuItems), ['Terminal', 'Open in Finder', 'Open in VS Code', 'Quit Claude', 'Mark solved', 'Drop']);
       await page.key('Escape');
       await page.until('the menu to close', () => !document.querySelector(':popover-open'));
       const text = (sel: string) => page.eval((q) => document.querySelector<HTMLElement>(q)!.innerText.replace(/\s+/g, ' ').trim(), sel);

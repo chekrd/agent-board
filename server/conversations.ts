@@ -81,7 +81,11 @@ export interface Exchange {
   id: string;
   at: number;
   prompt: string;
+  // How many pictures came with the prompt; each is served on its own, as they are stored inline in base64.
+  images: number;
   reply: string | null;
+  // The artifacts Claude made in answer to it, by tool call id.
+  artifacts: string[];
 }
 
 export interface ConversationLog {
@@ -207,20 +211,30 @@ function settings(entries: Record<string, any>[]) {
 // Each prompt with what Claude wrote after its last tool call in answer to it, so the narration between tool calls
 // stays out; a question or menu does not count as a tool call, as the text before it is for the developer. What comes
 // before the first prompt has no prompt.
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+const promptImages = (entry: Record<string, any>): { media_type: string; data: string }[] =>
+  entry.type === 'user' && !entry.isMeta && !entry.isSidechain && Array.isArray(entry.message?.content)
+    ? entry.message.content.filter((b: any) => b.type === 'image' && b.source?.type === 'base64' && IMAGE_TYPES.has(b.source.media_type)).map((b: any) => b.source)
+    : [];
+
 function replies(entries: Record<string, any>[], max?: number) {
-  const out: { entry: Record<string, any> | null; prompt: string | null; reply: string[] }[] = [{ entry: null, prompt: null, reply: [] }];
+  const out: { entry: Record<string, any> | null; prompt: string | null; reply: string[]; artifacts: string[] }[] = [{ entry: null, prompt: null, reply: [], artifacts: [] }];
   for (const e of entries) {
-    const prompt = e.isCompactSummary ? null : promptText(e, max);
-    if (prompt) out.push({ entry: e, prompt, reply: [] });
+    const prompt = e.isCompactSummary ? null : promptText(e, max) ?? (promptImages(e).length ? '' : null);
+    if (prompt !== null) out.push({ entry: e, prompt, reply: [], artifacts: [] });
     else if (e.message?.model !== '<synthetic>' && !e.isApiErrorMessage) {
       for (const b of blocks(e)) {
         if (b.type === 'text' && String(b.text ?? '').trim()) out.at(-1)!.reply.push(String(b.text).trim());
-        else if (b.type === 'tool_use' && !ASK_TOOL_NAMES.has(b.name) && b.name !== MENU_TOOL_NAME) out.at(-1)!.reply.length = 0;
+        else if (b.type === 'tool_use' && ARTIFACT_TOOL_NAMES.has(b.name)) out.at(-1)!.artifacts.push(String(b.id));
+        if (b.type === 'tool_use' && !ASK_TOOL_NAMES.has(b.name) && b.name !== MENU_TOOL_NAME) out.at(-1)!.reply.length = 0;
       }
     }
   }
   return out;
 }
+
+const transcriptLines = (file: string) => createInterface({ input: createReadStream(file), crlfDelay: Infinity });
 
 const lastChars = (text: string, max: number) => (text.length > max ? `…${text.slice(-max)}` : text);
 
@@ -234,19 +248,38 @@ function lastMessage(entries: Record<string, any>[]) {
 export async function exchanges(file: string): Promise<Exchange[]> {
   if (!(await stat(file).catch(() => null))) return [];
   const entries: Record<string, any>[] = [];
-  for await (const line of createInterface({ input: createReadStream(file), crlfDelay: Infinity })) {
+  for await (const line of transcriptLines(file)) {
     try {
       entries.push(JSON.parse(line));
     } catch {
       // a partly written last line
     }
   }
-  return replies(entries, MAX_EXCHANGE_TEXT).flatMap(({ entry, prompt, reply }) => entry && prompt ? [{
+  return replies(entries, MAX_EXCHANGE_TEXT).flatMap(({ entry, prompt, reply, artifacts }) => entry && prompt !== null ? [{
     id: String(entry.uuid),
     at: Date.parse(entry.timestamp) || 0,
     prompt,
+    images: promptImages(entry).length,
     reply: reply.length ? lastChars(reply.join('\n\n'), MAX_EXCHANGE_TEXT) : null,
+    artifacts,
   }] : []);
+}
+
+// Picture `n` of the prompt `entry`, found by its id without parsing the lines around it.
+export async function promptImage(file: string, entry: string, n: number) {
+  if (!(await stat(file).catch(() => null))) return null;
+  for await (const line of transcriptLines(file)) {
+    if (!line.includes(`"uuid":"${entry}"`)) continue;
+    try {
+      const e = JSON.parse(line);
+      if (e.uuid !== entry) continue;
+      const image = promptImages(e)[n];
+      return image ? { type: image.media_type, data: Buffer.from(image.data, 'base64') } : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export function describeTool(tool: Record<string, any>) {

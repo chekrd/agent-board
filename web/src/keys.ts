@@ -125,8 +125,8 @@ export const KEYS: readonly Row[] = [
   { keys: 'V', help: 'Switch between Queue and Wall', scopes: ['queue', 'wall'], matches: named('v'), act: (ctx) => ({ type: 'view', to: ctx.view === 'queue' ? 'wall' : 'queue' }) },
   { keys: 'N', help: 'New task', scopes: ['queue', 'wall'], matches: named('n'), act: (ctx) => (ctx.repos ? { type: 'new-task' } : null) },
   {
-    keys: '1 / 2 / 3 / 4', help: 'In an open task: Overview, Diff, Artifacts, Conversation', scopes: ['sheet'], matches: (e) => digit(e) > 0 && digit(e) <= 4,
-    act: (ctx, e) => (digit(e) === 1 ? { type: 'tab', tab: 'overview' } : digit(e) === 2 ? { type: 'tab', tab: 'diff' } : digit(e) === 4 ? { type: 'tab', tab: 'conversation' }
+    keys: '1 / 2 / 3 / 4', help: 'In an open task: Overview, Diff, Conversation, Artifacts', scopes: ['sheet'], matches: (e) => digit(e) > 0 && digit(e) <= 4,
+    act: (ctx, e) => (digit(e) === 1 ? { type: 'tab', tab: 'overview' } : digit(e) === 2 ? { type: 'tab', tab: 'diff' } : digit(e) === 3 ? { type: 'tab', tab: 'conversation' }
       : ctx.sheet?.artifacts ? { type: 'tab', tab: 'artifacts' } : null),
   },
   { keys: 'J / K', help: 'In the diff: next or previous file', scopes: ['sheet'], repeats: true, matches: named('j', 'k'), act: (ctx, e) => (ctx.sheet?.tab === 'diff' ? { type: 'file', step: e.key.toLowerCase() === 'j' ? 1 : -1 } : null) },

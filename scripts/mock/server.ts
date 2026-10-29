@@ -63,6 +63,12 @@ class HttpError extends Error {
   }
 }
 
+// What a screenshot pasted into a prompt shows: an invoice line a cent off.
+const PICTURE = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="200" viewBox="0 0 480 200"><rect width="480" height="200" fill="#fff"/>
+<text x="24" y="48" font-family="sans-serif" font-size="20" fill="#222">INVOICE 2026-0412</text>
+<text x="24" y="100" font-family="sans-serif" font-size="16" fill="#444">3 × Widget @ 0.10</text><text x="456" y="100" text-anchor="end" font-family="sans-serif" font-size="16" fill="#444">0.29</text>
+<text x="24" y="150" font-family="sans-serif" font-size="18" fill="#c00">Total</text><text x="456" y="150" text-anchor="end" font-family="sans-serif" font-size="18" fill="#c00">0.29 ≠ 0.30</text></svg>`;
+
 class Page {
   html: string;
   headers: Record<string, string>;
@@ -615,16 +621,20 @@ route('GET', '/api/sessions/:id/conversation', ({ params }): ConversationLog[] =
   const s = must(params[0]);
   const start = s.history.at(-1)?.until ?? s.createdAt;
   return [
-    ...s.history.map((h) => ({ id: h.id, exchanges: [{ id: `${h.id}-1`, at: h.until - 600_000, prompt: 'Start with the failing test.', reply: h.lastMessage }] })),
+    ...s.history.map((h) => ({ id: h.id, exchanges: [{ id: `${h.id}-1`, at: h.until - 600_000, prompt: 'Start with the failing test.', images: 0, reply: h.lastMessage, artifacts: [] }] })),
     {
       id: s.conversation,
       exchanges: s.firstPrompt ? [
-        { id: `${s.id}-1`, at: start, prompt: s.firstPrompt, reply: 'I read the code around it. Should I **keep the change small**, or also clean up what it touches?' },
-        { id: `${s.id}-2`, at: start + 60_000, prompt: 'Keep it small.', reply: null },
-        { id: `${s.id}-3`, at: start + 120_000, prompt: 'Go on, and tell me when it is done.', reply: s.lastMessage },
+        { id: `${s.id}-1`, at: start, prompt: s.firstPrompt, images: 0, reply: 'I read the code around it. Should I **keep the change small**, or also clean up what it touches?', artifacts: [] },
+        { id: `${s.id}-2`, at: start + 60_000, prompt: '[Image #1] Keep it small; this is what the PDF shows.', images: 1, reply: null, artifacts: [] },
+        { id: `${s.id}-3`, at: start + 120_000, prompt: 'Go on, and tell me when it is done.', images: 0, reply: s.lastMessage, artifacts: s.artifacts.map((a) => a.id) },
       ] : [],
     },
   ];
+});
+route('GET', '/api/sessions/:id/conversation/:conversation/:entry/:n', ({ params }) => {
+  must(params[0]);
+  return new Page(PICTURE, { 'content-type': 'image/svg+xml' });
 });
 route('GET', '/api/sessions/:id/delete-worktree', ({ params }) => deleteLoss(must(params[0])));
 route('POST', '/api/sessions/:id/:action', async ({ params, body }) => {

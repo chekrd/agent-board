@@ -76,13 +76,13 @@ test('Z takes back the last send anywhere, guarded or not, in the sheet too', ()
   assert.deepEqual(keyAction(ctx({ sheet: { tab: 'diff', artifacts: false } }), key('z')), { type: 'undo' });
 });
 
-test('in the sheet 1 to 4 switch tabs (3 when there are artifacts), J and K act only on Diff, Esc goes back, and V, N and the card keys do nothing', () => {
+test('in the sheet 1 to 4 switch tabs (4 when there are artifacts), J and K act only on Diff, Esc goes back, and V, N and the card keys do nothing', () => {
   const overview = ctx({ sheet: { tab: 'overview', artifacts: false } });
   assert.deepEqual(keyAction(overview, { key: '+', code: 'Digit1' }), { type: 'tab', tab: 'overview' });
   assert.deepEqual(keyAction(overview, key('2')), { type: 'tab', tab: 'diff' });
-  assert.equal(keyAction(overview, key('3')), null);
-  assert.deepEqual(keyAction(ctx({ sheet: { tab: 'overview', artifacts: true } }), key('3')), { type: 'tab', tab: 'artifacts' });
-  assert.deepEqual(keyAction(overview, key('4')), { type: 'tab', tab: 'conversation' });
+  assert.deepEqual(keyAction(overview, key('3')), { type: 'tab', tab: 'conversation' });
+  assert.equal(keyAction(overview, key('4')), null);
+  assert.deepEqual(keyAction(ctx({ sheet: { tab: 'overview', artifacts: true } }), key('4')), { type: 'tab', tab: 'artifacts' });
   assert.equal(keyAction(overview, key('5')), null);
   assert.equal(keyAction(overview, key('j')), null);
   const diff = ctx({ sheet: { tab: 'diff', artifacts: false } });
@@ -138,7 +138,7 @@ test('every row of the Keys table does something, so the Keys dialog lists exact
     Z: [ctx(), key('z')],
     V: [ctx(), key('v')],
     N: [ctx(), key('n')],
-    '1 / 2 / 3 / 4': [ctx({ sheet: { tab: 'overview', artifacts: true } }), key('3')],
+    '1 / 2 / 3 / 4': [ctx({ sheet: { tab: 'overview', artifacts: true } }), key('4')],
     'J / K': [ctx({ sheet: { tab: 'diff', artifacts: true } }), key('k')],
     Esc: [ctx({ view: 'wall' }), key('Escape')],
     '?': [ctx(), key('?')],

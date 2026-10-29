@@ -182,6 +182,11 @@ app.get('/api/sessions/:id/artifacts/:artifact', async (c) => {
 });
 
 app.get('/api/sessions/:id/conversation', async (c) => c.json(await S.conversation(c.req.param('id'))));
+app.get('/api/sessions/:id/conversation/:conversation/:entry/:n', async (c) => {
+  const image = await S.conversationImage(c.req.param('id'), c.req.param('conversation'), c.req.param('entry'), Number(c.req.param('n')));
+  if (!image) return c.text('image not found', 404);
+  return c.body(new Uint8Array(image.data), 200, { 'content-type': image.type, 'cache-control': 'private, max-age=31536000, immutable' });
+});
 app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));
 
 // These act on the decision the page showed and name it in `key`; answer and answer-menu check their own.

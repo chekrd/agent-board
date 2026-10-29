@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { sessionAction } from '../api.ts';
 import { queue } from '../queue.ts';
-import { closeSheetOf, moveSheetOf, openSheet } from '../router.ts';
+import { closeSheetOf, moveSheetOf } from '../router.ts';
 import { sends } from '../sends.ts';
 import { patchSession, unpatch, useStore } from '../store.ts';
 import type { Priority, Resolution, Session, WorktreeView } from '../types.ts';
@@ -84,7 +84,6 @@ export function SessionMenu({ session, worktree, name }: { session: Session; wor
         ) : (
           <Item label="Terminal" note="Show its terminal in Ghostty" onClick={pick(() => openTerminal(session.id).catch(reportError))} />
         )}
-        <Item label="Conversation" note="Your prompts and Claude's replies to them, without the steps between" onClick={pick(() => openSheet(session.id, 'conversation'))} />
         <Item label="Open in Finder" note={path} onClick={act('finder')} />
         <Item label="Open in VS Code" note={path} onClick={act('vscode')} />
         {!exited && (

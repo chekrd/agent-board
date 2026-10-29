@@ -8,7 +8,7 @@ import { adviseOpen, stopAdvice } from './advisor.ts';
 import { answering } from './answering.ts';
 import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
-import { alive, conversationMeta, exchanges, liveConversations, parseMenu, transcriptFile, type Activity, type ConversationLog, type LiveProcess } from './conversations.ts';
+import { alive, conversationMeta, exchanges, liveConversations, parseMenu, promptImage, transcriptFile, type Activity, type ConversationLog, type LiveProcess } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { checkDecision } from './decision.ts';
 import { handOver, leftBy, taskOf } from './handover.ts';
@@ -315,6 +315,12 @@ export async function rename(id: string, title: string) {
 export async function conversation(id: string): Promise<ConversationLog[]> {
   const s = must(id);
   return Promise.all([...s.history.map((h) => h.id), s.conversation].map(async (c) => ({ id: c, exchanges: await exchanges(await transcriptFile(s.cwd, c)) })));
+}
+
+export async function conversationImage(id: string, conversation: string, entry: string, n: number) {
+  const s = must(id);
+  if (![...s.history.map((h) => h.id), s.conversation].includes(conversation) || !/^[\w-]+$/.test(entry)) return null;
+  return promptImage(await transcriptFile(s.cwd, conversation), entry, n);
 }
 
 // Posted by the PreToolUse hook that `pnpm claude:connect` installs, just before the dialog opens.

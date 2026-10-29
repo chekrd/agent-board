@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api.ts';
+import { showTab } from '../router.ts';
 import type { ConversationLog, Session } from '../types.ts';
 import { ago, clock } from '../util.ts';
 import styles from './Conversation.module.css';
@@ -9,6 +10,7 @@ import { Markdown } from './Markdown.tsx';
 export function Conversation({ session }: { session: Session }) {
   const [log, setLog] = useState<ConversationLog[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [zoomed, setZoomed] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const read = useRef(false);
 
@@ -31,6 +33,7 @@ export function Conversation({ session }: { session: Session }) {
 
   if (!log) return <div className={styles.scroll}><p className={styles.note}>{error ?? 'Reading the conversation…'}</p></div>;
   const empty = log.every((c) => !c.exchanges.length);
+  const artifacts = new Map(session.artifacts.map((a) => [a.id, a]));
   return (
     <div className={styles.scroll}>
       <div className={styles.log}>
@@ -43,7 +46,19 @@ export function Conversation({ session }: { session: Session }) {
               <article key={e.id} className={styles.exchange}>
                 <div className={styles.prompt} data-prompt>
                   <h3>You <time title={ago(e.at)}>{clock(e.at, true)}</time></h3>
-                  <p>{e.prompt}</p>
+                  {e.prompt && <p>{e.prompt}</p>}
+                  {e.images > 0 && (
+                    <div className={styles.images}>
+                      {Array.from({ length: e.images }, (_, n) => {
+                        const src = `/api/sessions/${session.id}/conversation/${c.id}/${e.id}/${n}`;
+                        return (
+                          <button key={src} type="button" aria-pressed={zoomed === src} title={zoomed === src ? 'Smaller' : 'Larger'} onClick={() => setZoomed(zoomed === src ? null : src)}>
+                            <img src={src} alt={`Image #${n + 1}`} loading="lazy" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 {e.reply ? (
                   <div className={styles.reply} data-reply>
@@ -51,6 +66,16 @@ export function Conversation({ session }: { session: Session }) {
                     <Markdown source={e.reply} />
                   </div>
                 ) : <p className={styles.none} data-reply>No reply from Claude: still working, or stopped.</p>}
+                {e.artifacts.some((id) => artifacts.has(id)) && (
+                  <div className={styles.artifacts}>
+                    {e.artifacts.filter((id) => artifacts.has(id)).map((id) => (
+                      <button key={id} type="button" onClick={() => showTab('artifacts', id)}>
+                        <span>Artifact</span>
+                        <strong>{artifacts.get(id)!.title}</strong>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </article>
             ))}
           </section>

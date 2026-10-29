@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { exchanges, fileMeta } from './conversations.ts';
+import { exchanges, fileMeta, promptImage } from './conversations.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'pitwall-test-'));
 let n = 0;
@@ -112,6 +112,25 @@ test('the conversation pairs each prompt with what Claude wrote after its last t
     ['Which way?', 'Two ways.', Date.parse(at(6))],
   ]);
   assert.deepEqual(await exchanges(join(dir, 'gone.jsonl')), []);
+});
+
+test('a prompt keeps its pictures, also one with no text, served one by one; a reply keeps the artifacts made for it', async () => {
+  const png = Buffer.from('fake png').toString('base64');
+  const image = (data: string, media_type = 'image/png') => ({ type: 'image', source: { type: 'base64', media_type, data } });
+  const file = join(dir, `${n++}.jsonl`);
+  writeFileSync(file, [
+    { type: 'user', uuid: 'u1', timestamp: at(0), message: { content: [{ type: 'text', text: '[Image #1] [Image #2] Look' }, image(png), image('x', 'image/svg+xml')] } },
+    assistant([toolUse('v1', 'mcp__pitwall__create_artifact', { title: 'Flow', html: '<svg></svg>' }), text('Drew it.')], 1),
+    { type: 'user', uuid: 'u2', timestamp: at(2), message: { content: [image(png)] } },
+    assistant([text('Seen.')], 3),
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  assert.deepEqual((await exchanges(file)).map((e) => [e.id, e.prompt, e.images, e.reply, e.artifacts]), [
+    ['u1', '[Image #1] [Image #2] Look', 1, 'Drew it.', ['v1']],
+    ['u2', '', 1, 'Seen.', []],
+  ]);
+  assert.deepEqual(await promptImage(file, 'u2', 0), { type: 'image/png', data: Buffer.from('fake png') });
+  assert.equal(await promptImage(file, 'u2', 1), null);
+  assert.equal(await promptImage(file, 'nope', 0), null);
 });
 
 test('turns and the last message skip synthetic and API error messages', async () => {
