@@ -1397,6 +1397,36 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P4.4.2 Claude\'s latest reply on Overview shows the prompt it answers above it, cut to three lines until Show all; a task whose prompt is unknown shows the reply alone',
+    async run({ page, mock, shot }) {
+      const reply = () => {
+        const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
+        const asked = section?.querySelector<HTMLElement>('[data-prompt] p');
+        return section ? { prompt: asked?.textContent ?? null, lines: asked ? Math.round(asked.getBoundingClientRect().height / parseFloat(getComputedStyle(asked).lineHeight)) : 0, more: section.querySelector('button')?.textContent ?? null } : null;
+      };
+      await openSheetOf(page, mock, 's-invoice');
+      assert.deepEqual(await page.until('the latest reply', reply), { prompt: 'Why is the total a cent off on some invoices? Fix it and push.', lines: 1, more: null });
+      await shot('latest-reply-prompt');
+
+      const long = Array.from({ length: 8 }, (_, i) => `Point ${i + 1} of what I want.`).join('\n');
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { lastPrompt: long, lastMessage: 'Done.' } });
+      const cut = await page.until('the long prompt cut', (text: string) => {
+        const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
+        const asked = section?.querySelector<HTMLElement>('[data-prompt] p');
+        return asked?.textContent === text ? Math.round(asked.getBoundingClientRect().height / parseFloat(getComputedStyle(asked).lineHeight)) : null;
+      }, long);
+      assert.equal(cut, 3);
+      await page.click('#task-sheet section button', 'Show all');
+      assert.equal((await page.eval(reply))!.lines, 8);
+
+      await mock.post('/mock/patch', { id: 's-invoice', patch: { lastPrompt: null, lastMessage: 'Pushed again.' } });
+      assert.deepEqual(await page.until('the reply alone', () => {
+        const section = [...document.querySelectorAll<HTMLElement>('#task-sheet section')].find((s) => s.querySelector('h3')?.textContent === "Claude's latest reply");
+        return section?.innerText.includes('Pushed again.') ? (section.querySelector('[data-prompt]') ? 'with a prompt' : 'alone') : null;
+      }), 'alone');
+    },
+  },
+  {
     name: 'P4.5 Diff: 2 replaces the entry; the tree resizes by key and resets on a double click, kept in localStorage; a file opens whole, J and K step, All files in the tree goes back; Esc goes back to all files, a second Esc closes the sheet and focus returns to the tile\'s name',
     async run({ page, mock, shot }) {
       await page.goto(`${mock.url}/wall`);

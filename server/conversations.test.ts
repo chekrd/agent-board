@@ -83,6 +83,9 @@ test('the last message is what Claude wrote after its last tool call, or the tur
   assert.equal((await meta(entries)).lastMessage, 'Old reply.');
   assert.equal((await meta([...entries, assistant([text('Fixed it.')], 4), assistant([text('Tests pass.')], 4)])).lastMessage, 'Fixed it.\n\nTests pass.');
   assert.equal((await meta([...entries, prompt('third', 5)])).lastMessage, 'Old reply.');
+  assert.equal((await meta(entries)).lastPrompt, 'first');
+  assert.equal((await meta([...entries, assistant([text('Fixed it.')], 4)])).lastPrompt, 'second');
+  assert.equal((await meta([assistant([text('Before any prompt.')])])).lastPrompt, null);
 });
 
 test('the text before a question or a menu stays in the last message', async () => {

@@ -226,7 +226,7 @@ export function Overview({ session, name, branch, repo }: { session: Session; na
               {learnings.map((k) => <p key={k}>{k}</p>)}
             </section>
           )}
-          {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} />}
+          {session.lastMessage && <LatestReply key={session.lastMessage} text={session.lastMessage} prompt={session.lastPrompt} />}
         </div>
         <aside className={styles.aside}>
           <section aria-label="Facts">

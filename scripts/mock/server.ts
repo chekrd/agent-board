@@ -435,7 +435,7 @@ function startSession(repo: RepoView, worktree: string, o: { id?: string; title?
   state.sessions.push({
     id, conversation: id, history: [], repoId: repo.id, worktree, cwd: worktree, pid: 41_000 + state.sessions.length, tty: '/dev/ttys041', title: o.title || null,
     firstPrompt: o.prompt || null, status: working ? 'working' : 'idle', question: null, rank: null, rankReason: null, priority: null, diffstat: null,
-    lastMessage: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
+    lastMessage: null, lastPrompt: null, lastTurn: null, waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null,
     activity: working ? { step: args.legacy ? 'Thinking' : null, since: now } : null, menu: null, answered: null, artifacts: [], links: [], findings: null, parent: null, resolution: null,
     model: o.model || null, effort: o.effort || null, archived: false, createdAt: now, updatedAt: now,
   });
@@ -627,7 +627,7 @@ route('GET', '/api/sessions/:id/conversation', ({ params }): ConversationLog[] =
       exchanges: s.firstPrompt ? [
         { id: `${s.id}-1`, at: start, prompt: s.firstPrompt, images: 0, reply: 'I read the code around it. Should I **keep the change small**, or also clean up what it touches?', artifacts: [] },
         { id: `${s.id}-2`, at: start + 60_000, prompt: '[Image #1] Keep it small; this is what the PDF shows.', images: 1, reply: null, artifacts: [] },
-        { id: `${s.id}-3`, at: start + 120_000, prompt: 'Go on, and tell me when it is done.', images: 0, reply: s.lastMessage, artifacts: s.artifacts.map((a) => a.id) },
+        { id: `${s.id}-3`, at: start + 120_000, prompt: s.lastPrompt ?? 'Go on, and tell me when it is done.', images: 0, reply: s.lastMessage, artifacts: s.artifacts.map((a) => a.id) },
       ] : [],
     },
   ];

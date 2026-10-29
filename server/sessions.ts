@@ -164,6 +164,9 @@ async function readTranscript(s: Session, p?: LiveProcess) {
   if (meta.title && meta.title !== s.title) patch.title = meta.title;
   if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
   if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
+  // A reply whose prompt has left the part read keeps the prompt read with it before.
+  const lastPrompt = meta.lastPrompt ?? (meta.lastMessage === s.lastMessage ? s.lastPrompt : null);
+  if (lastPrompt !== s.lastPrompt) patch.lastPrompt = lastPrompt;
   // A request names the model without the [1m] of a 1M context, which the model picked keeps.
   if (meta.model && meta.model !== s.model?.replace('[1m]', '')) patch.model = meta.model;
   if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;

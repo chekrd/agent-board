@@ -61,7 +61,7 @@ export function repos(now: number): RepoView[] {
 type Given = Pick<Session, 'id' | 'repoId' | 'worktree' | 'title' | 'firstPrompt' | 'status' | 'createdAt' | 'updatedAt'>;
 
 export const session = (fields: Given & Partial<Session>): Session => ({
-  conversation: fields.id, history: [], cwd: fields.worktree, pid: null, tty: null, question: null, rank: null, rankReason: null, priority: null, diffstat: null, lastMessage: null, lastTurn: null,
+  conversation: fields.id, history: [], cwd: fields.worktree, pid: null, tty: null, question: null, rank: null, rankReason: null, priority: null, diffstat: null, lastMessage: null, lastPrompt: null, lastTurn: null,
   waitingFor: null, dismissedAsk: null, advice: null, pr: null, summary: null, explanation: null, activity: null, menu: null, answered: null, findings: null, parent: null, resolution: null,
   model: 'claude-opus-5-5', effort: 'high', artifacts: [], links: [], archived: false, ...fields,
 });
@@ -234,6 +234,7 @@ export function queue(now: number): Session[] {
         decision: null, question: null, basis: 't-invoice-9', at: now - 4 * MIN,
       },
       pr: { id: 1842, url: 'https://github.com/acme/billing-api/pull/1842', result: 'RUNNING 9 checks', watching: true, at: now - 6 * MIN },
+      lastPrompt: 'Why is the total a cent off on some invoices? Fix it and push.',
       lastMessage: 'The cent goes missing in `LineItem.total()`, which multiplies floats before rounding. I switched every amount to integer cents and pushed PR 1842; checks are running.\n\n```ts\nconst total = (cents: number, qty: number) => Math.round(cents * qty);\n```',
       lastTurn: 't-invoice-9', diffstat: { files: 7, insertions: 88, deletions: 31 },
       artifacts: [{ id: 'art-invoice-1', title: 'Where the cent goes missing', at: now - 25 * MIN }],

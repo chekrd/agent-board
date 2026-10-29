@@ -18,6 +18,7 @@ const MAX_TAIL_BYTES = 8 << 20;
 const MAX_LINE = 256 << 10;
 const MAX_MESSAGE = 12_000;
 const MAX_EXCHANGE_TEXT = 40_000;
+const MAX_PROMPT = 4000;
 
 export interface Conversation {
   id: string;
@@ -40,6 +41,8 @@ interface Meta {
   interactive: boolean;
   cleared: boolean;
   lastMessage: string | null;
+  // The prompt that reply answers, when the part read holds it.
+  lastPrompt: string | null;
   activity: Activity | null;
   // Id and description of each background task still running.
   background: [string, string][];
@@ -238,10 +241,11 @@ const transcriptLines = (file: string) => createInterface({ input: createReadStr
 
 const lastChars = (text: string, max: number) => (text.length > max ? `…${text.slice(-max)}` : text);
 
-// The latest turn's reply, or the turn before while the current one has none.
-function lastMessage(entries: Record<string, any>[]) {
-  const text = replies(entries).findLast((r) => r.reply.length)?.reply.join('\n\n');
-  return text ? lastChars(text, MAX_MESSAGE) : null;
+// The latest turn's reply, or the turn before while the current one has none, with the prompt it answers.
+function lastReply(entries: Record<string, any>[]) {
+  const last = replies(entries, MAX_PROMPT).findLast((r) => r.reply.length);
+  if (!last) return { lastMessage: null, lastPrompt: null };
+  return { lastMessage: lastChars(last.reply.join('\n\n'), MAX_MESSAGE), lastPrompt: last.prompt || null };
 }
 
 // The whole conversation, read only when asked for, as it can run to many megabytes.
@@ -424,7 +428,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
     firstPrompt: head.map((e) => promptText(e)).find(Boolean) ?? null,
     interactive: (head.find((e) => e.entrypoint)?.entrypoint ?? 'cli') === 'cli',
     cleared: startedByClear(head),
-    lastMessage: lastMessage(tail),
+    ...lastReply(tail),
     activity: activity(tail),
     background: background(tail, cached?.background),
     toolResults: toolResults(tail),

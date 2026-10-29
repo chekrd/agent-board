@@ -53,7 +53,7 @@ db.exec(`
 `);
 
 const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links', 'priority']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
+for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links', 'priority', 'last_prompt']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
 
 db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
 
@@ -220,6 +220,7 @@ export interface Session {
   priority: Priority | null;
   diffstat: DiffStat | null;
   lastMessage: string | null;
+  lastPrompt: string | null;
   lastTurn: string | null;
   waitingFor: string | null;
   dismissedAsk: string | null;
@@ -273,6 +274,7 @@ const toSession = (r: Row): Session => ({
   priority: r.priority === 'high' || r.priority === 'low' ? r.priority : null,
   diffstat: r.diffstat ? JSON.parse(r.diffstat) : null,
   lastMessage: r.last_message,
+  lastPrompt: r.last_prompt ?? null,
   lastTurn: r.last_turn,
   waitingFor: r.waiting_for,
   dismissedAsk: r.dismissed_ask,
@@ -334,6 +336,7 @@ const columns: Record<string, string> = {
   priority: 'priority',
   diffstat: 'diffstat',
   lastMessage: 'last_message',
+  lastPrompt: 'last_prompt',
   lastTurn: 'last_turn',
   waitingFor: 'waiting_for',
   dismissedAsk: 'dismissed_ask',
@@ -375,7 +378,7 @@ export const sessions = {
       ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, tty = excluded.tty, status = excluded.status, archived = 0, updated_at = excluded.updated_at`)
       .run(s.id, s.id, s.repoId, s.worktree, s.cwd, s.pid, s.tty, s.title, s.firstPrompt, s.status, now, now);
   },
-  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'priority' | 'diffstat' | 'lastMessage' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
+  update: (id: string, patch: Partial<Pick<Session, 'title' | 'firstPrompt' | 'status' | 'question' | 'rank' | 'rankReason' | 'priority' | 'diffstat' | 'lastMessage' | 'lastPrompt' | 'lastTurn' | 'waitingFor' | 'dismissedAsk' | 'advice' | 'pr' | 'summary' | 'explanation' | 'activity' | 'menu' | 'answered' | 'artifacts' | 'links' | 'findings' | 'parent' | 'resolution' | 'model' | 'effort' | 'archived' | 'conversation' | 'history' | 'pid' | 'tty'>>) => {
     const entries = Object.entries(patch);
     if (!entries.length) return;
     const sets = entries.map(([k]) => `${columns[k]} = ?`).join(', ');
