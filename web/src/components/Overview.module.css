@@ -3,12 +3,12 @@
 
   .grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 330px;
-    gap: 36px;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 22vw, 420px);
+    gap: clamp(36px, 3vw, 64px);
     align-items: start;
-    max-width: 1220px;
+    max-width: 2400px;
     margin: 0 auto;
-    padding: 26px 30px 48px;
+    padding: 26px 26px 48px;
   }
 
   .label {
@@ -75,7 +75,7 @@
     border-radius: 16px;
     background: var(--know-tint);
     .label { color: var(--know); }
-    p { font-size: 16px; line-height: 1.5; }
+    p { max-width: 90ch; font-size: 16px; line-height: 1.5; }
     p + p { margin-top: 6px; }
   }
 
@@ -118,7 +118,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    p { font-size: 15px; line-height: 1.55; color: var(--text-2); }
+    p { max-width: 90ch; font-size: 15px; line-height: 1.55; color: var(--text-2); }
     ul { margin: 2px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.5; color: var(--muted); }
   }
 
