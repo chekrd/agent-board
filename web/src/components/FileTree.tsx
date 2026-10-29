@@ -112,6 +112,12 @@ function Folder({ node, ...picks }: Picks & { node: Dir }) {
 
 export function FileTree({ files, all, onAll, ...picks }: Omit<Picks, 'collapsed' | 'onToggle'> & { files: FileDiffMetadata[]; all: boolean; onAll: () => void }) {
   const [collapsed, setCollapsed] = useState(() => new Set<string>());
+  const [shown, setShown] = useState(picks.selected);
+  if (shown !== picks.selected) {
+    setShown(picks.selected);
+    const { selected } = picks;
+    if (selected && [...collapsed].some((p) => selected.startsWith(`${p}/`))) setCollapsed(new Set([...collapsed].filter((p) => !selected.startsWith(`${p}/`))));
+  }
   const onToggle = (path: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);

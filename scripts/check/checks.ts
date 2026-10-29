@@ -843,6 +843,12 @@ export const checks: Check[] = [
       await shot('diff-folder-collapsed');
       await page.click('nav[aria-label="Changed files"] button[aria-label="Expand server/"]');
       await page.until('server/ expanded again', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12);
+
+      await page.click('nav[aria-label="Changed files"] button[aria-label="Collapse server/"]');
+      await page.until('server/ collapsed again', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 4);
+      await page.eval(() => document.querySelector('section[data-file="server/mcpGuard.test.ts"]')!.scrollIntoView());
+      await page.until('scrolling to a file in server/ opens it', () => document.querySelectorAll('nav[aria-label="Changed files"] a').length === 12 &&
+        document.querySelector('nav[aria-label="Changed files"] [aria-current]')?.getAttribute('title')?.startsWith('server/'));
     },
   },
   {
