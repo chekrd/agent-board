@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { exchanges, fileMeta, promptImage } from './conversations.ts';
+import { mergeLinks } from './links.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'pitwall-test-'));
 let n = 0;
@@ -59,6 +60,42 @@ test('links come from what Claude wrote and asked, not from prompts or tool resu
     assistant([toolUse('q1', 'mcp__pitwall__ask_human', { title: 'Which way?', details: 'Per https://docs.dev/y', category: 'plan-problem' })]),
   ]);
   assert.deepEqual(m.links.map((l) => l.url), ['https://github.com/o/r/pull/3', 'https://docs.dev/y']);
+});
+
+test('claude.ai pages from Artifact publish and open calls and Claude Docs creates are links, each address once', async () => {
+  const doc = 'https://claude.ai/artifact/9QsVfDkHMHJwhbwst8dnxB';
+  const frame = { slug: '441e5587-61e5-4f9e-8d9b-f92344251544', url: doc, artifactUrl: doc };
+  const docsResult = (id: string, body: object) => ({
+    type: 'user', uuid: `r${n++}`, timestamp: at(1), toolUseResult: [{ type: 'text' }],
+    message: { content: [{ type: 'tool_result', tool_use_id: id, content: [{ type: 'text', text: `${JSON.stringify({ verdict: 'allow', ...body, frame })}\n\nThe doc's viewer is at ${doc}` }] }] },
+  });
+  const m = await meta([
+    prompt('Write a runtime test guide as a doc'),
+    assistant([toolUse('d1', 'mcp__claude_ai_Claude_Docs__batch', { container: { kind: 'project', create: { name: 'Asset React Query migration – runtime test guide', doc: { blocks: {}, markdown: '# x' } } }, batch: [] })]),
+    docsResult('d1', { created: { verdict: 'allow', minted: frame.slug, bound: true } }),
+    assistant([toolUse('o1', 'Artifact', { action: 'open', url: doc })]),
+    { type: 'user', uuid: `r${n++}`, timestamp: at(1), toolUseResult: { opened: true, url: doc, title: 'Asset React Query migration – runtime test guide' },
+      message: { content: [{ type: 'tool_result', tool_use_id: 'o1', content: `Opened the Artifact at ${doc} for the user. Nothing was published or changed.` }] } },
+    assistant([toolUse('d2', 'mcp__claude_ai_Claude_Docs__batch', { container: { kind: 'project', id: frame.slug }, batch: [] })]),
+    docsResult('d2', {}),
+    assistant([toolUse('p1', 'Artifact', { file_path: '/tmp/flow.html', icon: 'chart' })]),
+    toolResult('p1', 'Published https://claude.ai/code/artifact/0f6c1e2a-77aa-4b1e-9c11-5e0d2b6a8f00 (private).'),
+    assistant([toolUse('l1', 'Artifact', { action: 'list' })]),
+    toolResult('l1', 'Flow https://claude.ai/artifact/L6CJ7uSoYGLSE2eB8W7w7P'),
+    assistant([toolUse('e1', 'Artifact', { action: 'open', url: 'https://claude.ai/artifact/Gone' })]),
+    { type: 'user', uuid: `r${n++}`, timestamp: at(1), message: { content: [{ type: 'tool_result', tool_use_id: 'e1', is_error: true, content: 'No artifact at https://claude.ai/artifact/Gone' }] } },
+    assistant([text(`The full guide is ready as a Claude Doc: [Asset React Query migration – runtime test guide](${doc}).`)], 2),
+  ]);
+  assert.deepEqual(m.links.map((l) => [l.url, l.text, l.context]), [
+    [doc, 'Asset React Query migration – runtime test guide', 'Created the Claude Doc "Asset React Query migration – runtime test guide"'],
+    [doc, 'Asset React Query migration – runtime test guide', 'Opened the artifact "Asset React Query migration – runtime test guide"'],
+    ['https://claude.ai/code/artifact/0f6c1e2a-77aa-4b1e-9c11-5e0d2b6a8f00', null, 'Published the artifact'],
+    [doc, 'Asset React Query migration – runtime test guide', `The full guide is ready as a Claude Doc: [Asset React Query migration – runtime test guide](${doc}).`],
+  ]);
+  assert.deepEqual(mergeLinks([], m.links)?.map((l) => [l.url, l.context]), [
+    [doc, 'Created the Claude Doc "Asset React Query migration – runtime test guide"'],
+    ['https://claude.ai/code/artifact/0f6c1e2a-77aa-4b1e-9c11-5e0d2b6a8f00', 'Published the artifact'],
+  ]);
 });
 
 test('a custom title beats a later generated one', async () => {

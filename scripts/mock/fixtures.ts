@@ -110,6 +110,7 @@ export function queue(now: number): Session[] {
       links: [
         { url: 'https://jira.example.com/browse/CHK-412', text: 'CHK-412', context: 'The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).', about: 'Jira ticket CHK-412: carts never lose items', at: now - 9 * MIN },
         { url: 'https://github.com/acme/storefront/pull/481', text: null, context: 'Draft PR: https://github.com/acme/storefront/pull/481', about: null, at: now - 4 * MIN },
+        { url: 'https://claude.ai/artifact/9QsVfDkHMHJwhbwst8dnxB', text: 'Cart merge – runtime test guide', context: 'Created the Claude Doc "Cart merge – runtime test guide"', about: null, at: now - 3 * MIN },
       ],
     }),
     session({

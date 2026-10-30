@@ -195,14 +195,45 @@ const artifactCalls = (entries: Record<string, any>[]): ToolCall[] =>
   entries.flatMap((e) => blocks(e).filter((b) => b.type === 'tool_use' && ARTIFACT_TOOL_NAMES.has(b.name))
     .map((b) => ({ toolUseId: b.id, input: b.input ?? {}, at: Date.parse(e.timestamp) || Date.now() })));
 
-// The links in what Claude wrote: its messages and the questions it asked through ask_human.
-const links = (entries: Record<string, any>[]): Found[] =>
-  entries.flatMap((e) => blocks(e).flatMap((b) => {
+const CLAUDE_AI_PAGE = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+/;
+const DOCS_BATCH = /^mcp__.*Claude_Docs__batch$/;
+
+// A claude.ai page Claude published or opened with the Artifact tool, or a Claude Doc it created. A new page's
+// address is only in the call's result.
+function claudeAiPage(b: Record<string, any>): { verb: string; title: string | null } | null {
+  if (b.name === 'Artifact' && ['publish', 'open'].includes(b.input?.action ?? 'publish')) {
+    return { verb: b.input?.action === 'open' ? 'Opened the artifact' : 'Published the artifact', title: b.input?.title ?? null };
+  }
+  if (DOCS_BATCH.test(b.name) && b.input?.container?.create) return { verb: 'Created the Claude Doc', title: b.input.container.create.name ?? null };
+  return null;
+}
+
+const resultBlocks = (entry: Record<string, any>): Record<string, any>[] =>
+  entry.type === 'user' && !entry.isSidechain && Array.isArray(entry.message?.content) ? entry.message.content.filter((b: any) => b.type === 'tool_result') : [];
+
+// The links in what Claude wrote: its messages, the questions it asked through ask_human and the claude.ai pages it made.
+function links(entries: Record<string, any>[]): Found[] {
+  const pages = new Map<string, NonNullable<ReturnType<typeof claudeAiPage>>>();
+  return entries.flatMap((e) => {
     const at = Date.parse(e.timestamp) || Date.now();
-    if (b.type === 'text') return linksIn(String(b.text ?? ''), at);
-    if (b.type === 'tool_use' && ASK_TOOL_NAMES.has(b.name)) return linksIn(`${b.input?.title ?? ''}\n${b.input?.details ?? ''}`, at);
-    return [];
-  }));
+    const pageLinks = resultBlocks(e).flatMap((b): Found[] => {
+      const page = pages.get(String(b.tool_use_id));
+      const url = page && !b.is_error ? resultText(e, b).match(CLAUDE_AI_PAGE)?.[0] : null;
+      if (!page || !url) return [];
+      const title = page.title ?? e.toolUseResult?.title ?? null;
+      const context = title ? `${page.verb} "${title}"` : page.verb;
+      return [{ url, text: title, context, message: context, at }];
+    });
+    return [...pageLinks, ...blocks(e).flatMap((b) => {
+      if (b.type === 'text') return linksIn(String(b.text ?? ''), at);
+      if (b.type !== 'tool_use') return [];
+      if (ASK_TOOL_NAMES.has(b.name)) return linksIn(`${b.input?.title ?? ''}\n${b.input?.details ?? ''}`, at);
+      const page = claudeAiPage(b);
+      if (page) pages.set(String(b.id), page);
+      return [];
+    })];
+  });
+}
 
 function turns(entries: Record<string, any>[]): Turn[] {
   return entries.flatMap((e): Turn[] => {

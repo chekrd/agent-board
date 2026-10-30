@@ -852,7 +852,7 @@ export const checks: Check[] = [
     },
   },
   {
-    name: 'P2.linksOverview lists the links Claude gave, newest first, described or by host and path; a click on one, or on a link in Claude\'s reply, opens it in the default browser through the server and the board stays put',
+    name: 'P2.linksOverview lists the links Claude gave and the claude.ai pages it made, newest first, described or by host and path; a click on one, or on a link in Claude\'s reply, opens it in the default browser through the server and the board stays put',
     async run({ page, mock, shot }) {
       await openSheetOf(page, mock, 's-cart');
       const links = await page.until('the links', () => {
@@ -860,6 +860,7 @@ export const checks: Check[] = [
         return items.length && items.map((a) => [a.querySelector('strong')!.textContent, a.querySelector('span')!.textContent, a.title]);
       });
       assert.deepEqual(links, [
+        ['Cart merge – runtime test guide', 'claude.ai/artifact/9QsVfDkHMHJwhbwst8dnxB · 3m ago', 'Created the Claude Doc "Cart merge – runtime test guide"'],
         ['github.com/acme/storefront/pull/481', '4m ago', 'Draft PR: https://github.com/acme/storefront/pull/481'],
         ['Jira ticket CHK-412: carts never lose items', 'jira.example.com/browse/CHK-412 · 9m ago', 'The rule comes from [CHK-412](https://jira.example.com/browse/CHK-412).'],
       ]);
