@@ -6,7 +6,7 @@ import { api } from '../api.ts';
 import { SHEET_DIALOG } from '../keys.ts';
 import type { FullDiff } from '../types.ts';
 import styles from './DiffView.module.css';
-import { counts, fileAnchor, FileTree, inDir, treeOrder } from './FileTree.tsx';
+import { counts, fileAnchor, FileTree, inDir, matching, treeOrder } from './FileTree.tsx';
 import { Icon } from './Icon.tsx';
 
 registerCustomTheme('darcula', async () => (await import('../themes/darcula.json')).default as ThemeRegistration);
@@ -72,6 +72,8 @@ function Diffs({ worktree }: { worktree: string }) {
   const [dir, setDir] = useState<string | null>(null);
   const [whole, setWhole] = useState<FileDiffMetadata | null>(null);
   const [seeking, setSeeking] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const filterRef = useRef<HTMLInputElement>(null);
   const diffsRef = useRef<HTMLDivElement>(null);
   const returnTo = useRef<string | null>(null);
   const opening = useRef<string | null>(null);
@@ -117,6 +119,7 @@ function Diffs({ worktree }: { worktree: string }) {
         opening.current = null;
         startLoading(() => {
           if (!inDir(dir)(file)) setDir(null);
+          if (!matching(query)(file)) setQuery('');
           setFocused(name);
           setWhole(next);
           setSeeking(name);
@@ -138,6 +141,12 @@ function Diffs({ worktree }: { worktree: string }) {
   const showAll = () => {
     leaveFile();
     setDir(null);
+  };
+
+  const filter = (next: string) => {
+    if (focused) leaveFile();
+    returnTo.current = null;
+    setQuery(next);
   };
 
   const showDir = (path: string) => {
@@ -169,7 +178,7 @@ function Diffs({ worktree }: { worktree: string }) {
 
   useEffect(() => {
     if (!returnTo.current) diffsRef.current?.scrollTo({ top: 0 });
-  }, [dir]);
+  }, [dir, query]);
 
   useEffect(() => {
     if (focused || !returnTo.current) return;
@@ -207,7 +216,7 @@ function Diffs({ worktree }: { worktree: string }) {
   };
 
   const files = diff ? treeOrder(parsePatchFiles(diff.patch).flatMap((p) => p.files)) : [];
-  const listed = files.filter(inDir(dir));
+  const listed = files.filter(inDir(dir)).filter(matching(query));
   const shown = focused ? [whole?.name === focused ? whole : files.find((f) => f.name === focused)].filter((f) => !!f) : listed;
   const dirStat = listed.map(counts).reduce((sum, c) => ({ add: sum.add + c.add, del: sum.del + c.del }), { add: 0, del: 0 });
 
@@ -228,11 +237,17 @@ function Diffs({ worktree }: { worktree: string }) {
 
   // Esc steps back from one file to its folder or all files, and from a folder to all files, keeping the task open,
   // so it runs before the board's keys, which would leave the task. A dialog or the ⋯ menu over the task takes the Esc
-  // first: cancelling it here would keep that layer open.
+  // first: cancelling it here would keep that layer open. In the filter, Esc clears it, then leaves the field.
   useLayoutEffect(() => {
-    if (!focused && !dir) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector(COVERS_SHEET)) return;
+      if (e.target === filterRef.current) {
+        e.preventDefault();
+        if (query) filter('');
+        else filterRef.current?.blur();
+        return;
+      }
+      if (!focused && !dir) return;
       e.preventDefault();
       back();
     };
@@ -249,7 +264,7 @@ function Diffs({ worktree }: { worktree: string }) {
     }, { root, rootMargin: '0px 0px -85% 0px' });
     for (const section of root.querySelectorAll('section')) observer.observe(section);
     return () => observer.disconnect();
-  }, [diff, focused, dir]);
+  }, [diff, focused, dir, query]);
 
   return (
     <div className={styles.frame}>
@@ -266,12 +281,18 @@ function Diffs({ worktree }: { worktree: string }) {
               <button type="button" className={styles.tool} title="Esc" onClick={back}>← All files</button>
               <code className={styles.path}>{dir}/</code>
               <span className={styles.stat}>
-                <span>{listed.length} {listed.length === 1 ? 'file' : 'files'}</span> · <span className={styles.add}>+{dirStat.add}</span>{' '}
+                <span>{listed.length} {listed.length === 1 ? 'file' : 'files'}{query && ' match'}</span> · <span className={styles.add}>+{dirStat.add}</span>{' '}
                 <span className={styles.del}>−{dirStat.del}</span>
               </span>
             </>
           )}
-          {diff && !focused && !dir && (
+          {diff && !focused && !dir && query && (
+            <span className={styles.stat}>
+              <span>{listed.length} of {files.length} files match</span> · <span className={styles.add}>+{dirStat.add}</span>{' '}
+              <span className={styles.del}>−{dirStat.del}</span>
+            </span>
+          )}
+          {diff && !focused && !dir && !query && (
             <span className={styles.stat}>
               <span>{diff.stat.files} files</span> · <span className={styles.add}>+{diff.stat.insertions}</span>{' '}
               <span className={styles.del}>−{diff.stat.deletions}</span> against{' '}
@@ -297,6 +318,9 @@ function Diffs({ worktree }: { worktree: string }) {
                 onSelect={focus}
                 onDir={showDir}
                 onAll={showAll}
+                query={query}
+                onQuery={filter}
+                filterRef={filterRef}
               />
               <div
                 className={styles.resizer}
@@ -316,7 +340,9 @@ function Diffs({ worktree }: { worktree: string }) {
           )}
           <div className={styles.diffs} ref={diffsRef} data-seeking={seeking ?? undefined}>
             {diff && !files.length && <p className={styles.empty}>No changes against {diff.base}.</p>}
-            {dir && files.length > 0 && !listed.length && <p className={styles.empty}>No changes in {dir}/ any more.</p>}
+            {files.length > 0 && !listed.length && (
+              <p className={styles.empty}>{query ? `No changed file${dir ? ` in ${dir}/` : ''} matches “${query.trim()}”.` : `No changes in ${dir}/ any more.`}</p>
+            )}
             {shown.map((f) => (
               <section key={f.name} id={fileAnchor(f.name)} data-file={f.name} className={styles.file}>
                 <FileDiff fileDiff={f} options={FILE_OPTIONS} />

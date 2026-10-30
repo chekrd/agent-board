@@ -68,6 +68,36 @@
     }
   }
 
+  .filter {
+    position: sticky;
+    top: -8px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -8px -6px 6px;
+    padding: 8px 14px 6px;
+    background: #262626;
+    color: #9d9d9d;
+    svg { flex: none; }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      height: 26px;
+      padding: 0 6px;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      background: #1e1e1e;
+      color: #e6e6e6;
+      font: 12.5px Menlo, var(--mono);
+      &::placeholder { color: #7a7a7a; }
+      &:focus-visible { outline: 1px solid #6e8fc0; outline-offset: 0; border-color: #6e8fc0; }
+    }
+  }
+
+  .none { margin: 4px 10px; color: #9d9d9d; }
+
   .all {
     display: flex;
     align-items: center;

@@ -1,5 +1,5 @@
 import type { FileDiffMetadata } from '@pierre/diffs';
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import styles from './FileTree.module.css';
 import { Icon } from './Icon.tsx';
 
@@ -48,6 +48,11 @@ export const treeOrder = (files: FileDiffMetadata[]) => flatten(build(files));
 export const fileAnchor = (name: string) => `file-${encodeURIComponent(name)}`;
 
 export const inDir = (dir: string | null) => (f: FileDiffMetadata) => !dir || f.name.startsWith(`${dir}/`);
+
+export const matching = (query: string) => {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return (f: FileDiffMetadata) => terms.every((t) => f.name.toLowerCase().includes(t) || !!f.prevName?.toLowerCase().includes(t));
+};
 
 interface Picks {
   selected: string | null;
@@ -110,7 +115,16 @@ function Folder({ node, ...picks }: Picks & { node: Dir }) {
   );
 }
 
-export function FileTree({ files, all, onAll, ...picks }: Omit<Picks, 'collapsed' | 'onToggle'> & { files: FileDiffMetadata[]; all: boolean; onAll: () => void }) {
+interface TreeProps extends Omit<Picks, 'collapsed' | 'onToggle'> {
+  files: FileDiffMetadata[];
+  all: boolean;
+  onAll: () => void;
+  query: string;
+  onQuery: (query: string) => void;
+  filterRef: Ref<HTMLInputElement>;
+}
+
+export function FileTree({ files, all, onAll, query, onQuery, filterRef, ...picks }: TreeProps) {
   const [collapsed, setCollapsed] = useState(() => new Set<string>());
   const [shown, setShown] = useState(picks.selected);
   if (shown !== picks.selected) {
@@ -124,12 +138,27 @@ export function FileTree({ files, all, onAll, ...picks }: Omit<Picks, 'collapsed
       if (!next.delete(path)) next.add(path);
       return next;
     });
+  const found = query ? files.filter(matching(query)) : files;
   return (
     <nav className={styles.tree} aria-label="Changed files">
+      <div className={styles.filter}>
+        <Icon name="search" size={14} />
+        <input
+          ref={filterRef}
+          type="search"
+          value={query}
+          placeholder="Filter files"
+          aria-label="Filter files by name"
+          title="Show only the files whose path holds every word typed; Esc clears"
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(e) => onQuery(e.target.value)}
+        />
+      </div>
       <button type="button" className={styles.all} aria-pressed={all} onClick={onAll}>
-        All files <span>{files.length}</span>
+        All files <span>{query ? `${found.length} of ${files.length}` : files.length}</span>
       </button>
-      <Folder node={build(files)} {...picks} collapsed={collapsed} onToggle={onToggle} />
+      {found.length ? <Folder node={build(found)} {...picks} collapsed={collapsed} onToggle={onToggle} /> : <p className={styles.none}>No file matches.</p>}
     </nav>
   );
 }

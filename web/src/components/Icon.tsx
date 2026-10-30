@@ -31,6 +31,12 @@ const shapes = {
     </g>
   ),
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </>
+  ),
   sun: (
     <>
       <circle cx="12" cy="12" r="4" />

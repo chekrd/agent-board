@@ -1546,6 +1546,62 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'P4.5c Diff: the tree\'s filter keeps the files whose path holds every word typed, in the tree and the diff, with their count and ± in the toolbar; J and K stay among them; a folder narrows them further; Esc in the field clears it, then leaves it, keeping the task open',
+    async run({ page, mock, shot }) {
+      await page.goto(`${mock.url}/s/s-cart/diff`);
+      await page.until('every file', () => document.querySelectorAll('section[data-file]').length === 12);
+      const view = () => ({
+        sections: [...document.querySelectorAll('section[data-file]')].map((s) => s.getAttribute('data-file')),
+        tree: [...document.querySelectorAll('nav[aria-label="Changed files"] a')].map((a) => a.getAttribute('title')),
+        all: document.querySelector('nav[aria-label="Changed files"] > button')?.textContent ?? '',
+        toolbar: document.querySelector('[data-theme="dark"] > div')?.textContent ?? '',
+      });
+      const filter = 'nav[aria-label="Changed files"] input[type="search"]';
+
+      await page.click(filter);
+      await page.type('MENU');
+      await page.until('the menu files', () => document.querySelectorAll('section[data-file]').length === 3);
+      const menu = await page.eval(view);
+      const menuFiles = ['server/menu.test.ts', 'server/menu.ts', 'web/src/components/MenuCard.tsx'];
+      assert.deepEqual(menu.sections, menuFiles);
+      assert.deepEqual(menu.tree, menuFiles);
+      assert.equal(menu.all, 'All files 3 of 12');
+      assert.match(menu.toolbar, /3 of 12 files match · \+87 −6/);
+      await shot('diff-filter');
+
+      await page.type(' test');
+      await page.until('menu test alone', () => document.querySelectorAll('section[data-file]').length === 1);
+      assert.deepEqual((await page.eval(view)).sections, ['server/menu.test.ts']);
+      await page.type('zzz');
+      await page.until('nothing matches', () => !document.querySelector('section[data-file]'));
+      assert.match(await page.eval(() => document.querySelector('[data-theme="dark"]')?.textContent ?? ''), /No file matches\..*No changed file matches “MENU testzzz”\./);
+
+      await page.key('Escape');
+      await page.until('the filter cleared', () => document.querySelectorAll('section[data-file]').length === 12);
+      assert.equal(await page.eval((sel) => document.querySelector<HTMLInputElement>(sel)?.value, filter), '');
+      assert.ok(await page.eval((sel) => document.activeElement === document.querySelector(sel), filter), 'the first Esc left the field');
+      await page.key('Escape');
+      assert.ok(await page.eval((sel) => document.activeElement !== document.querySelector(sel), filter), 'the second Esc stayed in the field');
+      assert.equal(await page.eval(() => location.pathname), '/s/s-cart/diff');
+
+      await page.click(filter);
+      await page.type('menu');
+      await page.until('the menu files', () => document.querySelectorAll('section[data-file]').length === 3);
+      await page.click('nav[aria-label="Changed files"] a[title="server/menu.ts"]');
+      await page.until('menu.ts whole', wholeFile, 'server/menu.ts');
+      await page.key('j');
+      await page.until('J steps to the next match', wholeFile, 'web/src/components/MenuCard.tsx');
+      await page.key('j');
+      await page.until('J stays on the last match', wholeFile, 'web/src/components/MenuCard.tsx');
+      await page.key('Escape');
+      await page.until('back to the matches', () => document.querySelectorAll('section[data-file]').length === 3);
+
+      await page.click('nav[aria-label="Changed files"] button[title="Show only the changes in server/"]');
+      await page.until('the menu files in server/', () => document.querySelectorAll('section[data-file]').length === 2);
+      assert.match((await page.eval(view)).toolbar, /server\/2 files match/);
+    },
+  },
+  {
     name: 'P4.6 browser Back closes the sheet; a sheet whose task goes away closes with "That task is gone."',
     async run({ page, mock }) {
       await openFromWall(page, mock, 's-invoice');
