@@ -74,6 +74,13 @@ export async function continueConversation(opts: { repoId: number | null; worktr
   }
   if ((await liveConversations()).has(id)) throw new Error('this conversation is open in a terminal that is not a Ghostty tab');
   const meta = await conversationMeta(existing?.cwd ?? cwd, id);
+  // Claude writes no transcript until the first prompt, so a task never prompted starts again as it first did.
+  if (!meta && existing && existing.conversation === id && !existing.firstPrompt && !existing.lastPrompt && !existing.history.length) {
+    sessions.update(existing.id, { pid: null, tty: null, status: 'idle', archived: false });
+    await launch(existing.id, existing.cwd, ['--session-id', id]);
+    notify();
+    return existing.id;
+  }
   if (!meta) throw new Error('conversation not found in this worktree');
   if (existing) {
     sessions.update(existing.id, {
