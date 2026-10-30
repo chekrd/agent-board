@@ -8,12 +8,18 @@ const SETTINGS = join(homedir(), '.claude', 'settings.json');
 
 const claude = (...args: string[]) => execFileSync('claude', args, { stdio: 'inherit' });
 
-const HOOK_URL = `${ORIGIN}/api/hooks/ask-user-question`;
+const HOOKS_URL = `${ORIGIN}/api/hooks/`;
 
-// Reports Claude Code's own questions to Pitwall as they open, and never answers them: no output, exit 0.
-const HOOK = {
-  matcher: 'AskUserQuestion',
-  hooks: [{ type: 'command', timeout: 5, command: `curl -s -m 2 -o /dev/null -X POST -H 'content-type: application/json' --data-binary @- ${HOOK_URL}; exit 0` }],
+// Each hook reports to Pitwall and never steers Claude: no output, exit 0.
+const post = (path: string) => [{ type: 'command', timeout: 5, command: `curl -s -m 2 -o /dev/null -X POST -H 'content-type: application/json' --data-binary @- ${HOOKS_URL}${path}; exit 0` }];
+
+// Claude Code's own questions as they open, and the moments a session's state changes.
+const HOOKS: Record<string, { matcher?: string; hooks: ReturnType<typeof post> }> = {
+  PreToolUse: { matcher: 'AskUserQuestion', hooks: post('ask-user-question') },
+  SessionStart: { hooks: post('event') },
+  UserPromptSubmit: { hooks: post('event') },
+  Stop: { hooks: post('event') },
+  Notification: { hooks: post('event') },
 };
 
 const OLD_TOOL_NAMES = OLD_MCP_SERVER_NAMES.flatMap((n) => [ASK_TOOL, ARTIFACT_TOOL].map((t) => `mcp__${n}__${t}`));
@@ -27,7 +33,7 @@ const removeServer = (name: string) => {
   }
 };
 
-const ours = (entry: { hooks?: { command?: string }[] }) => entry.hooks?.some((h) => h.command?.includes(HOOK_URL));
+const ours = (entry: { hooks?: { command?: string }[] }) => entry.hooks?.some((h) => h.command?.includes(HOOKS_URL));
 
 function editSettings(connect: boolean) {
   const settings = JSON.parse(readFileSync(SETTINGS, 'utf8'));
@@ -36,9 +42,11 @@ function editSettings(connect: boolean) {
   const allow: string[] = (settings.permissions.allow ?? []).filter((rule: string) => !TOOLS.includes(rule) && (connect || !OLD_TOOL_NAMES.includes(rule)));
   settings.permissions.allow = connect ? [...allow, ...TOOLS] : allow;
   settings.hooks ??= {};
-  const pre = (settings.hooks.PreToolUse ?? []).filter((entry: any) => !ours(entry));
-  settings.hooks.PreToolUse = connect ? [...pre, HOOK] : pre;
-  if (!settings.hooks.PreToolUse.length) delete settings.hooks.PreToolUse;
+  for (const [event, hook] of Object.entries(HOOKS)) {
+    const others = (settings.hooks[event] ?? []).filter((entry: any) => !ours(entry));
+    settings.hooks[event] = connect ? [...others, hook] : others;
+    if (!settings.hooks[event].length) delete settings.hooks[event];
+  }
   writeFileSync(SETTINGS, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
@@ -47,7 +55,7 @@ switch (process.argv[2]) {
     for (const name of [MCP_SERVER_NAME, ...OLD_MCP_SERVER_NAMES]) removeServer(name);
     claude('mcp', 'add', '--scope', 'user', '--transport', 'http', MCP_SERVER_NAME, `${ORIGIN}/mcp`);
     editSettings(true);
-    console.log(`allowed ${TOOLS.join(', ')} and added the AskUserQuestion hook in ${SETTINGS}\nRunning Claude sessions get the tools after a restart or /mcp reconnect.`);
+    console.log(`allowed ${TOOLS.join(', ')} and added Pitwall's hooks (${Object.keys(HOOKS).join(', ')}) in ${SETTINGS}\nRunning Claude sessions get the tools after a restart or /mcp reconnect.`);
     break;
   case 'disconnect':
     removeServer(MCP_SERVER_NAME);

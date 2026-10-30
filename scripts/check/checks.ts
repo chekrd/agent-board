@@ -5335,6 +5335,19 @@ export const checks: Check[] = [
     },
   },
   {
+    name: 'drift a banner says which Claude Code version changed which file Pitwall reads, and leaves when the drift is gone',
+    async run({ page, mock, shot }) {
+      await openQueue(page, mock);
+      assert.equal(await page.eval(() => !!document.querySelector('[data-drift]')), false, 'a banner shows without drift');
+      await mock.post('/mock/drift', { drift: [{ problem: 'session files report an unknown status "thinking"', version: '9.9.9', at: Date.now() }] });
+      const text = await page.until('the drift banner', () => document.querySelector<HTMLElement>('[data-drift]')?.innerText.replace(/\s+/g, ' ').trim() || null);
+      assert.match(text, /^Claude Code 9\.9\.9 changed what Pitwall reads: session files report an unknown status "thinking"\./);
+      await shot('drift');
+      await mock.post('/mock/drift', { drift: [] });
+      await page.until('the banner gone', () => !document.querySelector('[data-drift]'));
+    },
+  },
+  {
     name: 'usage.narrow the top bar shows both limits as shares with their reset times and without their bars, whole, beside the actions',
     narrow: true,
     async run({ page, mock }) {

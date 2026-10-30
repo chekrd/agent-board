@@ -4,7 +4,7 @@ import { wsUrl } from './api.ts';
 import { orderKey } from './order.ts';
 import { active } from './outbox.ts';
 import { sends } from './sends.ts';
-import type { FolderView, Preparing, RepoView, Session, Usage } from './types.ts';
+import type { Drift, FolderView, Preparing, RepoView, Session, Usage } from './types.ts';
 import { menuOpen } from './layers.ts';
 import { isEditable } from './useKeys.ts';
 import { diag } from './diag.ts'; // DIAG(paste-loss)
@@ -21,6 +21,7 @@ interface State {
   sessions: Session[];
   usage: Usage | null;
   restart: { preparing: Preparing | null };
+  drift: Drift[];
   link: Link;
   // The top bar offers to reload into a new build: in 15 s no moment came when reloading would lose nothing, or
   // reloading for that build already brought this tab back to the build it runs.
@@ -30,7 +31,7 @@ interface State {
 const RELOAD_CAP_MS = 15_000;
 const RELOADED_FOR = 'pitwall:reloaded-for';
 
-let state: State = { home: '', roots: [], repos: [], folders: [], sessions: [], usage: null, restart: { preparing: null }, link: 'connecting', newVersion: false };
+let state: State = { home: '', roots: [], repos: [], folders: [], sessions: [], usage: null, restart: { preparing: null }, drift: [], link: 'connecting', newVersion: false };
 const subscribers = new Set<() => void>();
 let order = '';
 

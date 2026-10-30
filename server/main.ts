@@ -19,10 +19,13 @@ import { addWorktree, fullDiff, listBranches, repoRoot } from './git.ts';
 import { handleMcp } from './mcp.ts';
 import { ALIASES, EFFORTS, resolver, settingsFor } from './models.ts';
 import * as S from './sessions.ts';
+import { sync } from './ingest.ts';
+import { deleteWorktree, deleteWorktreeLoss, removeWorktreeAndSessions } from './removal.ts';
 import { prepare, restartState } from './restart.ts';
 import { readEntry, watchEntry } from './uiEntry.ts';
 import { saveUpload } from './uploads.ts';
 import { watchUsage } from './usage.ts';
+import { drift, onDrift } from './claudeFormat.ts';
 import { boardAnswer, boardTracker, cleanBatch, cleanEvent, KEEP_DAYS, type Data } from './uxlog.ts';
 import { folders, notify, onChange, refreshWorkspace, repoView, snapshot, taskFolderOf, workspace } from './workspace.ts';
 import { folderDiff, makeTaskFolder } from './folderTasks.ts';
@@ -50,7 +53,8 @@ app.onError((err, c) => {
 });
 
 const usage = watchUsage(USAGE_FILE, notify);
-const state = () => ({ ...snapshot(), usage: usage.current(), restart: restartState() });
+onDrift(notify);
+const state = () => ({ ...snapshot(), usage: usage.current(), restart: restartState(), drift: drift() });
 
 app.get('/api/state', (c) => c.json(state()));
 
@@ -191,7 +195,7 @@ app.delete('/api/worktrees', async (c) => {
   const body = await c.req.json<{ repoId: number; path: string; force?: boolean; deleteBranch?: boolean }>();
   const repo = repoView(body.repoId);
   if (!repo) throw new Error('unknown repo');
-  await S.removeWorktreeAndSessions(repo, body.path, { force: !!body.force, deleteBranch: !!body.deleteBranch });
+  await removeWorktreeAndSessions(repo, body.path, { force: !!body.force, deleteBranch: !!body.deleteBranch });
   return c.body(null, 204);
 });
 
@@ -220,7 +224,7 @@ app.get('/api/sessions/:id/conversation/:conversation/:entry/:n', async (c) => {
   if (!image) return c.text('image not found', 404);
   return c.body(new Uint8Array(image.data), 200, { 'content-type': image.type, 'cache-control': 'private, max-age=31536000, immutable' });
 });
-app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await S.deleteWorktreeLoss(c.req.param('id'))));
+app.get('/api/sessions/:id/delete-worktree', async (c) => c.json(await deleteWorktreeLoss(c.req.param('id'))));
 
 // These act on the decision the page showed and name it in `key`; answer and answer-menu check their own.
 const onDecision = new Set(['dismiss', 'accept-advice', 'retry-advice', 'stop-advice', 'elaborate']);
@@ -268,7 +272,7 @@ async function act(c: Context, id: string, action: string, body: any) {
     case 'archive': S.archive(id, body.archived ?? true); break;
     case 'priority': S.setPriority(id, body.priority ?? null); break;
     case 'resolve': S.resolve(id, body.state ?? null); break;
-    case 'delete-worktree': await S.deleteWorktree(id); break;
+    case 'delete-worktree': await deleteWorktree(id); break;
     case 'finding': return c.json({ id: await respond(id, body) });
     default: return c.text('unknown action', 404);
   }
@@ -316,6 +320,11 @@ app.post('/api/ux', async (c) => {
 
 app.post('/api/hooks/ask-user-question', async (c) => {
   S.menuOpened(await c.req.json());
+  return c.body(null, 204);
+});
+
+app.post('/api/hooks/event', async (c) => {
+  await S.hookEvent(await c.req.json().catch(() => ({})));
   return c.body(null, 204);
 });
 
@@ -378,8 +387,8 @@ app.get('*', async (c) => {
 });
 
 await refreshWorkspace({ scan: true });
-await S.sync();
-setInterval(() => void S.sync().catch((err) => console.warn('session sync failed', err)), 1500);
+await sync();
+setInterval(() => void sync().catch((err) => console.warn('session sync failed', err)), 1500);
 setInterval(() => void refreshWorkspace({ scan: true }).catch((err) => console.warn('workspace refresh failed', err)), 30_000);
 
 serve({ fetch: app.fetch, hostname: HOST, port: PORT, websocket: { server: new WebSocketServer({ noServer: true }) } }, () => {

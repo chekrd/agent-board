@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
+import { report, sessionFileProblems, transcriptProblems, versionOf } from './claudeFormat.ts';
 import { ARTIFACT_TOOL, ARTIFACT_TOOL_NAME, ASK_TOOL, ASK_TOOL_NAME, OLD_MCP_SERVER_NAMES } from './config.ts';
 import type { PrFlow } from './db.ts';
 import { tildeIn } from './home.ts';
@@ -488,6 +489,7 @@ async function readMeta(file: string, mtime: number): Promise<Meta> {
   const head = jsonLines((await readSlice(file, 'head', HEAD_BYTES)).text);
   const tail = await readTail(file);
   const entries = [...head, ...tail];
+  report(transcriptProblems(entries), versionOf(entries));
   const meta = {
     mtime,
     title: entries.findLast((e) => e.type === 'custom-title')?.customTitle ?? entries.findLast((e) => e.type === 'ai-title')?.aiTitle ?? null,
@@ -549,6 +551,7 @@ export async function liveConversations(): Promise<Map<string, LiveProcess>> {
   const infos = (await Promise.all(files.filter((f) => /^\d+\.json$/.test(f)).map(async (f) => {
     try {
       const info = JSON.parse(await readFile(join(dir, f), 'utf8'));
+      report(sessionFileProblems(info), info.version ?? null);
       const interactive = info.kind === 'interactive' && (info.entrypoint ?? 'cli') === 'cli';
       return info.sessionId && info.cwd && interactive && alive(info.pid) ? [info] : [];
     } catch {
@@ -582,7 +585,20 @@ export async function listConversations(cwd: string, live: Map<string, LiveProce
   return conversations;
 }
 
-export const transcriptFile = async (cwd: string, id: string) => join(await projectDir(cwd), `${id}.jsonl`);
+// Where the hooks said each conversation's transcript is, and how it started; the folder name is guessed only without.
+const hooked = new Map<string, { transcript: string | null; source: string | null }>();
+
+export const guessedTranscriptFile = async (cwd: string, id: string) => join(await projectDir(cwd), `${id}.jsonl`);
+
+export const transcriptFile = async (cwd: string, id: string) => hooked.get(id)?.transcript ?? guessedTranscriptFile(cwd, id);
+
+export function hookedConversation(id: string, seen: { transcript?: string | null; source?: string | null }) {
+  const known = hooked.get(id);
+  hooked.set(id, { transcript: seen.transcript ?? known?.transcript ?? null, source: seen.source ?? known?.source ?? null });
+}
+
+// The SessionStart hook's source, when it ran for this conversation: 'clear' for one that /clear started.
+export const startSource = (id: string) => hooked.get(id)?.source ?? null;
 
 export async function fileMeta(file: string) {
   const s = await stat(file).catch(() => null);

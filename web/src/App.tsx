@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { DriftBanner } from './components/DriftBanner.tsx';
 import { DeleteWorktreeDialog } from './components/DeleteWorktreeDialog.tsx';
 import { KeysDialog } from './components/KeysDialog.tsx';
 import { NewTaskDialog } from './components/NewTaskForm.tsx';
@@ -38,6 +39,7 @@ export function App() {
     <>
       <TopBar route={route} deck={deck} />
       <RestartBanner />
+      <DriftBanner />
       {/* Under an open task the view stays, so it comes back as it was left. */}
       <div className="views">
         <div className="view" data-covered={!!route.sheet || undefined} inert={!!route.sheet}>

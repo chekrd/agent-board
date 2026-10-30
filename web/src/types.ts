@@ -6,3 +6,4 @@ export type { Command } from '../../server/commands.ts';
 export type { MenuAnswer } from '../../server/menu.ts';
 export type { Usage, UsageWindow } from '../../server/usage.ts';
 export type { Preparing } from '../../server/restart.ts';
+export type { Drift } from '../../server/claudeFormat.ts';

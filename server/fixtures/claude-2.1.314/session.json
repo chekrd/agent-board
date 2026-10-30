@@ -1,0 +1,24 @@
+{
+  "pid": 33442,
+  "sessionId": "21a054fa-2e85-4aa3-b5cb-88714df041f6",
+  "cwd": "/work/repo",
+  "startedAt": 1793349318491,
+  "procStart": "",
+  "version": "2.1.314",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "",
+    "",
+    ""
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "",
+  "asksForConvertedSkills": false,
+  "name": "pitwall-75",
+  "nameSource": "",
+  "nameSince": 1793349318491,
+  "status": "idle",
+  "updatedAt": 1793349611595,
+  "statusUpdatedAt": 1793349611595
+}

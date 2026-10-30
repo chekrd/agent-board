@@ -15,6 +15,7 @@ import { checkDecision, decisionKey, openDecision, Refusal } from '../../server/
 import { handOver, taskOf } from '../../server/handover.ts';
 import { menuKeystrokes, type MenuAnswer } from '../../server/menu.ts';
 import { busy, pickedUp, type Preparing } from '../../server/restart.ts';
+import type { Drift } from '../../server/claudeFormat.ts';
 import { readEntry, watchEntry } from '../../server/uiEntry.ts';
 import type { FolderView, RepoView } from '../../server/workspace.ts';
 import { prefixRenames } from '../../server/git.ts';
@@ -106,6 +107,7 @@ let delayMs = 0;
 let dropUntil = 0;
 let announced: string | null = null;
 let preparing: Preparing | null = null;
+let drift: Drift[] = [];
 
 const clients = new Set<WebSocket>();
 let pushing = false;
@@ -128,7 +130,7 @@ const taskWorktrees = (taskFolder: string) =>
 
 const snapshot = () => ({
   home: '/Users/me', roots: state.roots, repos: state.repos, ...(!args.legacy && { folders: folders() }), sessions: state.sessions.toSorted((a, b) => a.createdAt - b.createdAt).map(shown),
-  ...(!args.legacy && { usage: state.usage, restart: { preparing } }),
+  ...(!args.legacy && { usage: state.usage, restart: { preparing }, drift }),
 });
 
 // As the server's restart.watch, without the notification.
@@ -168,6 +170,7 @@ function load(name: string) {
   dropUntil = 0;
   announced = null;
   preparing = null;
+  drift = [];
   state = make(Date.now());
   if (args.legacy) for (const s of state.sessions) s.answered = null;
   answers = answeringFor(state);
@@ -769,6 +772,11 @@ route('POST', '/mock/patch', ({ body }) => {
   merge(s, body.patch ?? {});
   push();
   return s;
+});
+route('POST', '/mock/drift', ({ body }) => {
+  drift = body.drift ?? [];
+  push();
+  return NONE;
 });
 route('POST', '/mock/usage', ({ body }) => {
   state.usage = body.usage ?? null;

@@ -1,76 +1,19 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { DATA_DIR, DB_PATH, SESSIONS_DIR } from './config.ts';
 import type { Activity, Menu, TurnError } from './conversations.ts';
 import type { DiffStat } from './git.ts';
 import type { MenuAnswer } from './menu.ts';
+import { migrate } from './migrations.ts';
 import { migrateUx, uxStore } from './uxlog.ts';
 
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new DatabaseSync(DB_PATH);
 
-// Sessions used to be tmux panes; their rows and launch files cannot carry over to Ghostty tabs.
-const oldSessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-if (oldSessionColumns.includes('tmux')) {
-  db.exec('DROP TABLE sessions');
-  rmSync(SESSIONS_DIR, { recursive: true, force: true });
-}
+db.exec('PRAGMA journal_mode = WAL');
+migrate(db);
 mkdirSync(SESSIONS_DIR, { recursive: true });
-
-db.exec(`
-  PRAGMA journal_mode = WAL;
-  CREATE TABLE IF NOT EXISTS repos (
-    id INTEGER PRIMARY KEY,
-    path TEXT NOT NULL UNIQUE,
-    base_branch TEXT,
-    setup_command TEXT,
-    worktree_root TEXT
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    repo_id INTEGER REFERENCES repos(id) ON DELETE CASCADE,
-    worktree TEXT NOT NULL,
-    cwd TEXT NOT NULL,
-    pid INTEGER,
-    tty TEXT,
-    title TEXT,
-    first_prompt TEXT,
-    status TEXT NOT NULL,
-    question TEXT,
-    rank INTEGER,
-    rank_reason TEXT,
-    diffstat TEXT,
-    last_message TEXT,
-    waiting_for TEXT,
-    dismissed_ask TEXT,
-    archived INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS roots (
-    path TEXT PRIMARY KEY
-  );
-`);
-
-const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
-for (const column of ['advice', 'pr', 'summary', 'explanation', 'activity', 'menu', 'last_turn', 'artifacts', 'answered', 'findings', 'parent', 'resolution', 'conversation', 'history', 'model', 'effort', 'links', 'priority', 'last_prompt', 'interrupted', 'turn_error']) if (!sessionColumns.includes(column)) db.exec(`ALTER TABLE sessions ADD COLUMN ${column} TEXT`);
-
-db.exec('UPDATE sessions SET conversation = id WHERE conversation IS NULL');
-
-// A task across a folder of repos has no repository of its own, which the first sessions table did not allow.
-if (db.prepare('PRAGMA table_info(sessions)').all().some((c) => c.name === 'repo_id' && c.notnull)) {
-  const create = String(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()!.sql);
-  db.exec(`BEGIN;
-    ${create.replace(/CREATE TABLE "?sessions"?/, 'CREATE TABLE sessions_nullable').replace(/repo_id INTEGER NOT NULL/, 'repo_id INTEGER')};
-    INSERT INTO sessions_nullable SELECT * FROM sessions;
-    DROP TABLE sessions;
-    ALTER TABLE sessions_nullable RENAME TO sessions;
-    COMMIT;`);
-}
-
-const repoColumns = db.prepare('PRAGMA table_info(repos)').all().map((c) => c.name);
-if (!repoColumns.includes('hidden')) db.exec('ALTER TABLE repos ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
 
 export interface Repo {
   id: number;

@@ -1,38 +1,30 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { appendFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { adviseOpen, stopAdvice } from './advisor.ts';
+import { adviseOpen } from './advisor.ts';
 import { answering } from './answering.ts';
-import { storeArtifacts } from './artifacts.ts';
 import { listCommands } from './commands.ts';
-import { alive, conversationMeta, exchanges, liveConversations, parseMenu, promptImage, transcriptFile, type Activity, type ConversationLog, type LiveProcess } from './conversations.ts';
+import { alive, conversationMeta, exchanges, guessedTranscriptFile, hookedConversation, liveConversations, parseMenu, promptImage, transcriptFile, type ConversationLog } from './conversations.ts';
+import { report } from './claudeFormat.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { checkDecision } from './decision.ts';
-import { handOver, leftBy, taskOf } from './handover.ts';
-import { repos, sessions, type Parent, type Session, type SessionStatus } from './db.ts';
+import { handOver, taskOf } from './handover.ts';
+import { sessions, type Parent, type Session } from './db.ts';
 import { quote } from './env.ts';
-import { changedFiles, fullDiff, isClean, listBranches, pullRequestUrl, removeWorktree, repoRoot, switchBranch, unsharedCommits } from './git.ts';
+import { isClean, listBranches, switchBranch } from './git.ts';
 import { CLAUDE } from './headless.ts';
 import * as ghostty from './ghostty.ts';
 import * as terminal from './terminal.ts';
-import { askInput } from './mcp.ts';
 import { scheduleRerank, trackDecisions } from './priority.ts';
-import { bootTime, interruption, pickedUp, watch } from './restart.ts';
-import { summarizeStale } from './summary.ts';
-import { describeLinks } from './linkAbout.ts';
-import { mergeLinks } from './links.ts';
-import { notify, refreshWorkspace, repoView, taskFolderOf, taskWorktrees, workspace, type RepoView } from './workspace.ts';
-import { folderArgs, folderDiff, prWorktree } from './folderTasks.ts';
+import { notify, type RepoView } from './workspace.ts';
+import { folderArgs } from './folderTasks.ts';
+import { sync } from './ingest.ts';
 import { checkUploads } from './uploads.ts';
 
 const run = promisify(execFile);
-
-const STARTUP_GRACE_MS = 60_000;
-const STARTUP_PROMPT_MS = 8000;
-const IGNORE_RETRY_MS = 30_000;
 
 // A launch script keeps the prompt out of the user's shell, whose quoting rules may not be POSIX.
 async function launch(id: string, cwd: string, args: string[], setup?: string | null) {
@@ -124,194 +116,6 @@ export async function openShell(worktree: string) {
   await ghostty.newTab(worktree, '');
 }
 
-async function ttyOf(pid: number) {
-  const { stdout } = await run('/bin/ps', ['-o', 'tty=', '-p', String(pid)]).catch(() => ({ stdout: '' }));
-  const tty = stdout.trim();
-  return tty && tty !== '??' ? `/dev/${tty}` : null;
-}
-
-async function locateWorktree(cwd: string) {
-  const find = () => workspace()
-    .flatMap((r) => r.worktrees.map((w) => ({ repoId: r.id, path: w.path })))
-    .filter((w) => cwd === w.path || cwd.startsWith(`${w.path}/`))
-    .sort((a, b) => b.path.length - a.path.length)[0];
-  const found = find();
-  if (found) return found;
-  const root = await repoRoot(cwd).catch(() => null);
-  if (!root) return undefined;
-  if (!repos.all().some((r) => r.path === root) && !repos.addFound(root)) return undefined;
-  await refreshWorkspace();
-  return find();
-}
-
-// Claude between turns with work still running in the background will resume by itself, so it counts as working.
-const statusOf = (p: LiveProcess, background = 0): SessionStatus =>
-  p.status === 'busy' || (p.status !== 'waiting' && background > 0) ? 'working' : p.status === 'waiting' ? 'waiting' : 'idle';
-
-function activityOf(p: LiveProcess | undefined, activity: Activity | null, background: string[]): Activity | null {
-  if (!background.length) return activity;
-  if (p?.status === 'busy') return { step: activity?.step ?? null, since: activity?.since ?? Date.now(), background };
-  const step = `In the background · ${background[0]}${background.length > 1 ? ` and ${background.length - 1} more` : ''}`;
-  return { step, since: activity?.since ?? Date.now(), background, between: true };
-}
-
-// Only a conversation that /clear started takes over the task its Claude left; one that /resume opened does not, nor a
-// new one without its transcript yet, which /resume never opens.
-const startedByClear = async (cwd: string, conversation: string) => {
-  const meta = await conversationMeta(cwd, conversation);
-  return !meta || meta.cleared;
-};
-
-const ignored = new Map<string, number>();
-const deleting = new Set<string>();
-
-async function adopt(id: string, p: LiveProcess) {
-  const at = ignored.get(id);
-  if (at && Date.now() - at < IGNORE_RETRY_MS) return false;
-  const task = taskFolderOf(p.cwd);
-  const worktree = task ? { repoId: null, path: task.path } : await locateWorktree(p.cwd);
-  if (!worktree) {
-    ignored.set(id, Date.now());
-    return false;
-  }
-  ignored.delete(id);
-  const meta = await conversationMeta(p.cwd, id);
-  const tty = await ttyOf(p.pid);
-  // A sync that started before a worktree was deleted must not bring its sessions back.
-  if (deleting.has(worktree.path) || !existsSync(p.cwd)) return false;
-  sessions.insert({
-    id, repoId: worktree.repoId, worktree: worktree.path, cwd: p.cwd, pid: p.pid, tty,
-    title: meta?.title ?? null, firstPrompt: meta?.firstPrompt ?? null, status: statusOf(p),
-  });
-  void refreshDiffstat(id);
-  return true;
-}
-
-async function readTranscript(s: Session, p?: LiveProcess) {
-  const meta = await conversationMeta(s.cwd, s.conversation);
-  if (!meta) return false;
-  const patch: Parameters<typeof sessions.update>[1] = {};
-  if (meta.title && meta.title !== s.title) patch.title = meta.title;
-  if (meta.firstPrompt && !s.firstPrompt) patch.firstPrompt = meta.firstPrompt;
-  if (meta.lastMessage !== s.lastMessage) patch.lastMessage = meta.lastMessage;
-  // A reply whose prompt has left the part read keeps the prompt read with it before.
-  const lastPrompt = meta.lastPrompt ?? (meta.lastMessage === s.lastMessage ? s.lastPrompt : null);
-  if (lastPrompt !== s.lastPrompt) patch.lastPrompt = lastPrompt;
-  // A request names the model without the [1m] of a 1M context, which the model picked keeps.
-  if (meta.model && meta.model !== s.model?.replace('[1m]', '')) patch.model = meta.model;
-  if (meta.effort && meta.effort !== s.effort) patch.effort = meta.effort;
-  const lastTurn = meta.turns.at(-1)?.id ?? null;
-  if (lastTurn !== s.lastTurn) patch.lastTurn = lastTurn;
-  if (JSON.stringify(meta.turnError) !== JSON.stringify(s.turnError)) patch.turnError = meta.turnError;
-  const background = meta.background.filter(([id]) => !meta.greenWatches.includes(id)).map(([, what]) => what);
-  const activity = activityOf(p, meta.activity, background);
-  if (JSON.stringify(activity) !== JSON.stringify(s.activity)) patch.activity = activity;
-  const status = p && statusOf(p, background.length);
-  if (status && status !== s.status) patch.status = status;
-  if (s.menu && meta.toolResults.includes(s.menu.toolUseId)) patch.menu = null;
-  const artifacts = await storeArtifacts(s, meta.artifacts);
-  if (artifacts) patch.artifacts = artifacts;
-  const links = mergeLinks(s.links, meta.links);
-  if (links) patch.links = links;
-  const prs = await Promise.all(meta.prs.map(async ({ dir, repository, ...pr }) => {
-    const worktree = prWorktree(s, dir, repository);
-    return { ...pr, url: pr.id && worktree ? await pullRequestUrl(worktree.path, pr.id) : null, repo: s.repoId === null ? worktree?.repo ?? null : null };
-  }));
-  if (JSON.stringify(prs) !== JSON.stringify(s.prs)) patch.prs = prs;
-  const ask = meta.ask && meta.ask.toolUseId !== s.dismissedAsk ? meta.ask : null;
-  if (ask?.toolUseId !== s.question?.toolUseId) {
-    const input = ask && askInput.safeParse(ask.input);
-    patch.question = input?.success
-      ? { toolUseId: ask!.toolUseId, ...input.data, options: input.data.options ?? [], askedAt: ask!.at }
-      : null;
-    // The MCP server rejected this call, so Claude never saw it as a question either.
-    if (ask && !input?.success) patch.dismissedAsk = ask.toolUseId;
-  }
-  sessions.update(s.id, patch);
-  return Object.keys(patch).length > 0;
-}
-
-let syncing = false;
-
-export async function sync() {
-  if (syncing) return;
-  syncing = true;
-  try {
-    await syncLive();
-  } finally {
-    syncing = false;
-  }
-}
-
-async function syncLive() {
-  const live = await liveConversations();
-  const livePids = new Set([...live.values()].map((p) => p.pid));
-  let changed = false;
-  for (const [conversation, p] of live) {
-    let s = taskOf(sessions.all(), conversation);
-    if (!s) {
-      const left = leftBy(sessions.all(), p.pid, new Set(live.keys()));
-      if (!left || !(await startedByClear(p.cwd, conversation))) {
-        changed = (await adopt(conversation, p)) || changed;
-        continue;
-      }
-      sessions.update(left.id, handOver(left, conversation, Date.now()));
-      s = sessions.get(left.id)!;
-      changed = true;
-    } else if (s.conversation !== conversation) {
-      sessions.update(s.id, handOver(s, conversation, Date.now()));
-      changed = true;
-    }
-    // A conversation that left its task by /resume and came back brings the task back.
-    if (s.status === 'exited' && s.archived && !s.resolution) {
-      sessions.update(s.id, { archived: false });
-      changed = true;
-    }
-    const status = statusOf(p, s.activity?.background?.length);
-    if (s.interrupted && pickedUp(s.interrupted, status)) {
-      sessions.update(s.id, { interrupted: null });
-      changed = true;
-    }
-    if (s.pid !== p.pid || s.status !== status || s.waitingFor !== p.waitingFor) {
-      sessions.update(s.id, { pid: p.pid, tty: s.pid === p.pid ? s.tty : await ttyOf(p.pid), status, waitingFor: p.waitingFor, ...(status === 'idle' && { menu: null }) });
-      if (s.status === 'working' && status !== 'working') void refreshDiffstat(s.id);
-      changed = true;
-    }
-  }
-  let starting: Set<string> | undefined;
-  for (const s of sessions.all()) {
-    if (s.status === 'exited' || live.has(s.conversation)) {
-      if (s.status !== 'exited') changed = (await readTranscript(s, live.get(s.conversation))) || changed;
-      continue;
-    }
-    // Claude registers itself only once past prompts such as trusting a new folder, which a
-    // hidden terminal would keep out of sight.
-    starting ??= s.pid === null ? await terminal.tmuxSessions() : undefined;
-    if (s.pid === null && starting?.has(s.id)) {
-      if (s.status !== 'waiting' && Date.now() - s.updatedAt > STARTUP_PROMPT_MS) {
-        sessions.update(s.id, { status: 'waiting', waitingFor: 'its start-up prompt' });
-        changed = true;
-      }
-      continue;
-    }
-    if (s.pid === null && Date.now() - s.updatedAt < STARTUP_GRACE_MS) continue;
-    // The process lives on in another conversation after a /resume; this task is done. A /clear took the task with it.
-    // After a restart the pid may be another process's.
-    const interrupted = interruption(s, await bootTime());
-    const replaced = !interrupted && s.pid !== null && livePids.has(s.pid);
-    sessions.update(s.id, { status: 'exited', pid: null, waitingFor: null, menu: null, ...(interrupted && { interrupted }), ...(replaced && { archived: true }) });
-    await readTranscript(s);
-    void refreshDiffstat(s.id);
-    changed = true;
-  }
-  trackDecisions();
-  if (watch(sessions.all())) changed = true;
-  if (changed) notify();
-  adviseOpen();
-  void summarizeStale();
-  void describeLinks();
-}
-
 export async function focus(id: string) {
   await answers.settled(id);
   const s = must(id);
@@ -376,6 +180,22 @@ export function menuOpened(hook: { session_id?: string; tool_use_id?: string; to
   notify();
 }
 
+// Posted by the SessionStart, UserPromptSubmit, Stop and Notification hooks that `pnpm claude:connect` installs. Each
+// one syncs at once; the poll stays to reconcile what a hook missed, such as a Claude that crashed.
+export async function hookEvent(hook: { session_id?: unknown; transcript_path?: unknown; cwd?: unknown; hook_event_name?: unknown; source?: unknown }) {
+  const id = typeof hook.session_id === 'string' ? hook.session_id : null;
+  if (!id) return;
+  const transcript = typeof hook.transcript_path === 'string' && hook.transcript_path ? hook.transcript_path : null;
+  const start = hook.hook_event_name === 'SessionStart';
+  hookedConversation(id, { transcript, source: start && typeof hook.source === 'string' ? hook.source : null });
+  // Only at the start is the hook's cwd the folder the transcript is filed under; Claude may cd away later. Before the
+  // folder exists a long path's hashed name cannot be found.
+  if (start && transcript && typeof hook.cwd === 'string' && existsSync(dirname(transcript)) && (await guessedTranscriptFile(hook.cwd, id)) !== transcript) {
+    report(['transcripts are no longer where Pitwall looks for them without a hook'], null);
+  }
+  await sync();
+}
+
 export async function openIn(id: string, app: 'finder' | 'vscode') {
   const s = must(id);
   if (!existsSync(s.worktree)) throw new Error(`${s.worktree} no longer exists`);
@@ -419,59 +239,6 @@ export function resolve(id: string, state: unknown) {
   notify();
 }
 
-export async function stopWorktree(worktree: string) {
-  const gone = sessions.all().filter((s) => s.worktree === worktree);
-  for (const s of gone) if (s.pid && alive(s.pid)) process.kill(s.pid, 'SIGTERM');
-  sessions.removeByWorktree(worktree);
-  await Promise.all(gone.map((s) => rm(join(SESSIONS_DIR, s.id), { recursive: true, force: true })));
-  scheduleRerank();
-  notify();
-}
-
-async function waitForExit(pids: number[], timeoutMs: number) {
-  const until = Date.now() + timeoutMs;
-  while (pids.some(alive) && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
-  if (pids.some(alive)) throw new Error('Claude did not quit; nothing was deleted');
-}
-
-// git removes the whole directory, so a worktree inside it would lose its files.
-function refuseNested(path: string) {
-  const nested = workspace().flatMap((r) => r.worktrees.map((w) => w.path)).filter((p) => p.startsWith(`${path}/`));
-  if (nested.length) throw new Error(`${nested.join(', ')} is a worktree inside this one; remove it first`);
-}
-
-async function removing(path: string, work: () => Promise<void>) {
-  refuseNested(path);
-  deleting.add(path);
-  try {
-    await work();
-  } finally {
-    deleting.delete(path);
-    await refreshWorkspace();
-  }
-}
-
-// Claudes go first: one still running would write into the deleted tree and recreate parts of it.
-export async function removeWorktreeAndSessions(repo: RepoView, path: string, opts: { force: boolean; deleteBranch: boolean }) {
-  const worktree = repo.worktrees.find((w) => w.path === path);
-  if (!worktree) throw new Error('worktree not found');
-  if (worktree.isMain) throw new Error('this is the repository itself, not a worktree');
-  await removing(path, async () => {
-    if (!opts.force && !(await isClean(path))) {
-      throw new Error('the worktree has uncommitted or untracked changes; tick Force to discard them');
-    }
-    const claudes = [...(await liveConversations()).values()].filter((p) => p.cwd === path || p.cwd.startsWith(`${path}/`));
-    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
-    for (const o of sessions.all().filter((o) => o.worktree === path)) stopAdvice(o.id);
-    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
-    await waitForExit(claudes.map((p) => p.pid), 10_000);
-    await ghostty.closeTerminalsIn(path, ttys);
-    const keepBranch = !worktree.branch || longLived(repo, worktree.branch);
-    await removeWorktree(repo.path, path, { force: opts.force, deleteBranch: opts.deleteBranch && !keepBranch });
-    await stopWorktree(path);
-  });
-}
-
 // Works where the branch is already checked out, else switches the main checkout to it.
 export async function checkoutExistingBranch(repo: RepoView, branch: string) {
   const checkedOut = repo.worktrees.find((w) => w.branch === branch);
@@ -486,123 +253,7 @@ export async function checkoutExistingBranch(repo: RepoView, branch: string) {
   return main.path;
 }
 
-const longLived = (repo: RepoView, branch: string) =>
-  ['master', 'main', 'develop', 'trunk', repo.base, repo.base.replace(/^[^/]+\//, '')].includes(branch) || branch.startsWith('release/');
-
-const subtasksOf = (id: string): Session[] => sessions.all().filter((o) => o.parent?.id === id).flatMap((o) => [o, ...subtasksOf(o.id)]);
-
-// What Clear task would throw away, for its confirmation. A task in the main checkout keeps it, and its branch.
-export async function deleteWorktreeLoss(id: string) {
-  const s = must(id);
-  if (s.parent) throw new Error(NOT_A_SUBTASK);
-  const subtasks = subtasksOf(id).length;
-  if (s.repoId === null) return taskFolderLoss(s.worktree, subtasks);
-  const worktree = repoView(s.repoId)?.worktrees.find((w) => w.path === s.worktree);
-  if (!worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
-  if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
-  const repo = repoView(s.repoId)!;
-  const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-  const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
-  return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0, subtasks };
-}
-
-async function taskFolderLoss(folder: string, subtasks: number) {
-  const repos = await Promise.all(taskWorktrees(folder).map(async ({ repo, worktree }) => {
-    const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-    const [files, commits] = await Promise.all([changedFiles(worktree.path), unsharedCommits(worktree.path, worktree.branch)]);
-    return { name: repo.name, branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
-  }));
-  return {
-    branch: basename(folder),
-    deletesBranch: repos.some((r) => r.deletesBranch),
-    files: repos.reduce((n, r) => n + r.files, 0),
-    commits: repos.reduce((n, r) => n + r.commits, 0),
-    gone: !existsSync(folder),
-    subtasks,
-    repos,
-  };
-}
-
-// A task folder goes with every worktree in it, each with its branch, and then the folder itself, unless something
-// other than those worktrees left a repository in it.
-async function removeTaskFolder(folder: string) {
-  const inside = (path: string) => path === folder || path.startsWith(`${folder}/`);
-  deleting.add(folder);
-  try {
-    const claudes = [...(await liveConversations()).values()].filter((p) => inside(p.cwd));
-    const ttys = (await Promise.all(claudes.map((p) => ttyOf(p.pid)))).filter((t) => t !== null);
-    const gone = sessions.all().filter((o) => inside(o.worktree));
-    for (const o of gone) stopAdvice(o.id);
-    for (const p of claudes) if (alive(p.pid)) process.kill(p.pid, 'SIGTERM');
-    await waitForExit(claudes.map((p) => p.pid), 10_000);
-    await ghostty.closeTerminalsIn(folder, ttys);
-    await Promise.all(gone.map((o) => terminal.stop(o.id)));
-    for (const { repo, worktree } of taskWorktrees(folder)) {
-      deleting.add(worktree.path);
-      try {
-        await removeWorktree(repo.path, worktree.path, { force: true, deleteBranch: !!worktree.branch && !longLived(repo, worktree.branch) });
-        await stopWorktree(worktree.path);
-      } finally {
-        deleting.delete(worktree.path);
-      }
-    }
-    const left = await readdir(folder).catch(() => []);
-    if (left.some((e) => existsSync(join(folder, e, '.git')))) console.warn(`kept ${folder}: a repository is still in it`);
-    else await rm(folder, { recursive: true, force: true });
-    await stopWorktree(folder);
-  } finally {
-    deleting.delete(folder);
-    await refreshWorkspace();
-  }
-}
-
-const NOT_A_SUBTASK = "a subtask works in its task's worktree; Quit Claude or Archive it instead";
-
-// Clear task: in a worktree of its own, everything in it goes, the worktree and its branch too, subtasks with it. In
-// the main checkout, which other Claudes may share, or in a worktree already removed, only the Claudes and terminals
-// of the task and its subtasks go, with them. A hidden terminal goes by its name: the Claude in it may have moved on
-// to another conversation, which leaves the task without its pid. A subtask is not cleared on its own: it shares its
-// task's worktree.
-export async function deleteWorktree(id: string) {
-  const s = must(id);
-  if (s.parent) throw new Error(NOT_A_SUBTASK);
-  if (s.repoId === null) return removeTaskFolder(s.worktree);
-  const repo = repoView(s.repoId);
-  const worktree = repo?.worktrees.find((w) => w.path === s.worktree);
-  if (repo && worktree && !worktree.isMain) return removeWorktreeAndSessions(repo, s.worktree, { force: true, deleteBranch: true });
-  const gone = [s, ...subtasksOf(id)];
-  for (const o of gone) stopAdvice(o.id);
-  const pids = gone.flatMap((o) => (o.pid && alive(o.pid) ? [o.pid] : []));
-  const ttys = (await Promise.all(gone.map((o) => (o.pid && alive(o.pid) ? (o.tty ?? ttyOf(o.pid)) : null)))).filter((t) => t !== null);
-  for (const pid of pids) process.kill(pid, 'SIGTERM');
-  await waitForExit(pids, 10_000);
-  if (ttys.length) await ghostty.closeTerminalsIn(null, ttys);
-  await Promise.all(gone.map((o) => terminal.stop(o.id)));
-  for (const o of gone) sessions.remove(o.id);
-  await Promise.all(gone.map((o) => rm(join(SESSIONS_DIR, o.id), { recursive: true, force: true })));
-  scheduleRerank();
-  notify();
-}
-
-const diffInFlight = new Set<string>();
-
-export async function refreshDiffstat(id: string) {
-  const s = sessions.get(id);
-  const repo = s && repoView(s.repoId);
-  if (!s || (!repo && s.repoId !== null) || diffInFlight.has(s.worktree)) return;
-  diffInFlight.add(s.worktree);
-  try {
-    const { stat } = repo ? await fullDiff(s.worktree, repo.base, { statOnly: true }) : await folderDiff(s.worktree, { statOnly: true });
-    for (const other of sessions.all().filter((o) => o.worktree === s.worktree)) sessions.update(other.id, { diffstat: stat });
-    notify();
-  } catch (err) {
-    console.warn('diffstat failed', s.worktree, err);
-  } finally {
-    diffInFlight.delete(s.worktree);
-  }
-}
-
-function must(id: string) {
+export function must(id: string) {
   const s = sessions.get(id);
   if (!s) throw new Error(`unknown session ${id}`);
   return s;
