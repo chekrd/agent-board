@@ -37,6 +37,7 @@ for (const version of versions) {
 test('a session file without the fields Pitwall reads, or with an unknown status, is drift', () => {
   const ok = { pid: 1, sessionId: 's', cwd: '/r', kind: 'interactive', status: 'idle', procStart: 'Fri Oct 30 08:35:18 2026' };
   assert.deepEqual(sessionFileProblems(ok), []);
+  assert.deepEqual(sessionFileProblems({ ...ok, status: 'shell' }), []);
   assert.deepEqual(sessionFileProblems({ ...ok, status: 'thinking' }), ['session files report an unknown status "thinking"']);
   assert.deepEqual(sessionFileProblems({ ...ok, sessionId: undefined, procStart: undefined }), ['session files no longer carry sessionId', 'session files no longer carry procStart']);
   assert.deepEqual(sessionFileProblems({ ...ok, kind: 'headless', status: 'running', procStart: undefined }), []);

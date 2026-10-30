@@ -7,7 +7,7 @@ export interface Drift {
   at: number;
 }
 
-const STATUSES = new Set(['busy', 'idle', 'waiting']);
+const STATUSES = new Set(['busy', 'shell', 'idle', 'waiting']);
 
 const found = new Map<string, Drift>();
 let listener: () => void = () => {};

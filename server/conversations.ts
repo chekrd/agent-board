@@ -562,7 +562,9 @@ export async function liveConversations(): Promise<Map<string, LiveProcess>> {
   const live = new Map<string, LiveProcess>();
   for (const info of infos) {
     if (!started.has(info.pid) || (info.procStart && words(info.procStart) !== started.get(info.pid))) continue;
-    live.set(info.sessionId, { pid: info.pid, cwd: info.cwd, status: info.status, waitingFor: info.waitingFor ?? null });
+    // Claude Code 2.1.314 reports "shell" while a shell command runs, and shows it as working like "busy".
+    const status = info.status === 'shell' ? 'busy' : info.status;
+    live.set(info.sessionId, { pid: info.pid, cwd: info.cwd, status, waitingFor: info.waitingFor ?? null });
   }
   return live;
 }
