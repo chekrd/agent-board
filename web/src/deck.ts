@@ -12,7 +12,18 @@ const IN_DECK: readonly Attention[] = ['decide', 'focus', 'idle'];
 
 // `busy` are the sessions whose send is held or not yet confirmed: they have been answered on this page.
 export function deckOf(sessions: readonly Session[], busy: ReadonlySet<string>, now = Date.now()) {
-  return sessions.filter((s) => !s.archived && !s.resolution && s.status !== 'exited' && !busy.has(s.id) && IN_DECK.includes(attentionOf(s, now))).sort(compare);
+  return sessions
+    .filter((s) => !s.archived && !s.resolution && s.status !== 'exited' && !busy.has(s.id) && IN_DECK.includes(attentionOf(s, now)) && !findingsTaken(s, sessions))
+    .sort(compare);
+}
+
+// A review whose last turn listed findings waits on nothing once each is rejected, solved or has a subtask on it, until
+// Claude asks something or another turn ends.
+function findingsTaken(s: Session, sessions: readonly Session[]) {
+  const f = s.findings;
+  if (!f?.items.length || f.basis !== s.summary?.basis || s.menu || s.question) return false;
+  const taken = new Set(sessions.flatMap((o) => (o.parent?.id === s.id && o.parent.basis === f.basis && (!o.archived || o.resolution) ? [o.parent.finding] : [])));
+  return f.items.every((x, i) => x.rejected || x.solved || taken.has(i));
 }
 
 export function kindOf(s: Session, now = Date.now()): Kind | null {

@@ -41,6 +41,21 @@ test('the deck leaves out archived, working, ended and busy sessions, an ended o
   assert.deepEqual(ids(deck), ['kept']);
 });
 
+test('a review leaves the deck once each finding of its last turn is rejected, solved or has a subtask, and comes back when Claude asks or another turn ends', () => {
+  const item = (title: string, patch = {}) => ({ title, detail: 'd', location: '', ...patch });
+  const review = (patch: Partial<Session> = {}) => ended('review', {
+    findings: { basis: 't1', items: [item('a', { rejected: { reason: '', at: 1 } }), item('b', { solved: { at: 1 } }), item('c'), item('d')] }, ...patch,
+  });
+  const sub = (id: string, finding: number, patch: Partial<Session> = {}) =>
+    session(id, { status: 'working', parent: { id: 'review', basis: 't1', finding, title: 't', kind: 'second-look', text: '' }, ...patch });
+  const fix = sub('fix', 2), reply = sub('reply', 3, { resolution: { state: 'dropped', at: 1 } });
+  assert.deepEqual(ids(deckOf([review(), fix], none)), ['review']);
+  assert.deepEqual(ids(deckOf([review(), fix, reply], none)), []);
+  assert.deepEqual(ids(deckOf([review(), fix, sub('gone', 3, { archived: true })], none)), ['review']);
+  assert.deepEqual(ids(deckOf([review({ question: question('q1') }), fix, reply], none)), ['review']);
+  assert.deepEqual(ids(deckOf([review({ summary: turn('t2'), lastTurn: 't2' }), fix, reply], none)), ['review']);
+});
+
 test('a menu still open 10 s after the board answered it comes back as Needs focus: Claude still shows it in the terminal', () => {
   const stuck = answeredMenu(100_000);
   assert.deepEqual(ids(deckOf([stuck], none, 110_000)), ['hooks']);
