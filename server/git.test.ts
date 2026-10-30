@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { changedFiles, fullDiff, pullRequestUrlOf, unsharedCommits } from './git.ts';
+import { changedFiles, fullDiff, pullRequestUrlOf, unpushedCommits } from './git.ts';
 
 const GIT_WT = join(import.meta.dirname, '..', 'scripts', 'git-wt');
 const env = {
@@ -85,6 +85,7 @@ test('a same-size edit made in the second the index was written is in the diff',
 
 test('git wt lays out task folders, copies .worktreeinclude files and removes cleanly', async () => {
   const { root, main } = repo();
+  git(main, 'update-ref', 'refs/remotes/origin/master', 'HEAD');
   write(main, '.env', 'SECRET=1\n');
   write(main, '.worktreeinclude', '.env\n');
 
@@ -101,7 +102,7 @@ test('git wt lays out task folders, copies .worktreeinclude files and removes cl
   write(path, 'new.txt', 'y\n');
   git(path, 'commit', '-qam', 'two');
   write(path, 'dirty.txt', 'x\n');
-  assert.equal(await unsharedCommits(path, 'feat/x'), 2);
+  assert.equal(await unpushedCommits(path), 2);
   assert.equal(await changedFiles(path), 1);
 
   wt(main, 'rm', path, '--force', '--delete-branch');
@@ -109,15 +110,16 @@ test('git wt lays out task folders, copies .worktreeinclude files and removes cl
   assert.equal(git(main, 'branch', '--list', 'feat/x'), '');
 });
 
-test('commits another branch also has are not counted as lost', async () => {
+test('a commit counts as unpushed until a remote has it, though another local branch does', async () => {
   const { main } = repo();
   git(main, 'switch', '-qc', 'feature');
   write(main, 'f.txt', 'x\n');
   git(main, 'add', 'f.txt');
   git(main, 'commit', '-qm', 'f');
-  assert.equal(await unsharedCommits(main, 'feature'), 1);
   git(main, 'branch', 'backup');
-  assert.equal(await unsharedCommits(main, 'feature'), 0);
+  const pushed = await unpushedCommits(main);
+  git(main, 'update-ref', 'refs/remotes/origin/feature', 'HEAD');
+  assert.deepEqual([pushed, await unpushedCommits(main)], [2, 0]);
 });
 
 test('pull request links for Azure DevOps and GitHub remotes', () => {

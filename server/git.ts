@@ -94,11 +94,9 @@ export const switchBranch = (worktree: string, branch: string) => git(worktree, 
 export const isClean = async (worktree: string, { untracked = true } = {}) =>
   !(await git(worktree, ['status', '--porcelain', ...(untracked ? [] : ['--untracked-files=no'])])).trim();
 
-// Commits only this branch reaches: deleting it would leave them on no branch or remote.
-export async function unsharedCommits(worktree: string, branch: string | null) {
-  const exclude = branch ? [`--exclude=${branch}`] : [];
-  return Number((await git(worktree, ['rev-list', '--count', 'HEAD', '--not', ...exclude, '--branches', '--remotes', '--tags'])).trim()) || 0;
-}
+// Commits no remote has, even when another local branch does: a local branch is no backup.
+export const unpushedCommits = async (worktree: string) =>
+  Number((await git(worktree, ['rev-list', '--count', 'HEAD', '--not', '--remotes'])).trim()) || 0;
 
 export const changedFiles = async (worktree: string) =>
   (await git(worktree, ['status', '--porcelain'])).split('\n').filter(Boolean).length;

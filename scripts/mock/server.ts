@@ -454,7 +454,7 @@ function deleteLoss(s: Session) {
   if (!repo || !worktree) return { branch: null, deletesBranch: false, files: 0, commits: 0, checkout: true, gone: true, subtasks };
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-  return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: deletesBranch || !worktree.branch ? DELETE_LOSS.commits : 0, subtasks };
+  return { branch: worktree.branch, deletesBranch, files: DELETE_LOSS.files, commits: DELETE_LOSS.commits, subtasks };
 }
 
 // Enough that New task's branch list has to scroll.

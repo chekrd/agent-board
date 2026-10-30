@@ -15,6 +15,8 @@
 
   .loss { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; line-height: 1.5; color: var(--danger); }
 
+  .warning { font-weight: 650; color: var(--danger); }
+
   .muted { font-size: 14px; color: var(--muted); }
 
   .delete { color: var(--danger); border-color: var(--danger); }

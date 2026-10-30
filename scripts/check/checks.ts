@@ -1698,9 +1698,9 @@ export const checks: Check[] = [
       const shown = await page.until('the delete dialog', asked);
       assert.deepEqual({ ...shown, text: undefined }, {
         title: 'Clear the task, its worktree and its local branch invoice-rounding?', path: '~/code/worktrees/invoice-rounding/billing-api', text: undefined,
-        loss: ['3 uncommitted or untracked files', '2 commits that no other branch or remote has'], focus: 'Cancel',
+        loss: ['3 uncommitted or untracked files', '2 unpushed commits'], focus: 'Cancel',
       });
-      assert.match(shown.text, /This throws away:/);
+      assert.match(shown.text, /Not everything is pushed\. This throws away:/);
       await page.until('the dialog to settle', settled);
       await shot('delete-dialog');
       await page.key('Escape');
@@ -5774,7 +5774,7 @@ export const checks: Check[] = [
       });
       assert.deepEqual({ ...asked, text: undefined }, {
         title: 'Clear the task and its task folder, with 2 worktrees?', path: '~/code/worktrees/cart-api', text: undefined,
-        loss: ['storefront: 3 uncommitted or untracked files and 2 commits that no other branch or remote has'],
+        loss: ['storefront: 3 uncommitted or untracked files and 2 unpushed commits'],
       });
       assert.match(asked.text, /Removes the worktrees in storefront, billing-api and their local branch cart-api\./);
       await shot('folder-task-clear');

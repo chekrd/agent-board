@@ -5,7 +5,7 @@ import { stopAdvice } from './advisor.ts';
 import { alive, liveConversations } from './conversations.ts';
 import { SESSIONS_DIR } from './config.ts';
 import { sessions, type Session } from './db.ts';
-import { changedFiles, isClean, removeWorktree, unsharedCommits } from './git.ts';
+import { changedFiles, isClean, removeWorktree, unpushedCommits } from './git.ts';
 import * as ghostty from './ghostty.ts';
 import * as terminal from './terminal.ts';
 import { ttyOf, withoutAdopting } from './ingest.ts';
@@ -69,7 +69,7 @@ const longLived = (repo: RepoView, branch: string) =>
 
 const subtasksOf = (id: string): Session[] => sessions.all().filter((o) => o.parent?.id === id).flatMap((o) => [o, ...subtasksOf(o.id)]);
 
-// What Clear task would throw away, for its confirmation. A task in the main checkout keeps it, and its branch.
+// What Clear task would throw away or leave unpushed, for its confirmation. A task in the main checkout keeps it, and its branch.
 export async function deleteWorktreeLoss(id: string) {
   const s = must(id);
   if (s.parent) throw new Error(NOT_A_SUBTASK);
@@ -80,15 +80,15 @@ export async function deleteWorktreeLoss(id: string) {
   if (worktree.isMain) return { branch: worktree.branch, deletesBranch: false, files: 0, commits: 0, checkout: true, subtasks };
   const repo = repoView(s.repoId)!;
   const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-  const [files, commits] = await Promise.all([changedFiles(s.worktree), unsharedCommits(s.worktree, worktree.branch)]);
-  return { branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0, subtasks };
+  const [files, commits] = await Promise.all([changedFiles(s.worktree), unpushedCommits(s.worktree)]);
+  return { branch: worktree.branch, deletesBranch, files, commits, subtasks };
 }
 
 async function taskFolderLoss(folder: string, subtasks: number) {
   const repos = await Promise.all(taskWorktrees(folder).map(async ({ repo, worktree }) => {
     const deletesBranch = !!worktree.branch && !longLived(repo, worktree.branch);
-    const [files, commits] = await Promise.all([changedFiles(worktree.path), unsharedCommits(worktree.path, worktree.branch)]);
-    return { name: repo.name, branch: worktree.branch, deletesBranch, files, commits: deletesBranch || !worktree.branch ? commits : 0 };
+    const [files, commits] = await Promise.all([changedFiles(worktree.path), unpushedCommits(worktree.path)]);
+    return { name: repo.name, branch: worktree.branch, deletesBranch, files, commits };
   }));
   return {
     branch: basename(folder),

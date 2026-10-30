@@ -74,17 +74,14 @@ export function DeleteWorktreeDialog() {
   const loss = check?.state === 'done' ? check.loss : null;
   const keeps = !!loss?.checkout;
   const folder = loss?.repos;
-  const lostIn = (l: { files: number; commits: number }) => [
+  const lostIn = (l: { branch: string | null; deletesBranch: boolean; files: number; commits: number }) => [
     l.files && plural(l.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
-    l.commits && `${plural(l.commits, 'commit', 'commits')} that no other branch or remote has`,
-  ].filter((x) => !!x).join(' and ');
+    l.commits && `${plural(l.commits, 'unpushed commit', 'unpushed commits')}${l.branch && !l.deletesBranch ? `, which stay on ${l.branch}` : ''}`,
+  ].filter((x) => !!x);
   const lost = folder
-    ? folder.flatMap((r) => (lostIn(r) ? [`${r.name}: ${lostIn(r)}`] : []))
+    ? folder.flatMap((r) => (lostIn(r).length ? [`${r.name}: ${lostIn(r).join(' and ')}`] : []))
     : loss
-    ? [
-      loss.files && plural(loss.files, 'uncommitted or untracked file', 'uncommitted or untracked files'),
-      loss.commits && `${plural(loss.commits, 'commit', 'commits')} that no other branch or remote has`,
-    ].filter((l) => !!l)
+    ? lostIn(loss)
     : [];
 
   return (
@@ -109,11 +106,11 @@ export function DeleteWorktreeDialog() {
             <p>The task runs in the repository's main checkout, which stays as it is{loss.branch ? `, on ${loss.branch}` : ''}.</p>
           ) : loss && (lost.length ? (
             <>
-              <p>This throws away:</p>
+              <p className={styles.warning}>Not everything is pushed. This throws away:</p>
               <ul className={styles.loss}>{lost.map((l) => <li key={l}>{l}</li>)}</ul>
             </>
           ) : (
-            <p>Nothing is lost: there are no uncommitted changes, and every commit is on a remote or another branch.</p>
+            <p>Nothing is lost: there are no uncommitted changes, and every commit is pushed.</p>
           ))}
           <p className={styles.muted}>
             {keeps ? "This task's Claude quits, its terminal closes and the task leaves the board." : folder ? "Claude quits, the task folder's terminals close and the task leaves the board." : "Claude quits, the worktree's terminals close and the task leaves the board."}
